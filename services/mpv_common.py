@@ -40,9 +40,93 @@ _mpv_loaded = False
 _last_load_error = ""  # 最后一次加载失败的诊断信息（供 UI 层读取并展示给用户）
 
 
+def _extract_real_winerror(exc):
+    """从异常中提取真正的 winerror。
+
+    PyInstaller 的 pyimod03_ctypes.PyInstallerImportError 继承自 OSError，
+    但丢失了原始异常的 winerror（原始异常保存在 __cause__ 中）。
+    这导致 ctypes.CDLL 加载失败时，无法从 winerror 判断具体原因
+    （126=依赖缺失, 193=文件损坏, 5=访问拒绝, None=文件不存在）。
+    """
+    # 直接获取 winerror
+    winerror = getattr(exc, 'winerror', None)
+    if winerror is not None:
+        return winerror
+    # PyInstallerImportError 丢失了 winerror，从 __cause__ 获取原始异常的 winerror
+    cause = getattr(exc, '__cause__', None)
+    if cause is not None:
+        winerror = getattr(cause, 'winerror', None)
+        if winerror is not None:
+            return winerror
+    return None
+
+
+def _log_file_diag(path, prefix=""):
+    """记录文件诊断信息（大小、存在性），帮助判断 onefile 解压是否完整。"""
+    try:
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            logger.warning(f"{prefix}文件存在但加载失败: {path} (大小: {size / 1024 / 1024:.2f} MB)")
+        else:
+            logger.warning(f"{prefix}文件不存在: {path}")
+    except Exception:
+        pass
+
+
 def _is_mpv_available():
     _ensure_libmpv_loaded()
     return MPV_AVAILABLE
+
+
+def _extract_dll_to_exe_dir():
+    """Windows onefile 模式下，将 libmpv-2.dll 从 _MEIPASS 提取到 exe 同级目录。
+
+    _MEIPASS 临时目录中的大 DLL（112MB+）可能因杀毒软件实时扫描锁定文件、
+    解压不完整等原因导致 LoadLibrary 加载失败。提取到 exe 同级目录后可稳定加载。
+
+    Returns:
+        提取后的 dll 路径；不需要提取或提取失败时返回 None
+    """
+    if not is_windows() or not getattr(sys, 'frozen', False):
+        return None
+
+    try:
+        exe_dir = os.path.dirname(sys.executable)
+        meipass = getattr(sys, '_MEIPASS', None)
+        if not meipass:
+            return None
+
+        filename = get_libmpv_filename()
+        src = os.path.join(meipass, 'mpv', filename)
+        dst = os.path.join(exe_dir, filename)
+
+        if not os.path.exists(src):
+            return None
+
+        src_size = os.path.getsize(src)
+
+        # 目标已存在且大小相同，跳过复制（版本未变化）
+        if os.path.exists(dst) and os.path.getsize(dst) == src_size:
+            return dst
+
+        # 复制 DLL（112MB，可能需要数秒）
+        import shutil
+        logger.info(f"正在提取 {filename} 到程序目录: {dst}")
+        shutil.copy2(src, dst)
+
+        # 验证复制结果
+        if os.path.exists(dst) and os.path.getsize(dst) == src_size:
+            logger.info(f"{filename} 提取成功 ({src_size / 1024 / 1024:.1f} MB)")
+            return dst
+        else:
+            logger.warning(f"{filename} 提取后大小不匹配，将回退到 _MEIPASS 加载")
+            return None
+    except PermissionError:
+        logger.warning("无权限写入程序目录，跳过 DLL 提取（将直接从 _MEIPASS 加载）")
+        return None
+    except Exception as e:
+        logger.warning(f"提取 DLL 到程序目录失败: {e}")
+        return None
 
 
 def _ensure_libmpv_loaded():
@@ -56,9 +140,21 @@ def _ensure_libmpv_loaded():
         except Exception:
             pass
 
+    # Windows onefile 模式：先将 DLL 从 _MEIPASS 提取到 exe 同级目录，
+    # 避免 _MEIPASS 临时目录中大文件加载不稳定的问题
+    extracted_path = _extract_dll_to_exe_dir()
+
     # 逐一尝试所有候选路径：文件可能存在但损坏（UPX 解压损坏、杀毒软件拦截、依赖缺失），
     # ctypes.CDLL 失败时继续尝试下一个路径（exe 同级 mpv/ 目录等 fallback）
     candidate_paths = find_libmpv_paths()
+
+    # 提取成功时优先从 exe 同级目录加载（最稳定的路径）
+    if extracted_path:
+        norm_extracted = os.path.normpath(extracted_path)
+        candidate_paths = [extracted_path] + [
+            p for p in candidate_paths if os.path.normpath(p) != norm_extracted
+        ]
+
     last_error = None
     for path in candidate_paths:
         if not path or not os.path.exists(path):
@@ -131,19 +227,24 @@ def _ensure_libmpv_loaded():
             return True
         except OSError as e:
             last_error = e
-            # Windows 上从 winerror 提取详细错误码，区分"依赖缺失"和"文件损坏"
-            winerror = getattr(e, 'winerror', None)
+            # PyInstaller 的 PyInstallerImportError 继承自 OSError 但丢失了 winerror，
+            # 需要从 __cause__ 获取原始异常的 winerror 才能判断真正的失败原因
+            winerror = _extract_real_winerror(e)
+            _log_file_diag(path, "libmpv加载失败诊断: ")
             if winerror == 126:
                 # ERROR_MOD_NOT_FOUND: 文件存在但依赖的 DLL 缺失（通常是 VC++ Runtime）
                 logger.warning(f"libmpv加载失败（依赖DLL缺失，可能是VC++ Runtime未安装）: {path} -> winerror={winerror}")
             elif winerror == 193:
-                # ERROR_BAD_EXE_FORMAT: 架构不匹配（32/64位）
-                logger.warning(f"libmpv加载失败（架构不匹配）: {path} -> winerror={winerror}")
+                # ERROR_BAD_EXE_FORMAT: 文件存在但损坏或架构不匹配（32/64位）
+                # onefile 模式下大文件(112MB+)解压不完整也会触发此错误
+                logger.warning(f"libmpv加载失败（文件损坏或架构不匹配，可能是解压不完整）: {path} -> winerror={winerror}")
             elif winerror == 5:
                 # ERROR_ACCESS_DENIED: 杀毒软件拦截或权限不足
                 logger.warning(f"libmpv加载失败（访问被拒绝，可能是杀毒软件拦截）: {path} -> winerror={winerror}")
             else:
-                logger.warning(f"libmpv路径加载失败，尝试下一个: {path} -> winerror={winerror}, {e}")
+                cause = getattr(e, '__cause__', None)
+                cause_str = str(cause) if cause else str(e)
+                logger.warning(f"libmpv路径加载失败，尝试下一个: {path} -> winerror={winerror}, {cause_str}")
             continue
         except Exception as e:
             last_error = e
@@ -154,7 +255,7 @@ def _ensure_libmpv_loaded():
     logger.error(f"加载libmpv失败（所有候选路径均失败）: {last_error}")
     diag_msg = "libmpv加载失败"
     if is_windows():
-        winerror = getattr(last_error, 'winerror', None) if last_error else None
+        winerror = _extract_real_winerror(last_error) if last_error else None
         if winerror == 126:
             # ERROR_MOD_NOT_FOUND: 检查 VC++ Runtime 是否存在并提供解决建议
             system_dir = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32')
@@ -169,13 +270,18 @@ def _ensure_libmpv_loaded():
                             "可能是其他依赖项问题）。建议重新下载程序或安装 mpv 播放器。")
                 logger.error(f"诊断: {diag_msg}")
         elif winerror == 193:
-            diag_msg = "libmpv加载失败：架构不匹配，请确认使用 64 位 Windows 系统。"
+            # ERROR_BAD_EXE_FORMAT: 文件存在但损坏或架构不匹配
+            # onefile 模式下 112MB 的 libmpv-2.dll 解压不完整是最可能的原因
+            diag_msg = ("libmpv加载失败：DLL 文件可能损坏（onefile 解压不完整）或架构不匹配。"
+                        "建议重新下载程序，或从 shinchiro/mpv-winbuild-cmake releases 下载 libmpv-2.dll 放到程序同目录。")
             logger.error(f"诊断: {diag_msg}")
         elif winerror == 5:
             diag_msg = "libmpv加载失败：访问被拒绝，可能是杀毒软件拦截。请将程序加入白名单。"
             logger.error(f"诊断: {diag_msg}")
         else:
-            diag_msg = f"libmpv加载失败（winerror={winerror}）: {last_error}"
+            cause = getattr(last_error, '__cause__', None) if last_error else None
+            cause_str = str(cause) if cause else str(last_error)
+            diag_msg = f"libmpv加载失败（winerror={winerror}）: {cause_str}"
             logger.error(f"诊断: {diag_msg}")
     _last_load_error = diag_msg
     _mpv_loaded = False

@@ -431,15 +431,6 @@ def build_windows():
         "--add-data", f"{PROJECT_ROOT / 'ffmpeg'}{DATA_SEP}ffmpeg",
         "--add-data", f"{PROJECT_ROOT / 'resources'}{DATA_SEP}resources",
     ])
-    # 排除 libmpv 的 UPX 压缩：UPX 压缩的 dll 容易被杀毒软件拦截或解压失败，
-    # 导致 onefile 模式运行时 _MEIPASS/mpv/libmpv-2.dll 丢失
-    cmd.extend([
-        "--upx-exclude", "libmpv-2.dll",
-        "--upx-exclude", "libmpv.2.dylib",
-        "--upx-exclude", "libmpv.so",
-        "--upx-exclude", "libmpv.so.1",
-        "--upx-exclude", "libmpv.so.2",
-    ])
     for imp in HIDDEN_IMPORTS:
         cmd.extend(["--hidden-import", imp])
     for pkg in COLLECT_ALL:

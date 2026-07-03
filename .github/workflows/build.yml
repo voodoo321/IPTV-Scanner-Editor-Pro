@@ -73,7 +73,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.20.0
 
       - name: Build executable
         run: python build.py
@@ -86,11 +86,25 @@ jobs:
           }
           Move-Item "dist/IPTV Scanner Editor Pro.exe" "dist/IPTV Scanner Editor Pro-Windows-x86_64.exe" -Force
 
+      - name: Package libmpv fallback
+        shell: pwsh
+        run: |
+          # 将 mpv/ 目录打包为 zip，作为 fallback 供用户手动下载
+          # 当 onefile 模式解压 libmpv-2.dll 失败时，用户可从此 zip 提取 dll 放到 exe 同级目录
+          if (Test-Path "mpv/libmpv-2.dll") {
+            Compress-Archive -Path "mpv/libmpv-2.dll" -DestinationPath "dist/libmpv-fallback-windows.zip" -Force
+            Write-Host "Created libmpv-fallback-windows.zip"
+          } else {
+            Write-Host "WARNING: mpv/libmpv-2.dll not found, skipping fallback package"
+          }
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
-          files: dist/IPTV Scanner Editor Pro-Windows-x86_64.exe
+          files: |
+            dist/IPTV Scanner Editor Pro-Windows-x86_64.exe
+            dist/libmpv-fallback-windows.zip
           fail_on_unmatched_files: true
           overwrite_files: true
         env:
@@ -120,7 +134,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.20.0
 
       - name: Build .app
         run: python build.py
@@ -172,7 +186,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.20.0
 
       - name: Build executable
         run: python build.py
@@ -252,7 +266,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.20.0
 
       - name: Build executable
         run: python build.py

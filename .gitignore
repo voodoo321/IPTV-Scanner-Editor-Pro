@@ -197,6 +197,7 @@ screen.png
 # 配置文件
 *.ini
 config.ini
+playback_settings.json
 
 # 缓存文件
 cache/
