@@ -211,7 +211,7 @@ class MpvController : MPVLib.EventObserver, Player {
     /**
      * 切换硬件/软件解码（实现 Player.setHardwareDecode）。
      *
-     * - vo=gpu：硬解 hwdec=auto-copy，软解 hwdec=no
+     * - vo=gpu：硬解 hwdec=auto-copy 或 auto（保留用户选择），软解 hwdec=no
      * - vo=mediacodec_embed：固定硬解（mediacodec），不支持软解，返回 false
      *
      * 切换后自动重新加载当前文件以应用新 hwdec。
@@ -227,9 +227,14 @@ class MpvController : MPVLib.EventObserver, Player {
             return false
         }
 
+        val currentHwdec = try {
+            MPVLib.getPropertyString("hwdec") ?: "auto-copy"
+        } catch (e: Throwable) { "auto-copy" }
         val hwdec = when {
             !enabled -> "no"
             currentVo == "mediacodec_embed" -> "mediacodec"
+            // 保留用户之前的选择：如果已经是 auto（4K HDR 直接输出），启用硬解时保持
+            currentHwdec == "auto" -> "auto"
             else -> "auto-copy"
         }
         setVoAndHwdec(currentVo, hwdec)
@@ -492,7 +497,7 @@ class MpvController : MPVLib.EventObserver, Player {
     /**
      * 设置视频翻转。mode: "" / "horizontal" / "vertical" / "both"
      * 与 PC 端 set_video_flip 一致：先 remove 旧 @iptv_flip，再 add 新的。
-     * 注意：hwdec 必须为 auto-copy（默认）才能用 vf 滤镜。
+     * 注意：hwdec 必须为 auto-copy 才能用 vf 滤镜（auto 模式直接输出，vf 不可用）。
      */
     override fun setVideoFlip(mode: String): Boolean {
         postOnUiThread {
@@ -558,7 +563,7 @@ class MpvController : MPVLib.EventObserver, Player {
      * 设置 360° 视角（panorama 滤镜）。
      * 先 remove 旧 @iptv_360，再 add 新的。
      * 注意：panorama 滤镜需 ffmpeg 编译时启用，部分设备可能不可用。
-     * hwdec 必须为 auto-copy（默认）才能用 vf 滤镜。
+     * hwdec 必须为 auto-copy 才能用 vf 滤镜（auto 模式直接输出，vf 不可用）。
      */
     override fun set360View(yaw: Double, pitch: Double, roll: Double, projection: String): Boolean {
         postOnUiThread {

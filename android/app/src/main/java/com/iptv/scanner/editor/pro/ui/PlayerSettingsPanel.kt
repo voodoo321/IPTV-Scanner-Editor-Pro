@@ -279,11 +279,17 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     when (currentVo) {
                         "gpu" -> {
-                            // vo=gpu 时：auto-copy（推荐）或 no（软解）
+                            // vo=gpu 时：auto-copy（兼容好）/ auto（4K HDR 优化）/ no（软解）
                             FilterChip(
                                 selected = currentHwdec == "auto-copy",
                                 onClick = { viewModel.setPlayerHwdec("auto-copy") },
                                 label = { Text("auto-copy（推荐）") },
+                                modifier = Modifier.tvFocusBorder()
+                            )
+                            FilterChip(
+                                selected = currentHwdec == "auto",
+                                onClick = { viewModel.setPlayerHwdec("auto") },
+                                label = { Text("auto（4K HDR）") },
                                 modifier = Modifier.tvFocusBorder()
                             )
                             FilterChip(
@@ -310,7 +316,9 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                 // 当前 hwdec 说明
                 val hwdecDesc = when (currentHwdec) {
                     "auto-copy" -> "自动选择硬件解码器，解码后拷贝到 CPU 内存再上传 GPU。" +
-                        "兼容性好，与 vo=gpu 配合"
+                        "兼容性好，支持视频滤镜（翻转/裁剪/360°）。4K HDR 可能卡顿"
+                    "auto" -> "自动选择最佳硬解，优先直接输出（零拷贝）。" +
+                        "4K HDR 流畅，但视频翻转/裁剪/360° 滤镜可能不可用"
                     "mediacodec" -> "MediaCodec 硬件解码，直接渲染到 Surface。" +
                         "必须与 vo=mediacodec_embed 配合"
                     "no" -> "纯软件解码。兼容性最好但耗电，CPU 解码可能慢"

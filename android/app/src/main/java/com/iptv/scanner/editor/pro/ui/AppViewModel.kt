@@ -3992,9 +3992,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 切换 hwdec（auto-copy / mediacodec / no）。
+     * 切换 hwdec（auto-copy / auto / mediacodec / no）。
      * 注意：hwdec 必须与 vo 匹配：
-     * - vo=gpu → hwdec=auto-copy 或 no
+     * - vo=gpu → hwdec=auto-copy（拷贝，兼容好）/ auto（直接输出，4K HDR 流畅）/ no（软解）
      * - vo=mediacodec_embed → hwdec=mediacodec
      */
     fun setPlayerHwdec(hwdec: String) {
@@ -4026,7 +4026,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // MPV 模式下同步更新 _currentHwdec 状态（UI 显示用）
             if (player is MpvController) {
                 val newHwdec = if (enabled) {
-                    if (_currentVo.value == "mediacodec_embed") "mediacodec" else "auto-copy"
+                    when {
+                        _currentVo.value == "mediacodec_embed" -> "mediacodec"
+                        // 保留用户之前的选择：auto（4K HDR 直接输出）或 auto-copy
+                        _currentHwdec.value == "auto" -> "auto"
+                        else -> "auto-copy"
+                    }
                 } else "no"
                 userPrefs.setHwdec(newHwdec)
                 _currentHwdec.value = newHwdec

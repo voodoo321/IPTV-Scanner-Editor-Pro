@@ -42,7 +42,8 @@ class MPVView @JvmOverloads constructor(
      *        - "mediacodec_embed"：MediaCodec 直接渲染到 Surface，绕过 EGL
      *          （GPU EGL 兼容性问题时的 fallback，但不支持 OSD/HDR）
      * @param hwdec 硬件解码，默认 "auto-copy"（自动选择 + 拷贝到 CPU 内存）
-     *        - "auto-copy"：自动选择硬件解码器，拷贝到 CPU 内存（兼容性好）
+     *        - "auto-copy"：自动选择硬件解码器，拷贝到 CPU 内存（兼容性好，支持 vf 滤镜）
+     *        - "auto"：自动选择最佳硬解，优先直接输出（零拷贝，4K HDR 流畅，vf 滤镜不可用）
      *        - "mediacodec"：MediaCodec 硬件解码（需配合 vo=mediacodec_embed）
      *        - "no"：纯软件解码（兼容性最好，但耗电）
      */
