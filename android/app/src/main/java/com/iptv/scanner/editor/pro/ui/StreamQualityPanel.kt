@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -122,13 +124,23 @@ fun StreamQualityPanel(viewModel: AppViewModel) {
             // tick 作为 remember key 触发重新读取 mpv 属性
             val info = remember(tick, fileLoaded) { readStreamInfo(mpv) }
 
+            // TV 端：初始焦点在第一个 InfoRow，DPAD 上下逐行聚焦并触发 LazyColumn 滚动
+            val firstRowFocus = remember { FocusRequester() }
+            LaunchedEffect(fileLoaded) {
+                if (fileLoaded) {
+                    // 延迟请求焦点，确保 LazyColumn 布局完成
+                    kotlinx.coroutines.delay(150)
+                    kotlin.runCatching { firstRowFocus.requestFocus() }
+                }
+            }
+
             // TV 端：使用 LazyColumn + 可聚焦子项，方向键可逐行聚焦并触发滚动
             LazyColumn(
                 modifier = Modifier.fillMaxSize()
             ) {
                 // 视频信息
                 item { SectionLabel("视频") }
-                item { InfoRow("编解码器", info.videoCodec) }
+                item { InfoRow("编解码器", info.videoCodec, focusRequester = firstRowFocus) }
                 item { InfoRow("分辨率", info.resolution) }
                 item { InfoRow("显示分辨率", info.displayResolution) }
                 item { InfoRow("帧率", info.fps) }
@@ -358,10 +370,15 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(
+    label: String,
+    value: String,
+    focusRequester: FocusRequester? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvFocusBorder()
             .focusable()
             .padding(vertical = 3.dp),

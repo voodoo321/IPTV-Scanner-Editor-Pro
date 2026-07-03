@@ -425,8 +425,10 @@ class IjkController(private val context: Context) : Player {
         currentHolder = null
         try {
             ijkPlayer?.release()
-        } catch (e: Exception) {
-            Log.w(TAG, "detach release failed: ${e.message}")
+        } catch (e: Throwable) {
+            // 捕获 Throwable（包括 StackOverflowError / native 崩溃前兆），
+            // 避免 detach 过程中的异常导致 App 进入无可用播放器状态
+            Log.w(TAG, "detach release failed: ${e.javaClass.simpleName}: ${e.message}")
         }
         // 正常 detach 也清除 IJK 测试标志：说明用户主动切走（不是崩溃），
         // 下次启动不会因 isIjkTesting=true 误判为崩溃。

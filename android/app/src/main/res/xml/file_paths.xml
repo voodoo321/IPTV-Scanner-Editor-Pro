@@ -5,8 +5,9 @@
   - Android 7+ 必须用 FileProvider，不能再直接用 file:// URI
 -->
 <paths>
-    <!-- 应用专属外部存储：getExternalFilesDir(null)/update/ -->
-    <files-path
+    <!-- 应用专属外部存储：getExternalFilesDir(null)/update/
+         APK 通过 DownloadManager 下载到这里（无需存储权限，卸载自动清理） -->
+    <external-files-path
         name="update_apks"
         path="update/" />
 </paths>

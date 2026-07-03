@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FileOpen
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.ScreenshotMonitor
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SyncAlt
@@ -283,6 +286,10 @@ fun TvUnifiedPanel(viewModel: AppViewModel) {
                     onSettings = { openOverlay { viewModel.togglePlayerSettings() } },
                     onAbout = { openOverlay { viewModel.toggleAboutPanel() } },
                     onToggleFavorite = { viewModel.toggleFavorite() },
+                    onClearChannelSettings = {
+                        val idx = viewModel.currentIdx.value
+                        if (idx >= 0) viewModel.clearChannelSettings(idx)
+                    },
                     onQuit = { viewModel.showOsd("退出", "请使用系统返回键退出") },
                     modifier = Modifier.width(360.dp).focusRequester(column2Focus)
                 )
@@ -427,8 +434,14 @@ private fun ChannelsColumn(
     onFocusedChannelChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val filteredChannels = remember(channels) {
-        channels.mapIndexed { idx, c -> c to idx }
+    // 分组过滤器状态（与 ChannelsPanel 共享 ViewModel 状态）
+    val selectedGroup by viewModel.selectedGroup.collectAsState()
+    val groups by viewModel.groups.collectAsState()
+
+    // 根据分组过滤频道
+    val filteredChannels = remember(channels, selectedGroup) {
+        val all = channels.mapIndexed { idx, c -> c to idx }
+        if (selectedGroup.isEmpty()) all else all.filter { it.first.group == selectedGroup }
     }
 
     // 滚动状态：用于面板打开时自动滚动到当前频道
@@ -472,6 +485,15 @@ private fun ChannelsColumn(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             )
 
+            // 分组过滤器（横向滚动 chip 行，仅当有分组时显示）
+            if (groups.isNotEmpty()) {
+                TvGroupFilterRow(
+                    groups = groups,
+                    selectedGroup = selectedGroup,
+                    onGroupSelected = { viewModel.setSelectedGroup(it) }
+                )
+            }
+
             Divider(color = Color(0xFF2A2A2A))
 
             // 频道列表
@@ -512,6 +534,68 @@ private fun ChannelsColumn(
                 }
             }
         }
+    }
+}
+
+/**
+ * TV 端分组过滤器（横向滚动 chip 行）。
+ * DPAD 左右切换分组，OK 选择分组。
+ * "全部" chip 在最前，后面跟各分组名。
+ */
+@Composable
+private fun TvGroupFilterRow(
+    groups: List<String>,
+    selectedGroup: String,
+    onGroupSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
+    ) {
+        // "全部" chip
+        item(key = "__all__") {
+            TvGroupChip(
+                label = "全部",
+                selected = selectedGroup.isEmpty(),
+                onClick = { onGroupSelected("") }
+            )
+        }
+        // 各分组 chip
+        items(items = groups, key = { it }) { group ->
+            TvGroupChip(
+                label = group,
+                selected = selectedGroup == group,
+                onClick = { onGroupSelected(group) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TvGroupChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val bg = if (selected) Color(0xFF4A9EFF) else Color(0xFF2A2A2A)
+    val fg = if (selected) Color.White else Color(0xFFAAAAAA)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            color = fg,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -618,12 +702,15 @@ private fun MenuColumn(
     onSettings: () -> Unit,
     onAbout: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onClearChannelSettings: () -> Unit,
     onQuit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val hasCurrentChannel = currentIdx >= 0
+    val perChannelEnabled by viewModel.perChannelSettingsEnabled.collectAsState()
+    val hasChannelSettings = remember(currentIdx) { currentIdx >= 0 && viewModel.hasChannelSettings(currentIdx) }
 
-    val menuItems = remember(hasCurrentChannel, isFavorite, multiViewActive, currentMultiViewLayout) {
+    val menuItems = remember(hasCurrentChannel, isFavorite, multiViewActive, currentMultiViewLayout, perChannelEnabled, hasChannelSettings) {
         buildList {
             // 快捷分组
             add(TvMenuItem("频道列表", "订阅 / 本地 / 收藏 / 历史 / 队列", Icons.AutoMirrored.Filled.ListAlt, onChannels, highlight = true))
@@ -647,10 +734,12 @@ private fun MenuColumn(
             add(TvMenuItem("视图", "视频比例 / OSD", Icons.Default.ViewInAr, onView))
             // 多画面分组（主画面 MPV + 副画面 ExoPlayer，规避 MPVLib 单例限制）
             if (multiViewActive && currentMultiViewLayout != null) {
-                val otherLayout = if (currentMultiViewLayout == MultiViewLayout.DUAL) {
-                    MultiViewLayout.QUAD
-                } else {
-                    MultiViewLayout.DUAL
+                // 已激活：在 DUAL → QUAD → NINE → DUAL 之间循环切换
+                val otherLayout = when (currentMultiViewLayout) {
+                    MultiViewLayout.DUAL -> MultiViewLayout.QUAD
+                    MultiViewLayout.QUAD -> MultiViewLayout.NINE
+                    MultiViewLayout.NINE -> MultiViewLayout.DUAL
+                    else -> MultiViewLayout.DUAL
                 }
                 add(TvMenuItem(
                     "切换为${otherLayout.displayName}",
@@ -662,6 +751,7 @@ private fun MenuColumn(
             } else {
                 add(TvMenuItem("双画面", "主画面 MPV + 副 ExoPlayer", Icons.Default.ViewModule, { onEnterMultiView(MultiViewLayout.DUAL) }))
                 add(TvMenuItem("四画面", "2x2 网格，主画面 + 3 副", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.QUAD) }))
+                add(TvMenuItem("九画面", "3x3 网格，主画面 + 8 副", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.NINE) }))
             }
             // 系统分组
             add(TvMenuItem("设置", "内核 / VO / HWDEC / HDR", Icons.Default.Settings, onSettings))
@@ -673,6 +763,18 @@ private fun MenuColumn(
                 onToggleFavorite,
                 highlight = hasCurrentChannel
             ))
+            // 频道记忆（仅在开启时显示）
+            if (perChannelEnabled && hasCurrentChannel) {
+                if (hasChannelSettings) {
+                    add(TvMenuItem(
+                        "清除频道专属设置",
+                        "恢复使用全局设置",
+                        Icons.Default.Delete,
+                        onClearChannelSettings,
+                        highlight = true
+                    ))
+                }
+            }
             add(TvMenuItem("退出", "关闭应用", Icons.AutoMirrored.Filled.ExitToApp, onQuit))
         }
     }

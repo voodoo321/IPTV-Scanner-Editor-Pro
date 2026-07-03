@@ -28,6 +28,7 @@ import com.iptv.scanner.editor.pro.data.MappingEntry
 import com.iptv.scanner.editor.pro.data.ReminderItem
 import com.iptv.scanner.editor.pro.data.ResumeItem
 import com.iptv.scanner.editor.pro.data.BookmarkItem
+import com.iptv.scanner.editor.pro.data.ChannelPlayerSettings
 import com.iptv.scanner.editor.pro.data.ScanResult
 import com.iptv.scanner.editor.pro.data.ScanStatus
 import com.iptv.scanner.editor.pro.data.SubtitleItem
@@ -1086,6 +1087,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         Log.i(TAG, "playChannel: ${channel.name} (${channel.url})")
 
+        // 频道记忆：切换前自动保存当前频道的播放器设置（无需手动保存）
+        if (userPrefs.isPerChannelPlayerSettings() && _currentIdx.value >= 0 && _currentIdx.value != idx) {
+            autoSaveCurrentSettingsToChannel(_currentIdx.value)
+        }
+
         _currentIdx.value = idx
 
         // 重置 catchup/timeshift 状态（与 PC 端 _exit_catchup_mode 对齐）
@@ -1112,6 +1118,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // mpv/ffmpeg 会忽略不认识的查询参数，rt2phttpd 代理则通过该参数处理 FCC。
         val playUrl = channel.url
 
+        // 应用频道级播放器设置（如果开启"频道记忆"且该频道有保存设置）
+        val playerSwitched = applyChannelSettingsIfNeeded(idx)
+
         // 协议兼容性检查：IJK/ExoPlayer 不支持 RTP/UDP 等非 HTTP 协议。
         // 遇到不支持的协议时自动切换到 MPV（支持全部协议），避免播放失败无响应。
         // switchPlayer 会触发 View 重建，重建后通过 pendingRestoreState 恢复播放。
@@ -1120,6 +1129,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             showOsd("协议不支持", "${_playerType.value.displayName} 不支持此协议，已切换到 MPV")
             switchPlayer(PlayerType.MPV)
             // 覆盖 switchPlayer 保存的旧状态，改为播放新频道 URL
+            pendingRestoreState = playUrl to 0.0
+        } else if (playerSwitched) {
+            // 频道设置触发了 switchPlayer，覆盖 pendingRestoreState 为新频道 URL
             pendingRestoreState = playUrl to 0.0
         } else {
             mpv.playFile(playUrl)
@@ -1141,6 +1153,117 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         // 预取 EPG（避免用户必须先打开 EPG 面板才能看到节目信息）
         fetchEpgForCurrent()
+    }
+
+    // -----------------------------------------------------------------
+    // 频道级播放器设置（per-channel override）
+    //
+    // 开启"频道记忆"后，每个频道可独立记忆播放器内核 / vo / hwdec / HDR 模式。
+    // 切换频道时自动应用该频道的设置，实现不同频道用不同最佳配置。
+    // -----------------------------------------------------------------
+
+    /**
+     * 应用频道级播放器设置（如果开启"频道记忆"且该频道有保存设置）。
+     *
+     * 在 playChannel 中调用，播放前应用该频道的专属设置。
+     *
+     * @return true 表示触发了 switchPlayer（调用方需覆盖 pendingRestoreState）
+     */
+    private fun applyChannelSettingsIfNeeded(idx: Int): Boolean {
+        if (!userPrefs.isPerChannelPlayerSettings()) return false
+        val settings = userPrefs.getChannelSettings(idx) ?: return false
+
+        var playerSwitched = false
+
+        // 1. 应用播放器内核
+        settings.playerType?.let { typeName ->
+            try {
+                val type = PlayerType.valueOf(typeName)
+                if (_playerType.value != type) {
+                    switchPlayer(type)
+                    playerSwitched = true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "applyChannelSettings: invalid playerType=$typeName")
+            }
+        }
+
+        if (playerSwitched) {
+            // switchPlayer 已触发 View 重建，只需更新 UserPrefs 和 StateFlow，
+            // MPVView 重建时会自动读取 UserPrefs 的 vo/hwdec 初始化。
+            settings.vo?.let { vo ->
+                userPrefs.setVo(vo)
+                _currentVo.value = vo
+            }
+            settings.hwdec?.let { hwdec ->
+                val actualHwdec = if (settings.vo == "mediacodec_embed") "mediacodec" else hwdec
+                userPrefs.setHwdec(actualHwdec)
+                _currentHwdec.value = actualHwdec
+            }
+        } else {
+            // 未切换播放器，直接应用 vo/hwdec（会触发 mpv 重新加载，随后 playFile 加载新频道）
+            if (_playerType.value == PlayerType.MPV) {
+                settings.vo?.let { vo ->
+                    if (_currentVo.value != vo) setPlayerVo(vo)
+                }
+                settings.hwdec?.let { hwdec ->
+                    val actualHwdec = if (settings.vo == "mediacodec_embed") "mediacodec" else hwdec
+                    if (_currentHwdec.value != actualHwdec) setPlayerHwdec(actualHwdec)
+                }
+            }
+        }
+
+        // 2. 应用 HDR 模式（只更新状态，由 applyHdrOnFileLoaded 在文件加载后应用）
+        settings.hdrMode?.let { modeName ->
+            try {
+                val mode = HdrMode.valueOf(modeName.uppercase())
+                if (_hdrMode.value != mode) {
+                    userPrefs.setHdrMode(modeName.lowercase())
+                    _hdrMode.value = mode
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "applyChannelSettings: invalid hdrMode=$modeName")
+            }
+        }
+
+        if (playerSwitched || settings.vo != null || settings.hwdec != null || settings.hdrMode != null) {
+            Log.i(TAG, "applyChannelSettings: idx=$idx, settings=$settings, switched=$playerSwitched")
+        }
+
+        return playerSwitched
+    }
+
+    /** 自动保存当前播放器设置到指定频道（频道记忆开启时，切换频道前自动调用） */
+    private fun autoSaveCurrentSettingsToChannel(idx: Int) {
+        val settings = ChannelPlayerSettings(
+            playerType = _playerType.value.name,
+            vo = if (_playerType.value == PlayerType.MPV) _currentVo.value else null,
+            hwdec = if (_playerType.value == PlayerType.MPV) _currentHwdec.value else null,
+            hdrMode = _hdrMode.value.name.lowercase()
+        )
+        userPrefs.setChannelSettings(idx, settings)
+        Log.i(TAG, "autoSaveCurrentSettingsToChannel: idx=$idx, settings=$settings")
+    }
+
+    /** 清除指定频道的专属播放器设置 */
+    fun clearChannelSettings(idx: Int) {
+        userPrefs.removeChannelSettings(idx)
+        showOsd("频道设置", "已清除该频道的专属设置")
+        Log.i(TAG, "clearChannelSettings: idx=$idx")
+    }
+
+    /** 查询指定频道是否有专属设置 */
+    fun hasChannelSettings(idx: Int): Boolean = userPrefs.getChannelSettings(idx) != null
+
+    /** 频道记忆开关 */
+    val perChannelSettingsEnabled: StateFlow<Boolean>
+        get() = _perChannelSettingsEnabled
+    private val _perChannelSettingsEnabled = MutableStateFlow(userPrefs.isPerChannelPlayerSettings())
+
+    fun setPerChannelSettingsEnabled(enabled: Boolean) {
+        userPrefs.setPerChannelPlayerSettings(enabled)
+        _perChannelSettingsEnabled.value = enabled
+        showOsd("频道记忆", if (enabled) "已开启 — 每个频道将记忆各自的播放器设置" else "已关闭 — 所有频道使用全局设置")
     }
 
     // -----------------------------------------------------------------
@@ -1268,12 +1391,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // 标记视口为播放中
+        // 标记视口为播放中（副画面默认静音）
         val newViewport = targetViewport.copy(
             channelIdx = channelIdx,
             channelName = channel.name,
             isError = false,
-            errorMessage = ""
+            errorMessage = "",
+            isMuted = true
         )
         _multiViewState.value = state.copy(
             viewports = state.viewports.map { if (it.index == targetIdx) newViewport else it },
@@ -1287,6 +1411,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Log.i(TAG, "addChannelToMultiView: ${channel.name} -> viewport $targetIdx")
         showOsd("多画面", "${channel.name} 已添加到画面 ${targetIdx + 1}")
         return targetIdx
+    }
+
+    /**
+     * 切换多画面视口的静音状态。
+     * - 主画面（index=0）：切换主播放器静音
+     * - 副画面（index=1+）：切换对应副 Player 静音
+     *
+     * @param viewportIndex 视口索引
+     */
+    fun toggleMultiViewMute(viewportIndex: Int) {
+        val state = _multiViewState.value
+        if (!state.active) return
+        val viewport = state.viewports.getOrNull(viewportIndex) ?: return
+        if (viewport.isEmpty) return  // 空画面无需静音
+
+        val newMuted = !viewport.isMuted
+
+        // 更新 UI 状态
+        _multiViewState.value = state.copy(
+            viewports = state.viewports.map {
+                if (it.index == viewportIndex) it.copy(isMuted = newMuted) else it
+            }
+        )
+
+        // 应用到 Player
+        try {
+            if (viewportIndex == 0) {
+                _player.value.setMute(newMuted)
+            } else {
+                subPlayers[viewportIndex]?.setMute(newMuted)
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "toggleMultiViewMute: viewport=$viewportIndex, failed: ${e.message}")
+        }
+
+        Log.i(TAG, "toggleMultiViewMute: viewport=$viewportIndex, muted=$newMuted")
+        showOsd("多画面", "画面 ${viewportIndex + 1} ${if (newMuted) "已静音" else "已取消静音"}")
     }
 
     /**
@@ -1338,6 +1499,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     1 -> if (row == 0) return false else current - 2  // 上
                     2 -> if (col == 1) return false else current + 1  // 右
                     3 -> if (row == 1) return false else current + 2  // 下
+                    else -> return false
+                }
+            }
+            MultiViewLayout.NINE -> {
+                // 3x3 网格：0 1 2
+                //          3 4 5
+                //          6 7 8
+                val cols = 3
+                val row = current / cols
+                val col = current % cols
+                when (direction) {
+                    0 -> if (col == 0) return false else current - 1  // 左
+                    1 -> if (row == 0) return false else current - cols  // 上
+                    2 -> if (col == cols - 1) return false else current + 1  // 右
+                    3 -> if (row == cols - 1) return false else current + cols  // 下
                     else -> return false
                 }
             }

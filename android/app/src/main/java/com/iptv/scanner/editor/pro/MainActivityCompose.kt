@@ -326,6 +326,12 @@ class MainActivityCompose : ComponentActivity() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                // 多画面模式：OK 键打开统一面板，让用户在频道列表中选择频道添加到焦点视口。
+                // （多画面模式下添加副画面的唯一入口；控制层可通过 MENU 键或其他方式显示）
+                if (viewModel.multiViewState.value.active) {
+                    viewModel.toggleTvUnifiedPanel()
+                    return true
+                }
                 // 控制面板隐藏时先显示控制面板（auto-hide），可见时切换暂停
                 if (!viewModel.controlsVisible.value) {
                     viewModel.showControlsAutoHide()

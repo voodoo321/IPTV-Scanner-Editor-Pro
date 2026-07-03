@@ -1560,13 +1560,13 @@ fun UpdateDialog(viewModel: AppViewModel) {
                     }
                     is AppViewModel.ApkDownloadState.Error -> {
                         Text(
-                            "下载失败：${s.message}",
+                            s.message,
                             color = Color(0xFFE57373),
                             fontSize = 13.sp
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "请检查网络后重试，或点击「浏览器下载」跳转 GitHub。",
+                            "请重试，或点击「浏览器下载」跳转 GitHub 手动安装。",
                             color = Color(0xFF888888),
                             fontSize = 11.sp
                         )

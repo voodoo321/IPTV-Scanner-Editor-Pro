@@ -6,6 +6,7 @@ package com.iptv.scanner.editor.pro.ui
  * - SINGLE：单画面（退出多画面）
  * - DUAL：双画面（左右分屏，主+副）
  * - QUAD：四画面（2x2 网格，主+3副）
+ * - NINE：九画面（3x3 网格，主+8副）
  *
  * 主画面始终用当前播放器（通常为 MPV，功能最全），
  * 副画面强制用 ExoPlayer（MPV 在安卓端是单例，不支持多实例）。
@@ -13,13 +14,15 @@ package com.iptv.scanner.editor.pro.ui
 enum class MultiViewLayout(val count: Int, val displayName: String) {
     SINGLE(1, "单画面"),
     DUAL(2, "双画面"),
-    QUAD(4, "四画面");
+    QUAD(4, "四画面"),
+    NINE(9, "九画面");
 
     companion object {
         fun fromCount(count: Int): MultiViewLayout =
             when (count) {
                 2 -> DUAL
                 4 -> QUAD
+                9 -> NINE
                 else -> SINGLE
             }
     }
@@ -34,6 +37,7 @@ enum class MultiViewLayout(val count: Int, val displayName: String) {
  * @param channelName 频道名（用于 UI 显示，空画面为"未播放"）
  * @param isError 播放错误标志（如协议不支持）
  * @param errorMessage 错误信息
+ * @param isMuted 是否静音（主画面默认不静音，副画面默认静音；用户可手动切换）
  */
 data class MultiViewport(
     val index: Int,
@@ -41,7 +45,8 @@ data class MultiViewport(
     val isPrimary: Boolean = false,
     val channelName: String = "",
     val isError: Boolean = false,
-    val errorMessage: String = ""
+    val errorMessage: String = "",
+    val isMuted: Boolean = false
 ) {
     /** 是否为空画面（未播放） */
     val isEmpty: Boolean get() = channelIdx < 0

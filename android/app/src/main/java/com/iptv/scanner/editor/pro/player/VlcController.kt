@@ -50,12 +50,11 @@ class VlcController(context: Context) : Player, MediaPlayer.EventListener {
     // -----------------------------------------------------------------
 
     /**
-     * LibVLC 实例（全局选项：RTSP-TCP / 网络缓存 / 硬解码 / 全屏 / HDR）。
+     * LibVLC 实例（全局选项：RTSP-TCP / 网络缓存 / 硬解码 / 全屏）。
      * 在构造函数中创建，在 [detach] 中释放。
      *
-     * HDR 选项说明：
-     * - `--hdr-process-gpu`：在 GPU 上处理 HDR 内容（直通到 Surface，由系统 HDR 显示管线处理）
-     * - 若设备不支持 HDR 显示，MediaCodec 解码的 HDR 内容会被系统自动压缩到 SDR
+     * HDR 直通说明：VLC 使用 MediaCodec 直接渲染到 Surface，HDR 元数据由
+     * MediaCodec 自动协商 Surface 格式，由系统 HDR 显示管线处理，无需额外选项。
      */
     private val libVLC: LibVLC = LibVLC(
         context,
@@ -66,8 +65,7 @@ class VlcController(context: Context) : Player, MediaPlayer.EventListener {
             "--codec=mediacodec_ndk",   // 硬件解码（MediaCodec NDK 接口）
             "--fullscreen",             // 全屏渲染
             "--no-drop-late-frames",    // 不丢弃迟到帧（减少画面跳跃）
-            "--no-skip-frames",         // 不跳帧（保证画面连续性）
-            "--hdr-process-gpu"         // HDR GPU 处理（直通，由系统显示管线处理）
+            "--no-skip-frames"          // 不跳帧（保证画面连续性）
         )
     )
 

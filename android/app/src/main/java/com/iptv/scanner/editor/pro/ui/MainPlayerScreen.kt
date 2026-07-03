@@ -258,7 +258,8 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                 primaryContent = { primaryPlayer() },
                 getSubPlayer = { idx -> viewModel.getSubPlayerForMultiView(idx) },
                 onViewportClick = { idx -> viewModel.setFocusedViewport(idx) },
-                onViewportClose = { idx -> viewModel.removeFromMultiView(idx) }
+                onViewportClose = { idx -> viewModel.removeFromMultiView(idx) },
+                onToggleMute = { idx -> viewModel.toggleMultiViewMute(idx) }
             )
         } else {
             // 单画面模式：Box + aspectRatio 控制主画面大小和位置（居中保持比例）

@@ -209,6 +209,25 @@ data class BookmarkItem(
 )
 
 // -----------------------------------------------------------------
+// 频道级播放器设置（per-channel override）
+//
+// 开启"频道记忆"后，每个频道可独立记忆播放器内核 / vo / hwdec / HDR 模式。
+// 切换频道时自动应用该频道的设置（如有），实现不同频道用不同最佳配置。
+// null 字段表示使用全局默认值。
+// -----------------------------------------------------------------
+
+data class ChannelPlayerSettings(
+    /** 播放器内核名称（PlayerType.name）：MPV / EXO / VLC / IJK，null=全局默认 */
+    val playerType: String? = null,
+    /** 视频输出（gpu / mediacodec_embed），null=全局默认 */
+    val vo: String? = null,
+    /** 硬件解码模式（auto-copy / auto / no / mediacodec），null=全局默认 */
+    val hwdec: String? = null,
+    /** HDR 输出模式（disable / auto / tonemap / passthrough），null=全局默认 */
+    val hdrMode: String? = null
+)
+
+// -----------------------------------------------------------------
 // 频道映射
 // -----------------------------------------------------------------
 

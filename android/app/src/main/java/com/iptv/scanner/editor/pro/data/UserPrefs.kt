@@ -197,6 +197,52 @@ class UserPrefs private constructor() {
     }
 
     // -----------------------------------------------------------------
+    // 频道级播放器设置（per-channel override）
+    //
+    // 开启后，每个频道可记忆各自的播放器内核 / vo / hwdec / HDR 模式。
+    // 切换频道时自动应用该频道的设置（如有），实现不同频道用不同最佳配置。
+    // 未设置的项目使用全局默认值。
+    // -----------------------------------------------------------------
+
+    /** 是否开启频道级播放器设置 */
+    fun isPerChannelPlayerSettings(): Boolean =
+        prefs.getBoolean(KEY_PER_CHANNEL_SETTINGS, false)
+
+    fun setPerChannelPlayerSettings(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_PER_CHANNEL_SETTINGS, enabled).apply()
+    }
+
+    /** 读取指定频道的播放器设置（null 表示未设置） */
+    fun getChannelSettings(idx: Int): ChannelPlayerSettings? {
+        val json = prefs.getString("$KEY_CHANNEL_SETTINGS_PREFIX$idx", null) ?: return null
+        return try {
+            val obj = JSONObject(json)
+            ChannelPlayerSettings(
+                playerType = obj.optString("player_type").takeIf { it.isNotEmpty() },
+                vo = obj.optString("vo").takeIf { it.isNotEmpty() },
+                hwdec = obj.optString("hwdec").takeIf { it.isNotEmpty() },
+                hdrMode = obj.optString("hdr_mode").takeIf { it.isNotEmpty() }
+            )
+        } catch (e: Exception) { null }
+    }
+
+    /** 保存指定频道的播放器设置 */
+    fun setChannelSettings(idx: Int, settings: ChannelPlayerSettings) {
+        val obj = JSONObject().apply {
+            settings.playerType?.let { put("player_type", it) }
+            settings.vo?.let { put("vo", it) }
+            settings.hwdec?.let { put("hwdec", it) }
+            settings.hdrMode?.let { put("hdr_mode", it) }
+        }
+        prefs.edit().putString("$KEY_CHANNEL_SETTINGS_PREFIX$idx", obj.toString()).apply()
+    }
+
+    /** 删除指定频道的播放器设置 */
+    fun removeChannelSettings(idx: Int) {
+        prefs.edit().remove("$KEY_CHANNEL_SETTINGS_PREFIX$idx").apply()
+    }
+
+    // -----------------------------------------------------------------
     // IJK 启动崩溃保护
     //
     // IJK native 库在某些设备/片源上可能触发 SIGSEGV，Java try-catch 无法捕获。
@@ -580,6 +626,9 @@ class UserPrefs private constructor() {
         private const val KEY_PLAYER_TYPE = "player_type"
         private const val KEY_HDR_MODE = "hdr_output_mode"
         private const val DEFAULT_HDR_MODE = "disable"
+        // 频道级播放器设置（per-channel override）
+        private const val KEY_PER_CHANNEL_SETTINGS = "per_channel_player_settings"
+        private const val KEY_CHANNEL_SETTINGS_PREFIX = "channel_settings_"
         // IJK 启动崩溃保护：切换到 IJK 时置 true，onPrepared/detach 时清除；
         // 启动时若仍为 true，说明上次 IJK 在切换后未成功 prepared 就崩溃（native SIGSEGV
         // 无法被 Java try-catch 捕获），下次启动自动回退到 MPV，避免循环崩溃。

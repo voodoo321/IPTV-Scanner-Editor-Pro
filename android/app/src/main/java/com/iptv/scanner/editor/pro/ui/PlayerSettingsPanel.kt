@@ -1,5 +1,6 @@
 package com.iptv.scanner.editor.pro.ui
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -426,6 +429,49 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                             }
                         }
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // -----------------------------------------------------------------
+            // 频道记忆（per-channel override）
+            // -----------------------------------------------------------------
+            val perChannelEnabled by viewModel.perChannelSettingsEnabled.collectAsState()
+            Surface(
+                color = Color(0xFF1E2720),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tvFocusBorder()
+                        .focusable()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "频道记忆",
+                            color = Color(0xFF90CAF9),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "开启后，每个频道会自动记忆各自的播放器内核/输出/解码/HDR 设置。" +
+                                "切换频道时自动应用，无需手动保存。在主菜单「清除频道专属设置」可重置当前频道。",
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = perChannelEnabled,
+                        onCheckedChange = { viewModel.setPerChannelSettingsEnabled(it) }
+                    )
                 }
             }
 
