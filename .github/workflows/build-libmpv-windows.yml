@@ -160,6 +160,11 @@ jobs:
         # 失败时输出 FFmpeg 的构建日志，便于诊断编译错误
         run: |
           cd mpv-winbuild-cmake
+          # 删除 FFmpeg 的 configure 和 build stamp 文件，强制重新 configure
+          # 原因：上次构建 configure 成功了（stamp 文件被缓存），但修改了 configure 选项（禁用 libdavs2）
+          # 如果不删除 stamp 文件，ninja 会跳过 configure，使用旧的配置结果
+          rm -f build_x86_64/packages/ffmpeg-prefix/src/ffmpeg-stamp/ffmpeg-configure
+          rm -f build_x86_64/packages/ffmpeg-prefix/src/ffmpeg-stamp/ffmpeg-build
           ninja -C build_x86_64 update
           ninja -C build_x86_64 mpv || {
             echo "=== mpv build failed! Diagnostics below ==="
