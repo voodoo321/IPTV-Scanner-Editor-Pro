@@ -110,9 +110,9 @@ class MainActivityCompose : ComponentActivity() {
         // 视频播放类 APP 必须主动设置 FLAG_KEEP_SCREEN_ON 阻止系统熄屏。
         // fileLoaded=true（视频已加载，含播放/暂停状态）→ 屏幕常亮
         // fileLoaded=false（未加载/已停止）→ 清除 FLAG，允许系统正常休眠
+        // 注：StateFlow 本身已去重（distinctUntilChanged 对 StateFlow 是 no-op）
         lifecycleScope.launch {
             viewModel.mpv.fileLoaded
-                .distinctUntilChanged()
                 .collect { loaded ->
                     if (loaded) {
                         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

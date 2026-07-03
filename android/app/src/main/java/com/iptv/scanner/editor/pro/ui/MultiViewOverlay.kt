@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -181,7 +182,7 @@ fun MultiViewOverlay(
  * 单个视口 Cell（包含边框、关闭按钮、内容）。
  */
 @Composable
-private fun BoxScope.ViewportCell(
+private fun ViewportCell(
     viewport: MultiViewport?,
     isFocused: Boolean,
     focusedColor: Color,

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Menu
@@ -43,10 +44,11 @@ import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VideoSettings
+import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Web
-import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -653,16 +655,13 @@ private fun MenuColumn(
                 add(TvMenuItem(
                     "切换为${otherLayout.displayName}",
                     "当前 ${currentMultiViewLayout.displayName}",
-                    Icons.Default.ViewModule
-                ) { onEnterMultiView(otherLayout) })
+                    Icons.Default.ViewModule,
+                    { onEnterMultiView(otherLayout) }
+                ))
                 add(TvMenuItem("退出多画面", "释放副画面 Player", Icons.AutoMirrored.Filled.ExitToApp, onExitMultiView, highlight = true))
             } else {
-                add(TvMenuItem("双画面", "主画面 MPV + 副 ExoPlayer", Icons.Default.ViewModule) {
-                    onEnterMultiView(MultiViewLayout.DUAL)
-                })
-                add(TvMenuItem("四画面", "2x2 网格，主画面 + 3 副", Icons.Default.GridView) {
-                    onEnterMultiView(MultiViewLayout.QUAD)
-                })
+                add(TvMenuItem("双画面", "主画面 MPV + 副 ExoPlayer", Icons.Default.ViewModule, { onEnterMultiView(MultiViewLayout.DUAL) }))
+                add(TvMenuItem("四画面", "2x2 网格，主画面 + 3 副", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.QUAD) }))
             }
             // 系统分组
             add(TvMenuItem("设置", "内核 / VO / HWDEC / HDR", Icons.Default.Settings, onSettings))

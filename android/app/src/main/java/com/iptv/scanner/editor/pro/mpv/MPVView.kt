@@ -270,8 +270,8 @@ class MPVView @JvmOverloads constructor(
             try {
                 val currentPath = MPVLib.getPropertyString("path")
                 if (currentPath != null && currentPath.isNotEmpty()) {
-                    val wasPaused = try { MPVLib.getPropertyBoolean("pause") } catch (e: Throwable) { false }
-                    val pos = try { MPVLib.getPropertyDouble("time-pos") } catch (e: Throwable) { -1.0 }
+                    val wasPaused = try { MPVLib.getPropertyBoolean("pause") } catch (e: Throwable) { false } ?: false
+                    val pos = try { MPVLib.getPropertyDouble("time-pos") } catch (e: Throwable) { -1.0 } ?: -1.0
                     Log.i(TAG, "surfaceCreated: Surface rebuilt during playback, reloading '$currentPath' (pos=$pos, paused=$wasPaused)")
                     pendingResumePos = if (pos > 0) pos else -1.0
                     MPVLib.command(arrayOf("loadfile", currentPath))
