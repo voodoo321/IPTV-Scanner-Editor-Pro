@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from ui.floating_dialog import FloatingDialog
 from ui.styles import AppStyles
-from controllers.ui_controller import UiController
+from controllers.ui_controller import UIController
 from services.mpv_player_service import MpvPlayerController
 from core.log_manager import global_logger as logger
 
@@ -31,7 +31,7 @@ class StreamQualityDialog(FloatingDialog):
         self.window = main_window
         tr = main_window.language_manager.tr
         self.setWindowTitle(tr('stream_quality_title', '流质量检测'))
-        self.setMinimumSize(560, 620)
+        self.setMinimumSize(640, 660)
         self._labels = {}
         self._setup_ui()
         self._apply_theme()
@@ -84,7 +84,6 @@ class StreamQualityDialog(FloatingDialog):
         # ===== 视频信息 =====
         video_group = QGroupBox(tr('stream_quality_group_video', '视频'))
         vform = QFormLayout(video_group)
-        vform.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self._add_rows(vform, [
             ('video_codec',        tr('stream_quality_video_codec',        '编解码器')),
             ('resolution',          tr('stream_quality_resolution',         '分辨率')),
@@ -104,7 +103,6 @@ class StreamQualityDialog(FloatingDialog):
         # ===== 音频信息 =====
         audio_group = QGroupBox(tr('stream_quality_group_audio', '音频'))
         aform = QFormLayout(audio_group)
-        aform.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self._add_rows(aform, [
             ('audio_codec',    tr('stream_quality_audio_codec',   '编解码器')),
             ('audio_channels', tr('stream_quality_audio_channels','声道数')),
@@ -118,7 +116,6 @@ class StreamQualityDialog(FloatingDialog):
         # ===== 网络与缓存 =====
         net_group = QGroupBox(tr('stream_quality_group_network', '网络与缓存'))
         nform = QFormLayout(net_group)
-        nform.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self._add_rows(nform, [
             ('container',        tr('stream_quality_container',       '容器格式')),
             ('protocol',         tr('stream_quality_protocol',        '协议')),
@@ -134,7 +131,6 @@ class StreamQualityDialog(FloatingDialog):
         # ===== 丢帧统计 =====
         drop_group = QGroupBox(tr('stream_quality_group_drops', '丢帧统计'))
         dform = QFormLayout(drop_group)
-        dform.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self._add_rows(dform, [
             ('vo_drop',           tr('stream_quality_vo_drop',           'VO 丢帧')),
             ('decoder_drop',      tr('stream_quality_decoder_drop',      '解码器丢帧')),
@@ -146,7 +142,6 @@ class StreamQualityDialog(FloatingDialog):
         # ===== 硬件与渲染 =====
         hw_group = QGroupBox(tr('stream_quality_group_hw', '硬件与渲染'))
         hform = QFormLayout(hw_group)
-        hform.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self._add_rows(hform, [
             ('hwdec',          tr('stream_quality_hwdec',          '硬解')),
             ('vo',             tr('stream_quality_vo',             '视频输出')),
@@ -164,16 +159,38 @@ class StreamQualityDialog(FloatingDialog):
         layout.addLayout(btn_row)
 
     def _add_rows(self, form: QFormLayout, rows):
-        """批量添加 label: value 行，value 标签存入 self._labels"""
+        """批量添加 label: value 行，value 标签存入 self._labels
+
+        优化显示：
+        - label 设置最小宽度，防止被压缩截断
+        - value 启用 wordWrap，长文本自动换行
+        - value 设置最小宽度，防止短文本列过窄
+        - FormLayout 使用 ExpandingFieldsGrow，value 列随窗口扩展
+        """
+        # value 列随窗口扩展（默认 FieldsStayAtSizeHint 会限制 value 列宽度）
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        form.setHorizontalSpacing(12)  # label 与 value 之间的水平间距
+        form.setVerticalSpacing(6)     # 行间距
+        form.setContentsMargins(8, 4, 8, 4)
+
         c = AppStyles._get_colors()
         label_color = c.get('mid', '#888888')
         value_color = c.get('window_text', '#ffffff')
+        # label 列最小宽度：取所有 label 文本估算宽度的最大值
+        # 中文每字约 12px，英文每字符约 7px，4 字 label 约 48px + padding
+        label_min_width = 72
         for key, label_text in rows:
             label = QLabel(label_text)
             label.setStyleSheet(f"color: {label_color};")
+            label.setMinimumWidth(label_min_width)
+            label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             value = QLabel('--')
             value.setStyleSheet(f"color: {value_color}; font-weight: 500;")
             value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            value.setWordWrap(True)  # 长文本自动换行，防止被截断
+            value.setMinimumWidth(180)
             value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             form.addRow(label, value)
             self._labels[key + '__label'] = label
@@ -197,7 +214,7 @@ class StreamQualityDialog(FloatingDialog):
 
             # 视频
             vcodec = info.get('video_codec', '') or info.get('video_format', '')
-            self._set('video_codec', UiController.shorten_codec_name(vcodec) if vcodec else 'N/A')
+            self._set('video_codec', UIController.shorten_codec_name(vcodec) if vcodec else 'N/A')
             w = info.get('width', 0) or 0
             h = info.get('height', 0) or 0
             self._set('resolution', f"{w}x{h}" if w > 0 and h > 0 else 'N/A')
@@ -207,7 +224,7 @@ class StreamQualityDialog(FloatingDialog):
             fps = info.get('fps', 0) or 0
             self._set('fps', f"{fps:.2f} fps" if fps > 0 else 'N/A')
             v_br = info.get('video_bitrate', 0) or 0
-            self._set('video_bitrate', UiController.format_bitrate(v_br) if v_br > 0 else 'N/A')
+            self._set('video_bitrate', UIController.format_bitrate(v_br) if v_br > 0 else 'N/A')
             self._set('pixel_format', info.get('pixel_format', '') or 'N/A')
             self._set('colormatrix', info.get('colormatrix', '') or 'N/A')
             self._set('color_primaries', info.get('color_primaries', '') or 'N/A')
@@ -226,14 +243,14 @@ class StreamQualityDialog(FloatingDialog):
 
             # 音频
             acodec = info.get('audio_codec', '') or info.get('audio_format', '')
-            self._set('audio_codec', UiController.shorten_codec_name(acodec) if acodec else 'N/A')
+            self._set('audio_codec', UIController.shorten_codec_name(acodec) if acodec else 'N/A')
             ch = info.get('audio_channels', 0) or 0
             self._set('audio_channels', f"{ch} ch" if ch > 0 else 'N/A')
             self._set('audio_layout', info.get('audio_layout', '') or 'N/A')
             sr = info.get('sample_rate', 0) or 0
             self._set('sample_rate', f"{sr} Hz" if sr > 0 else 'N/A')
             a_br = info.get('audio_bitrate', 0) or 0
-            self._set('audio_bitrate', UiController.format_bitrate(a_br) if a_br > 0 else 'N/A')
+            self._set('audio_bitrate', UIController.format_bitrate(a_br) if a_br > 0 else 'N/A')
             a_depth = info.get('audio_depth', 0) or 0
             self._set('audio_depth', f"{a_depth} bit" if a_depth > 0 else 'N/A')
 
@@ -249,16 +266,16 @@ class StreamQualityDialog(FloatingDialog):
             cache_size = info.get('cache_size', 0) or 0
             if cache_size <= 0:
                 cache_size = self._read_mpv_double(pc, 'demuxer-cache-state/total-bytes')
-            self._set('cache_size', UiController.format_bytes(cache_size) if cache_size > 0 else 'N/A')
+            self._set('cache_size', UIController.format_bytes(cache_size) if cache_size > 0 else 'N/A')
             cache_speed = info.get('cache_speed', 0) or 0
             self._set('cache_speed',
-                      UiController.format_bytes_per_second(cache_speed) if cache_speed > 0 else 'N/A')
+                      UIController.format_bytes_per_second(cache_speed) if cache_speed > 0 else 'N/A')
             buf = info.get('buffering', 0) or 0
             tr = self.window.language_manager.tr
             self._set('buffering',
                       f"{buf}%" if buf > 0 else tr('stream_quality_no_buffer', '无缓冲'))
             demux_br = info.get('demuxer_bitrate', 0) or 0
-            self._set('demuxer_bitrate', UiController.format_bitrate(demux_br) if demux_br > 0 else 'N/A')
+            self._set('demuxer_bitrate', UIController.format_bitrate(demux_br) if demux_br > 0 else 'N/A')
 
             # 丢帧统计
             self._set('vo_drop', str(info.get('frame_drop_count', 0) or 0))
