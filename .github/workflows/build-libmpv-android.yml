@@ -237,8 +237,15 @@ jobs:
           done
 
           # 手动修复 codec_id.h：在 AV_CODEC_ID_AHX 后添加 AV_CODEC_ID_DRA
+          # patch d208cf8 的 codec_id.h hunk 因官方 FFmpeg 行号变化而失败
+          # 使用 perl 替代 sed，确保跨平台兼容性和可靠性
+          if ! grep -q AV_CODEC_ID_DRA libavcodec/codec_id.h; then
+            perl -i -pe 's/(AV_CODEC_ID_AHX,)/$1\n    AV_CODEC_ID_DRA,/' libavcodec/codec_id.h
+          fi
+          # 验证修复成功
           grep -q AV_CODEC_ID_DRA libavcodec/codec_id.h || \
-            sed -i '/AV_CODEC_ID_AHX,/a\    AV_CODEC_ID_DRA,' libavcodec/codec_id.h
+            { echo "ERROR: Failed to add AV_CODEC_ID_DRA to codec_id.h"; exit 1; }
+          echo "=== AV_CODEC_ID_DRA added to codec_id.h ==="
 
           # 验证 patch 应用结果
           echo "=== Verify CAVS files exist ==="
