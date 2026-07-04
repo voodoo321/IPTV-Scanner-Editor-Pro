@@ -388,6 +388,7 @@ jobs:
           cd libplacebo
           meson setup build_dir \
             --prefix="$HOME/libplacebo-install" \
+            --libdir=lib \
             --buildtype=release \
             -Dtests=false \
             -Ddemos=false
@@ -605,6 +606,7 @@ jobs:
           cd libplacebo
           meson setup build_dir \
             --prefix="$HOME/libplacebo-install" \
+            --libdir=lib \
             --buildtype=release \
             -Dtests=false \
             -Ddemos=false
