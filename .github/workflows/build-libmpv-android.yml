@@ -62,7 +62,7 @@ jobs:
             nasm yasm python3-pip git autoconf automake libtool \
             cmake ccache unzip wget curl \
             libssl-dev zlib1g-dev
-          sudo pip3 install --upgrade meson mako jsonschema
+          sudo pip3 install --upgrade meson mako
           meson --version
 
       - name: Set up JDK 17
