@@ -255,16 +255,28 @@ jobs:
                   # 解析符号链接（macOS readlink 不支持 -f，用 python 获取真实路径）
                   real_dep=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$dep" 2>/dev/null || echo "$dep")
                   [ -e "$real_dep" ] || continue
-                  bname=$(basename "$real_dep")
-                  # 跳过已处理（避免死循环）
-                  grep -qxF "$bname" "$SEEN_FILE" 2>/dev/null && continue
-                  echo "$bname" >> "$SEEN_FILE"
-                  # 如果不在目标目录，复制并递归收集其依赖
-                  if [ ! -f "$dest_dir/$bname" ]; then
-                      cp -L "$real_dep" "$dest_dir/" 2>/dev/null || continue
-                      echo "  收集: $bname <- $real_dep"
-                      collect_deps "$dest_dir/$bname" "$dest_dir"
+                  # 用 soname（LC_ID_DYLIB）作为 staging 文件名，与 LC_LOAD_DYLIB 引用一致。
+                  # brew 库的实际文件名是 libfoo.X.Y.Z.dylib，但 Mach-O 引用的是 soname libfoo.X.dylib，
+                  # 之前用 basename(real_dep)（实际文件名）导致 staging 文件名与引用不匹配，
+                  # 修复循环检查 $STAGING/lib/$depname（depname 是 soname）时找不到文件，绝对路径依赖未被改写。
+                  soname=$(otool -D "$real_dep" 2>/dev/null | tail -n +2)
+                  if [ -n "$soname" ]; then
+                      staging_name=$(basename "$soname")
+                  else
+                      staging_name=$(basename "$real_dep")
                   fi
+                  # 跳过已处理（避免死循环）
+                  grep -qxF "$staging_name" "$SEEN_FILE" 2>/dev/null && continue
+                  echo "$staging_name" >> "$SEEN_FILE"
+                  # 如果不在目标目录，复制（用 soname 作为文件名）
+                  if [ ! -f "$dest_dir/$staging_name" ]; then
+                      cp -L "$real_dep" "$dest_dir/$staging_name" 2>/dev/null || continue
+                      echo "  收集: $staging_name <- $real_dep"
+                  fi
+                  # 关键修复：无论文件是否已在 staging 中，都递归扫描其依赖。
+                  # 之前仅在 ! -f 时递归，导致已被初始复制的 FFmpeg 库（libavcodec/libavdevice 等）
+                  # 的间接依赖（libX11、libxcb）未被收集，验证步骤报错绝对路径未修复。
+                  collect_deps "$real_dep" "$dest_dir"
               done
           }
           collect_deps "$STAGING/lib/libmpv.2.dylib" "$STAGING/lib"
