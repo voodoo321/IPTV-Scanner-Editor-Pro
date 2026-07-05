@@ -187,7 +187,10 @@ jobs:
           find "$HOME/mpv-install" -name "libmpv*" -ls
 
       - name: Package libmpv
-        # 打包 libmpv 及其依赖（libdavs2, FFmpeg libs）
+        # 打包 libmpv 及其所有非系统依赖（FFmpeg libs, libdavs2, libass, libplacebo, luajit 等）
+        # libmpv 链接了 brew 安装的 libass/libplacebo/luajit 等，这些库在用户机器上不存在，
+        # 必须一起打包，否则运行时报 "Library not loaded: @rpath/libass.9.dylib" 等错误。
+        # 用 otool -L 递归收集所有非系统依赖，并修复 rpath 让 dylib 在同目录下互相查找。
         # 注意：避免使用 cd 切换目录（之前的 cd "$STAGING/lib" 后 cd release 会切换到
         # 错误的嵌套目录，导致 tar.gz 创建在错误位置，上传步骤找不到文件）
         run: |
@@ -201,21 +204,69 @@ jobs:
           cp -L "$HOME/ffmpeg-cavs/lib/"libsw*.dylib "$STAGING/lib/" 2>/dev/null || true
           # 复制 libdavs2
           cp -L "$HOME/davs2-install/lib/"libdavs2*.dylib "$STAGING/lib/" 2>/dev/null || true
+
+          # 递归收集所有非系统 dylib 依赖（brew 安装的 libass/libplacebo/luajit/libfreetype 等）
+          # libmpv 间接依赖这些库，但用户机器上没有，必须一起打包
+          echo "=== 递归收集 dylib 依赖 ==="
+          SEEN_FILE=$(mktemp)
+          collect_deps() {
+              local target="$1"
+              local dest_dir="$2"
+              # otool -L 第一行是 target 自身路径，跳过；后续每行格式为 "  <path> (compat ...)"
+              otool -L "$target" 2>/dev/null | tail -n +2 | sed -n 's/^[[:space:]]*\([^ ]*\).*/\1/p' | while read -r dep; do
+                  # 跳过 @rpath/@executable_path/@loader_path 引用（已经是相对引用）
+                  case "$dep" in
+                      @rpath/*|@executable_path/*|@loader_path/*) continue ;;
+                  esac
+                  # 跳过系统库
+                  case "$dep" in
+                      /usr/lib/*|/System/Library/*) continue ;;
+                  esac
+                  [ -e "$dep" ] || continue
+                  # 解析符号链接（macOS readlink 不支持 -f，用 python 获取真实路径）
+                  real_dep=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$dep" 2>/dev/null || echo "$dep")
+                  [ -e "$real_dep" ] || continue
+                  bname=$(basename "$real_dep")
+                  # 跳过已处理（避免死循环）
+                  grep -qxF "$bname" "$SEEN_FILE" 2>/dev/null && continue
+                  echo "$bname" >> "$SEEN_FILE"
+                  # 如果不在目标目录，复制并递归收集其依赖
+                  if [ ! -f "$dest_dir/$bname" ]; then
+                      cp -L "$real_dep" "$dest_dir/" 2>/dev/null || continue
+                      echo "  收集: $bname <- $real_dep"
+                      collect_deps "$dest_dir/$bname" "$dest_dir"
+                  fi
+              done
+          }
+          collect_deps "$STAGING/lib/libmpv.2.dylib" "$STAGING/lib"
+          rm -f "$SEEN_FILE"
+
           # 验证 dylib 文件
           echo "=== Files in $STAGING/lib ==="
           ls -la "$STAGING/lib/"
-          # 修复 dylib 链接路径（使用 @rpath），使用绝对路径避免 cd
+
+          # 修复 dylib 链接路径（使用 @rpath）
+          # 1. install_name (LC_ID_DYLIB) 改为 @rpath/<basename>
+          # 2. 依赖路径 (LC_LOAD_DYLIB) 中，指向 staging/lib/ 内 dylib 的绝对路径改为 @rpath/<basename>
+          # 3. 添加 rpath @loader_path，让 dyld 在 dylib 所在目录查找依赖
+          #    （.app 中所有 dylib 都在 Contents/Frameworks/mpv/，需在此目录互相查找）
           for f in "$STAGING/lib/"*.dylib; do
-            fname=$(basename "$f")
-            install_name_tool -id "@rpath/$fname" "$f" 2>/dev/null || true
-            for dep in "$STAGING/lib/"*.dylib; do
-              [ "$f" = "$dep" ] && continue
-              depname=$(basename "$dep")
-              install_name_tool -change "$HOME/ffmpeg-cavs/lib/$depname" "@rpath/$depname" "$f" 2>/dev/null || true
-              install_name_tool -change "$HOME/davs2-install/lib/$depname" "@rpath/$depname" "$f" 2>/dev/null || true
-              install_name_tool -change "$HOME/mpv-install/lib/$depname" "@rpath/$depname" "$f" 2>/dev/null || true
-            done
+              fname=$(basename "$f")
+              install_name_tool -id "@rpath/$fname" "$f" 2>/dev/null || true
+              # 添加 rpath @loader_path（若已存在 install_name_tool 会警告但不会失败）
+              install_name_tool -add_rpath @loader_path "$f" 2>/dev/null || true
+              # 修复依赖路径：遍历所有依赖，若依赖的 dylib 在 staging 中，改为 @rpath/<basename>
+              otool -L "$f" 2>/dev/null | tail -n +2 | sed -n 's/^[[:space:]]*\([^ ]*\).*/\1/p' | while read -r dep; do
+                  case "$dep" in
+                      @rpath/*|@executable_path/*|@loader_path/*) continue ;;
+                  esac
+                  depname=$(basename "$dep")
+                  if [ -f "$STAGING/lib/$depname" ]; then
+                      install_name_tool -change "$dep" "@rpath/$depname" "$f" 2>/dev/null || true
+                  fi
+              done
           done
+
           # 复制头文件（供 Python ctypes 绑定使用）
           mkdir -p "$STAGING/include/mpv"
           cp -r "$HOME/mpv-install/include/mpv/"* "$STAGING/include/mpv/"
@@ -223,13 +274,34 @@ jobs:
           tar czf release/libmpv-cavs-macos-arm64.tar.gz -C release libmpv-cavs-macos-arm64
           ls -la release/libmpv-cavs-macos-arm64.tar.gz
 
-      - name: Verify CAVS support
+      - name: Verify CAVS support and dylib dependencies
         run: |
-          echo "=== Checking cavs/avs2 strings in libmpv ==="
           STAGING="release/libmpv-cavs-macos-arm64/lib"
+          echo "=== Checking cavs/avs2 strings in libmpv ==="
           find "$STAGING" -name "libmpv*" -exec sh -c 'echo "--- {} ---"; strings "{}" | grep -iE "guangdian|jizhun|cavs|avs2|libdavs2" | head -20' \;
           echo "=== otool output (libmpv dependencies) ==="
-          otool -L "$STAGING"/libmpv.*.dylib 2>/dev/null | head -30
+          otool -L "$STAGING"/libmpv.*.dylib 2>/dev/null
+          echo "=== Verify all dylib deps use @rpath (no absolute /opt/homebrew or /usr/local paths) ==="
+          # 检查所有 dylib 的依赖路径，确保没有残留的绝对路径（/opt/homebrew/ 或 /usr/local/）
+          # 这些路径在用户机器上不存在，会导致加载失败
+          BAD=0
+          for f in "$STAGING/"*.dylib; do
+              while read -r dep; do
+                  case "$dep" in
+                      /opt/homebrew/*|/usr/local/*)
+                          echo "ERROR: $f still references absolute path: $dep"
+                          BAD=1
+                          ;;
+                  esac
+              done < <(otool -L "$f" 2>/dev/null | tail -n +2 | sed -n 's/^[[:space:]]*\([^ ]*\).*/\1/p')
+          done
+          if [ "$BAD" = "1" ]; then
+              echo "ERROR: Found absolute path dependencies, dylib will fail to load on user machines"
+              exit 1
+          fi
+          echo "OK: All dylib dependencies use @rpath"
+          echo "=== rpath in libmpv ==="
+          otool -l "$STAGING"/libmpv.*.dylib 2>/dev/null | grep -A 2 LC_RPATH | head -20
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
