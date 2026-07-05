@@ -190,6 +190,16 @@ jobs:
           # lib-shared 目标构建共享库，install-lib-shared 目标安装共享库+头文件+.pc。
           make -j$cores lib-shared
           make DESTDIR="$prefix_dir" install-lib-shared
+          # Android 不支持带版本号的 .so 文件名（libdavs2.so.16.0.0）。
+          # davs2 install 生成：libdavs2.so.<ver> 实际文件 + libdavs2.so 符号链接。
+          # find -name "lib*.so" -type f 只匹配实际文件，符号链接被遗漏。
+          # 修复：用 cp -L 跟随符号链接，将 libdavs2.so 转为实际文件，
+          # 删除带版本号的文件和符号链接，确保 find 能收集到 libdavs2.so。
+          cd "$prefix_dir/lib"
+          cp -L libdavs2.so libdavs2_real.so && mv -f libdavs2_real.so libdavs2.so
+          rm -f libdavs2.so.[0-9]*
+          echo "=== davs2 .so files after de-version ==="
+          ls -la libdavs2*
           DAVS2_EOF
           chmod +x scripts/davs2.sh
           echo "=== Created scripts/davs2.sh ==="
