@@ -62,6 +62,9 @@ class MainActivityCompose : ComponentActivity() {
         private const val TAG = "MainActivityCompose"
     }
 
+    /** OK 键长按标记：长按时跳过短按逻辑（播放/暂停），改为打开统一面板 */
+    private var okKeyLongPressed = false
+
     @Suppress("DEPRECATION")
     private val viewModel: AppViewModel by viewModels {
         AppViewModel.factory(application)
@@ -131,7 +134,7 @@ class MainActivityCompose : ComponentActivity() {
      *
      * 与 PC 端 mobile/index.html 键盘快捷键对齐：
      * - 方向键：DPAD_UP/DOWN 切换频道，DPAD_LEFT/RIGHT 切换面板
-     * - 确认键：播放/暂停
+     * - 确认键：短按播放/暂停，长按打开统一面板（替代菜单键）
      * - MENU 键：主菜单
      * - BACK：关闭面板 / 退出
      *
@@ -333,12 +336,11 @@ class MainActivityCompose : ComponentActivity() {
                     viewModel.toggleTvUnifiedPanel()
                     return true
                 }
-                // 控制面板隐藏时先显示控制面板（auto-hide），可见时切换暂停
-                if (!viewModel.controlsVisible.value) {
-                    viewModel.showControlsAutoHide()
-                } else {
-                    viewModel.mpv.togglePause()
-                }
+                // 长按 OK 键打开统一面板（替代菜单键，适配无菜单键遥控器）。
+                // startTracking() 启动长按检测，onKeyLongPress 在长按超时（~500ms）后触发，
+                // onKeyUp 在松开时触发：短按执行播放/暂停，长按已处理则跳过。
+                okKeyLongPressed = false
+                event?.startTracking()
                 return true
             }
             KeyEvent.KEYCODE_SPACE -> {
@@ -360,6 +362,54 @@ class MainActivityCompose : ComponentActivity() {
         }
 
         return super.onKeyDown(keyCode, event)
+    }
+
+    /**
+     * 长按 OK 键（DPAD_CENTER/ENTER）打开统一面板。
+     *
+     * 替代 MENU 键，适配无菜单键的遥控器。
+     * 与 onKeyDown + onKeyUp 配合实现：
+     * - onKeyDown: startTracking() 启动长按检测
+     * - onKeyLongPress: 长按超时触发，打开统一面板并标记
+     * - onKeyUp: 松开时，无长按标记则执行短按逻辑（播放/暂停）
+     */
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            okKeyLongPressed = true
+            // TV 模式：打开统一面板（与 MENU 键行为一致）
+            if (viewModel.uiMode.value == UiMode.TV && !viewModel.anyPanelOpen) {
+                viewModel.toggleTvUnifiedPanel()
+                Log.i(TAG, "Long press OK: open unified panel")
+                return true
+            }
+        }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    /**
+     * OK 键松开：短按执行播放/暂停，长按已处理则跳过。
+     */
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            // 面板打开时交给 Compose 焦点系统处理（确认操作）
+            if (viewModel.anyPanelOpen) {
+                okKeyLongPressed = false
+                return super.onKeyUp(keyCode, event)
+            }
+            // 长按已处理（打开统一面板），跳过短按逻辑
+            if (okKeyLongPressed) {
+                okKeyLongPressed = false
+                return true
+            }
+            // 短按 OK 键：控制面板隐藏时先显示控制面板（auto-hide），可见时切换暂停
+            if (!viewModel.controlsVisible.value) {
+                viewModel.showControlsAutoHide()
+            } else {
+                viewModel.mpv.togglePause()
+            }
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     /**

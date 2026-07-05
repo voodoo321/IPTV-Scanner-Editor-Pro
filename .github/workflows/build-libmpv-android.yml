@@ -172,6 +172,15 @@ jobs:
           	--disable-static \
           	--enable-pic \
           	--disable-asm
+          # 根因修复：davs2 configure 在 Linux 上生成 SONAME=libdavs2.so.$API（如 libdavs2.so.16），
+          # FFmpeg 链接时将此 SONAME 写入 NEEDED entry。但 Android 动态链接器不支持带版本号
+          # 的 .so 文件名（libdavs2.so.16），导致加载时报 UnsatisfiedLinkError:
+          # library "libdavs2.so.16" not found: needed by libavcodec.so。
+          # 修复：将 config.mak 中的 SONAME 改为不带版本号的 libdavs2.so，
+          # 这样 FFmpeg 的 NEEDED entry 就是 libdavs2.so，Android 能正确加载。
+          sed -i 's/^SONAME=libdavs2\.so\..*/SONAME=libdavs2.so/' config.mak
+          echo "=== Patched SONAME in config.mak ==="
+          grep SONAME config.mak
           # 根因修复：davs2 configure 默认开启 cli，会在 config.mak 中写入
           # `default: cli` 和 `install: install-cli`，导致 `make` 和 `make install`
           # 都会构建 test/test.c 的可执行文件 davs2$(EXE)。该 test 二进制调用
