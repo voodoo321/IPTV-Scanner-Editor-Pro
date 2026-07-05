@@ -266,6 +266,11 @@ class IjkController(private val context: Context) : Player {
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1L)
         }
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "rtsp-tcp", 1L)
+        // 音频输出：OpenSL ES（比 AudioTrack 在 Android TV 上更可靠）
+        // 根因：IJK 默认用 AudioTrack，但部分 Android TV（如 MTK 平台）的 AudioTrack
+        // 在某些流上无声音（音频 HAL 兼容性问题）。OpenSL ES 是 Android 原生音频 API，
+        // 兼容性更好，延迟更低。
+        p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 1L)
         // OPT_CATEGORY_FORMAT：缓冲与封包
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "buffer_size", 1521024L)
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "infbuf", 1L)
@@ -420,7 +425,17 @@ class IjkController(private val context: Context) : Player {
 
     override fun detach() {
         stopPolling()
-        // 先解绑 View 和 Holder，避免 surfaceDestroyed 回调调用已释放的 ijkPlayer
+        // 先解绑 Surface 和 View，避免 release() 释放 native 资源后
+        // RenderThread 仍然访问 IjkMediaPlayer 的渲染资源导致 SIGSEGV。
+        // 根因：IjkMediaPlayer.release() 会释放内部 native 渲染资源（如 OpenGL 纹理），
+        // 但 IjkVideoView 的 Surface 仍然引用这些资源，RenderThread 在下一帧渲染时
+        // 访问已释放的资源导致 SIGSEGV（fault addr 0x8，访问 null 对象成员偏移）。
+        // setDisplay(null) 让 IjkMediaPlayer 停止渲染到 Surface，RenderThread 不再访问。
+        try {
+            ijkPlayer?.setDisplay(null)
+        } catch (e: Throwable) {
+            Log.w(TAG, "detach setDisplay(null) failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
         videoView = null
         currentHolder = null
         try {

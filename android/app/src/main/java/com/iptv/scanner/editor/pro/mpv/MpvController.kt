@@ -178,9 +178,13 @@ class MpvController : MPVLib.EventObserver, Player {
      *
      * @param vo "gpu" 或 "mediacodec_embed"
      * @param hwdec "auto-copy" / "mediacodec" / "no"
-     * @return 当前文件路径（用于 UI 提示），null 表示无文件在播放
+     * @return 非空字符串表示有文件在播放（已重新加载），null 表示无文件（重启后生效）
      */
     fun setVoAndHwdec(vo: String, hwdec: String): String? {
+        // 用 _fileLoaded.value 判断是否有文件在播放（同步可读的 StateFlow），
+        // 避免 MPVLib.getPropertyString("path") 在 mpv 状态异常时抛异常返回 null，
+        // 导致 UI 误提示"重启后生效"。
+        val hasFile = _fileLoaded.value
         postOnUiThread {
             try {
                 MPVLib.setPropertyString("vo", vo)
@@ -200,12 +204,12 @@ class MpvController : MPVLib.EventObserver, Player {
                 if (vo == "gpu") {
                     UserPrefs.getInstance().setVoFallbackConfirmed(false)
                 }
-                Log.i(TAG, "setVoAndHwdec: vo=$vo, hwdec=$hwdec, voFallbackTriggered=$voFallbackTriggered")
+                Log.i(TAG, "setVoAndHwdec: vo=$vo, hwdec=$hwdec, voFallbackTriggered=$voFallbackTriggered, hasFile=$hasFile")
             } catch (e: Throwable) {
                 Log.e(TAG, "setVoAndHwdec failed", e)
             }
         }
-        return try { MPVLib.getPropertyString("path") } catch (e: Throwable) { null }
+        return if (hasFile) "reloaded" else null
     }
 
     /**

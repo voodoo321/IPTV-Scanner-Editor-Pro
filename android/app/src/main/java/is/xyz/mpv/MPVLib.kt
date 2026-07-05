@@ -3,7 +3,18 @@ package `is`.xyz.mpv
 import android.content.Context
 import android.graphics.Bitmap
 import android.view.Surface
+import androidx.annotation.Keep
 
+/**
+ * MPVLib: mpv Android 绑定（Kotlin object）。
+ *
+ * 重要：所有 @JvmStatic 方法必须加 @Keep 注解。
+ * libplayer.so 通过 JNI 的 GetStaticMethodID 反射调用这些方法（eventProperty/event/logMessage 等），
+ * R8 静态分析看不到 native 代码的引用，会误判为无用代码并移除。
+ * 实测 R8 8.7.0 对 Kotlin object 的 -keep class { *; } proguard 规则不完全生效，
+ * 必须用 @Keep 注解（R8 对注解有特殊处理）+ proguard-rules.pro 双重保险。
+ */
+@Keep
 object MPVLib {
     init {
         val libs = arrayOf("mpv", "player")
@@ -37,6 +48,7 @@ object MPVLib {
 
     private val observers = mutableListOf<EventObserver>()
 
+    @Keep
     @JvmStatic
     fun addObserver(o: EventObserver) {
         synchronized(observers) {
@@ -44,6 +56,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun removeObserver(o: EventObserver) {
         synchronized(observers) {
@@ -51,6 +64,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun eventProperty(property: String, value: Long) {
         synchronized(observers) {
@@ -59,6 +73,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun eventProperty(property: String, value: Boolean) {
         synchronized(observers) {
@@ -67,6 +82,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun eventProperty(property: String, value: Double) {
         synchronized(observers) {
@@ -75,6 +91,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun eventProperty(property: String, value: String) {
         synchronized(observers) {
@@ -83,6 +100,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun eventProperty(property: String) {
         synchronized(observers) {
@@ -91,6 +109,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun event(eventId: Int) {
         synchronized(observers) {
@@ -101,6 +120,7 @@ object MPVLib {
 
     private val log_observers = mutableListOf<LogObserver>()
 
+    @Keep
     @JvmStatic
     fun addLogObserver(o: LogObserver) {
         synchronized(log_observers) {
@@ -108,6 +128,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun removeLogObserver(o: LogObserver) {
         synchronized(log_observers) {
@@ -115,6 +136,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     @JvmStatic
     fun logMessage(prefix: String, level: Int, text: String) {
         synchronized(log_observers) {
@@ -123,6 +145,7 @@ object MPVLib {
         }
     }
 
+    @Keep
     interface EventObserver {
         fun eventProperty(property: String)
         fun eventProperty(property: String, value: Long)
@@ -132,10 +155,12 @@ object MPVLib {
         fun event(eventId: Int)
     }
 
+    @Keep
     interface LogObserver {
         fun logMessage(prefix: String, level: Int, text: String)
     }
 
+    @Keep
     object MpvFormat {
         const val MPV_FORMAT_NONE: Int = 0
         const val MPV_FORMAT_STRING: Int = 1
@@ -149,6 +174,7 @@ object MPVLib {
         const val MPV_FORMAT_BYTE_ARRAY: Int = 9
     }
 
+    @Keep
     object MpvEvent {
         const val MPV_EVENT_NONE: Int = 0
         const val MPV_EVENT_SHUTDOWN: Int = 1

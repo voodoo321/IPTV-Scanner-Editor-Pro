@@ -420,8 +420,12 @@ class FloatingDialog(QDialog):
     def showEvent(self, event):
         super().showEvent(event)
         # 修复首次显示时文字重叠的问题（无边框透明窗口常见问题）
-        # 延迟触发重绘，确保子控件在布局计算完成后正确绘制
-        QtCore.QTimer.singleShot(0, self.update)
+        # 延迟强制重新计算所有子布局并重绘
+        QtCore.QTimer.singleShot(0, self._fix_first_paint)
+        if is_windows():
+            # Windows 分层窗口额外保险：再延迟一帧触发一次尺寸抖动，
+            # 确保 QFormLayout + 嵌套 QWidget 容器的 sizeHint 完全生效
+            QtCore.QTimer.singleShot(50, self._fix_first_paint)
         if is_linux() and self.parent():
             try:
                 from PySide6.QtGui import QWindow
@@ -452,6 +456,49 @@ class FloatingDialog(QDialog):
         # 这对所有 FloatingDialog 子类生效，无论 parent 是否为 None、无论 exec 还是 show
         try:
             _hide_from_taskbar(self)
+        except Exception:
+            pass
+
+    def _fix_first_paint(self):
+        """强制重新计算所有子布局并重绘，修复首次显示时文字重叠的问题。
+
+        分层窗口（WA_TranslucentBackground + 自定义 paintEvent）在 Windows 上
+        首次显示时，Qt 的布局系统可能没有正确触发子控件的布局计算，
+        特别是 QFormLayout + 嵌套 QWidget 容器 + QGroupBox QSS padding 的复杂结构。
+        典型表现：打开订阅设置窗口时"回放协议设置"内容全部重叠，移动窗口后恢复正常。
+
+        修复策略：
+        1. ensurePolished() 确保 QSS（如 QGroupBox padding-top:18px）已应用到控件，
+           使 sizeHint 计算考虑 QSS 的 padding/margin
+        2. invalidate() + activate() 强制所有布局（含子控件）重新计算
+        3. 触发一次尺寸抖动（+1/-1），强制 Qt 重新派发 resizeEvent 和重绘
+        """
+        try:
+            # 1. 确保样式表已应用（QSS padding 会影响 sizeHint 计算）
+            self.ensurePolished()
+            children = self.findChildren(QWidget)
+            for child in children:
+                child.ensurePolished()
+
+            # 2. invalidate 并 activate 所有布局（包括子控件的嵌套布局）
+            top_layout = self.layout()
+            if top_layout is not None:
+                top_layout.invalidate()
+                top_layout.activate()
+            for child in children:
+                lay = child.layout()
+                if lay is not None:
+                    lay.invalidate()
+                    lay.activate()
+
+            # 3. 触发一次尺寸抖动，强制 Qt 重新派发 resizeEvent 并重绘
+            # 这是解决分层窗口首次绘制布局问题的可靠方法
+            sz = self.size()
+            self.resize(sz.width() + 1, sz.height())
+            self.resize(sz.width(), sz.height())
+
+            # 4. 触发重绘
+            self.update()
         except Exception:
             pass
 

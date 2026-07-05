@@ -2884,6 +2884,45 @@ class AppStyles:
             QDialog QListWidget::indicator:hover {{
                 border-color: {dlg_colors['accent']};
             }}
+            QDialog QTabWidget::pane {{
+                border: 1px solid {dlg_colors['mid']};
+                border-radius: {r}px;
+                background-color: {dlg_colors['window']};
+                margin-top: -1px;
+            }}
+            QDialog QTabBar {{
+                background-color: transparent;
+            }}
+            QDialog QTabBar::tab {{
+                background-color: {dlg_colors['alternate_base']};
+                border: 1px solid {dlg_colors['mid']};
+                border-bottom: none;
+                border-radius: {r}px {r}px 0 0;
+                padding: 6px 16px;
+                margin-right: 4px;
+                margin-top: 4px;
+                font-size: 12px;
+                font-weight: 500;
+                color: {dlg_colors['window_text']};
+            }}
+            QDialog QTabBar::tab:selected {{
+                background-color: {dlg_colors['window']};
+                border-color: {dlg_colors['mid']};
+                border-bottom-color: {dlg_colors['window']};
+                color: {dlg_colors['accent']};
+                font-weight: 600;
+            }}
+            QDialog QTabBar::tab:hover:!selected {{
+                background-color: {dlg_colors['light']};
+                color: {dlg_colors['accent']};
+            }}
+            QDialog QScrollArea {{
+                background-color: transparent;
+                border: none;
+            }}
+            QDialog QScrollArea > QWidget > QWidget {{
+                background-color: transparent;
+            }}
         """
 
     @staticmethod

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QComboBox, QApplication,
     QCheckBox, QSpinBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QGroupBox, QListWidget, QListWidgetItem,
-    QWidget, QFormLayout, QTextEdit, QFrame
+    QWidget, QFormLayout, QTextEdit, QFrame, QTabWidget, QScrollArea
 )
 
 from core.log_manager import global_logger as logger
@@ -141,9 +141,34 @@ class SettingsFileOperations:
         main_layout = QVBoxLayout(dialog)
         main_layout.setContentsMargins(8, 8, 8, 8)
 
-        main_layout.addWidget(self._build_protocol_section(tr, playback_settings))
+        # 使用 Tab 分页，避免单页内容过长
+        tab_widget = QTabWidget()
+        tab_widget.setObjectName("settings_tab_widget")
 
-        main_layout.addWidget(self._build_close_behavior_section(tr))
+        # ===== Tab 1：播放设置（回放协议 + 关闭行为，可滚动）=====
+        playback_tab = QWidget()
+        playback_tab_layout = QVBoxLayout(playback_tab)
+        playback_tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        playback_content = QWidget()
+        playback_content_layout = QVBoxLayout(playback_content)
+        playback_content_layout.setContentsMargins(0, 0, 0, 0)
+        playback_content_layout.addWidget(self._build_protocol_section(tr, playback_settings))
+        playback_content_layout.addWidget(self._build_close_behavior_section(tr))
+        playback_content_layout.addStretch()
+
+        playback_scroll = QScrollArea()
+        playback_scroll.setWidgetResizable(True)
+        playback_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        playback_scroll.setWidget(playback_content)
+        playback_tab_layout.addWidget(playback_scroll)
+
+        tab_widget.addTab(playback_tab, tr("playback_settings_tab", "播放设置"))
+
+        # ===== Tab 2：订阅源管理（播放列表 + EPG）=====
+        subscription_tab = QWidget()
+        subscription_tab_layout = QVBoxLayout(subscription_tab)
+        subscription_tab_layout.setContentsMargins(0, 0, 0, 0)
 
         playlist_section = self._build_subscription_section(tr, 'playlist', playback=False)
         epg_section = self._build_subscription_section(tr, 'epg', playback=False)
@@ -152,7 +177,11 @@ class SettingsFileOperations:
         sub_layout.setSpacing(8)
         sub_layout.addWidget(playlist_section['group'], 1)
         sub_layout.addWidget(epg_section['group'], 1)
-        main_layout.addLayout(sub_layout, 1)
+        subscription_tab_layout.addLayout(sub_layout)
+
+        tab_widget.addTab(subscription_tab, tr("subscription_sources_tab", "订阅源管理"))
+
+        main_layout.addWidget(tab_widget, 1)
 
         self._connect_subscription_signals(playlist_section, epg_section)
 
@@ -172,11 +201,13 @@ class SettingsFileOperations:
                 epg_widget=epg_section['list_widget']
             )
 
-        # 强制布局重新计算，修复首次显示时文字重叠的问题
-        # （加载订阅源后 QListWidget 尺寸提示变化，但布局未及时重新计算）
+        # exec 前的布局准备：加载订阅源后 QListWidget 尺寸提示变化，
+        # 这里激活布局并设定窗口初始大小。
+        # 分层窗口首次绘制时的文字重叠由 FloatingDialog.showEvent 中的
+        # _fix_first_paint 负责（ensurePolished + invalidate/activate + resize 抖动）。
         dialog.layout().activate()
         dialog.adjustSize()
-        dialog.resize(800, 520)
+        dialog.resize(720, 500)
 
         if self.window._center_dialog_on_screen:
             self.window._center_dialog_on_screen(dialog)
@@ -200,8 +231,8 @@ class SettingsFileOperations:
         except TypeError:
             dialog = FloatingDialog(self.window)
         dialog.setWindowTitle(self._tr("subscription_settings_title", "Subscription Settings"))
-        dialog.setMinimumSize(720, 460)
-        dialog.resize(800, 520)
+        dialog.setMinimumSize(680, 440)
+        dialog.resize(720, 500)
         dialog.setStyleSheet(AppStyles.dialog_style())
         return dialog
 
@@ -728,11 +759,94 @@ class SettingsFileOperations:
                     old_hdr = pc._playback_settings.get('hdr_output_mode', 'disable')
                     new_hdr = new_playback.get('hdr_output_mode', 'disable')
                     pc._playback_settings.update(new_playback)
+
+                    # HDR 变化需要重新初始化 mpv（会中断当前播放并恢复）
                     if old_hdr != new_hdr and hasattr(pc, 'reinit_for_hdr_change'):
                         pc.reinit_for_hdr_change(new_hdr)
+                        return
+
+                    # 即时应用可运行时修改的参数（无需重启 mpv）
+                    self._apply_runtime_playback_params(pc, old_playback, new_playback)
             except Exception as e:
                 from core.log_manager import global_logger
                 global_logger.debug(f"更新播放设置失败: {e}")
+
+    @staticmethod
+    def _apply_runtime_playback_params(pc, old_playback, new_playback):
+        """即时应用可运行时修改的播放参数到 mpv。
+
+        参数分类（基于 mpv 文档与项目代码）：
+        - 运行时可改 property（framedrop/video-sync/hwdec/audio-passthrough）：
+          直接 set_property_string 即时生效
+        - 下次切台即生效（rtsp-transport/cache-secs/demuxer-*）：
+          在 _setup_protocol_options 中每次播放时重新应用，无需此处处理
+        - 必须重启 mpv 的 option（vo/tls-verify/network-timeout）：
+          运行时改不生效，记录日志提示用户
+        """
+        if not hasattr(pc, 'set_property_string'):
+            return
+
+        # 运行时可改属性映射：(配置键, mpv属性名)
+        runtime_props = [
+            ('framedrop', 'framedrop'),
+            ('video_sync', 'video-sync'),
+            ('hwdec', 'hwdec'),
+        ]
+        for cfg_key, mpv_prop in runtime_props:
+            old_val = old_playback.get(cfg_key)
+            new_val = new_playback.get(cfg_key)
+            if old_val == new_val or new_val is None:
+                continue
+            try:
+                # hwdec 需要 bool 兼容处理（与 _ensure_mpv_initialized 一致）
+                if cfg_key == 'hwdec':
+                    if isinstance(new_val, bool):
+                        new_val = 'auto-copy' if new_val else 'no'
+                    else:
+                        hwdec_str = str(new_val).lower()
+                        if hwdec_str in ('auto', 'auto-copy', 'no'):
+                            pass
+                        elif hwdec_str in ('true', '1', 'yes'):
+                            new_val = 'auto-copy'
+                        else:
+                            new_val = 'no'
+                pc.set_property_string(mpv_prop, str(new_val))
+            except Exception as e:
+                from core.log_manager import global_logger
+                global_logger.debug(f"即时应用 {mpv_prop}={new_val} 失败: {e}")
+
+        # audio_passthrough 需要特殊处理（映射到 audio-spdif + audio-passthrough）
+        old_pt = old_playback.get('audio_passthrough', 'never')
+        new_pt = new_playback.get('audio_passthrough', 'never')
+        if old_pt != new_pt:
+            try:
+                if new_pt and new_pt != 'never':
+                    passthrough_map = {
+                        'all': 'yes',
+                        'hd_codecs': 'ac3,eac3,dts,dts-hd,truehd',
+                        'lossless': 'flac,alac,truehd,dts-hd',
+                        'spdif_only': 'ac3,eac3,dts',
+                    }
+                    pt_val = passthrough_map.get(new_pt, '')
+                    if pt_val:
+                        pc.set_property_string('audio-spdif', pt_val)
+                        pc.set_property_string('audio-passthrough', pt_val)
+                else:
+                    pc.set_property_string('audio-spdif', '')
+                    pc.set_property_string('audio-passthrough', '')
+            except Exception as e:
+                from core.log_manager import global_logger
+                global_logger.debug(f"即时应用 audio-passthrough={new_pt} 失败: {e}")
+
+        # 必须重启 mpv 的 option 变化记录日志（vo/tls-verify/network-timeout）
+        restart_required_keys = ('vo', 'tls_verify', 'network_timeout_sec')
+        for key in restart_required_keys:
+            if old_playback.get(key) != new_playback.get(key):
+                from core.log_manager import global_logger
+                global_logger.info(
+                    f"播放参数 {key} 已更改，将在下次重启播放器后完全生效"
+                )
+                break
 
     @staticmethod
     def _check_playlist_changed(old, new, old_active_index):

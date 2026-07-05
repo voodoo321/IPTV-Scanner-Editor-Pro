@@ -14,6 +14,12 @@
 
 # MPVLib 回调方法（libplayer.so 通过 JNI 反射调用 eventProperty/event/logMessage 等
 # 非原生方法，R8 静态分析看不到 Java/Kotlin 端引用，必须显式保留，否则启动即闪退）
+# 实测 R8 8.7.0 对 Kotlin object 的 -keep class { *; } 不完全生效（方法仍被移除），
+# 源码中已加 @Keep 注解（MPVLib.kt），这里保留 -keep 规则作为双重保险。
+-keep @androidx.annotation.Keep class * { *; }
+-keepclassmembers class * {
+    @androidx.annotation.Keep *;
+}
 -keep class is.xyz.mpv.MPVLib { *; }
 -keep class is.xyz.mpv.MPVLib$* { *; }
 

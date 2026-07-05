@@ -347,15 +347,23 @@ class MpvPlayerController(QObject):
             _mpv_set_property_string(self.mpv_handle, 'osd-align-x', 'left')
             _mpv_set_property_string(self.mpv_handle, 'osd-align-y', 'top')
             self._apply_osd_colors()
-            # 按模块设置日志级别：demuxer/vd/ad/hwdec=debug（诊断编解码/探测问题），
-            # 其他模块=fatal（避免日志被大量无关 info 淹没）。
-            # 注意：还需调用 mpv_request_log_messages(handle, "debug") 才能让
-            # MPV_EVENT_LOG_MESSAGE 事件被投递到事件队列，否则日志永远不会输出。
-            _mpv_set_property_string(self.mpv_handle, 'msg-level', 'all=fatal,demuxer=debug,vd=debug,ad=debug,hwdec=debug')
+            # 按模块设置日志级别。默认只投递 warn 及以上，避免 debug 日志在 UI 线程
+            # 被 100ms 的 _process_events 定时器批量解码转发导致播放卡顿
+            # （demuxer/vd/ad/hwdec 的 debug 日志在播放期间会持续大量生成）。
+            # 需要诊断编解码/探测问题时，设置环境变量 MPV_DEBUG_LOG=1 开启 debug 日志。
+            # 注意：还需调用 mpv_request_log_messages 才能让 MPV_EVENT_LOG_MESSAGE
+            # 事件被投递到事件队列，否则日志永远不会输出。
+            if os.environ.get('MPV_DEBUG_LOG', '0') == '1':
+                _mpv_set_property_string(self.mpv_handle, 'msg-level',
+                    'all=fatal,demuxer=debug,vd=debug,ad=debug,hwdec=debug')
+                _log_request_level = b'debug'
+            else:
+                _mpv_set_property_string(self.mpv_handle, 'msg-level', 'all=fatal')
+                _log_request_level = b'warn'
             try:
                 # 必须通过 _mpv_mod.libmpv 访问，不能用模块级导入的 libmpv
                 # （模块级导入时 libmpv 是 None，_ensure_libmpv_loaded() 后才被赋值）
-                _mpv_mod.libmpv.mpv_request_log_messages(self.mpv_handle, b'debug')
+                _mpv_mod.libmpv.mpv_request_log_messages(self.mpv_handle, _log_request_level)
             except Exception as _e:
                 self.logger.debug(f"mpv_request_log_messages 调用失败: {_e}")
             _mpv_set_property_string(self.mpv_handle, 'no-window-dragging', 'yes')

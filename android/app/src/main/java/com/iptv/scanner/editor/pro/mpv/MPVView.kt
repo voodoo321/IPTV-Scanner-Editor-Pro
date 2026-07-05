@@ -59,6 +59,10 @@ class MPVView @JvmOverloads constructor(
         // 上次 MPVView.destroy() 可能还未执行，native mpv 实例仍存活。
         // 此时 MPVLib.create() 会在已存在的实例上调用，导致 native 崩溃（SIGSEGV）。
         // 用 nativeInstanceAlive 标志位检测残留实例，先 destroy 再 create。
+        //
+        // 重要：nativeInstanceAlive 必须是 companion object（静态字段），不能是实例字段。
+        // 因为从 IJK 切回 MPV 时会创建新的 MPVView 实例，新实例的实例字段初始值是 false，
+        // 无法检测到之前 MPVView 残留的 native mpv 实例，导致 double-create 崩溃。
         if (nativeInstanceAlive) {
             Log.w(TAG, "initialize: native mpv instance still alive, destroying first")
             try {
