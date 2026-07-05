@@ -1501,7 +1501,7 @@ def set_player_status(json_str):
         import json as _json
         status_dict = _json.loads(json_str) if isinstance(json_str, str) else json_str
         _player_status.update(status_dict)
-        return _ok()
+        return _ok({'ok': True})
     except Exception as e:
         return _err(f'set_player_status failed: {e}')
 

@@ -297,16 +297,15 @@ jobs:
           echo "Found libmpv.so: $MPV_SO"
           cp -L "$MPV_SO" "$ARTIFACT_DIR/"
 
-          # 同时收集 FFmpeg 相关的 .so 文件（如果有）
-          find . -name "libavcodec.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          find . -name "libavformat.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          find . -name "libavutil.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          find . -name "libswscale.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          find . -name "libswresample.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          find . -name "libdav1d.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          # 收集 libdavs2.so（AVS2 解码器）
-          find . -name "libdavs2.so*" -path "*/install_dir/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
-          find . -name "libdavs2.so*" -path "*/prefix/*" -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
+          # 同时收集 FFmpeg 及其依赖的 .so 文件（libmpv.so 动态依赖这些库）
+          # mpv-android buildscripts 的 ffmpeg.sh 使用 --enable-shared 构建 FFmpeg 为动态库，
+          # 通过 `make DESTDIR="$prefix_dir" install` 安装到 build/<arch>/prefix/lib/ 下；
+          # libdav1d/libdavs2 等外部库也安装在 prefix/lib/ 下。
+          # 因此必须同时搜索 */install_dir/*（mpv 安装目录）和 */prefix/*（依赖库 staging 目录），
+          # 否则 APK 会缺少 FFmpeg 动态库，导致 libmpv.so 加载失败（UnsatisfiedLinkError）。
+          for lib in libavcodec libavformat libavutil libswscale libswresample libdav1d libdavs2; do
+            find . -name "${lib}.so*" \( -path "*/install_dir/*" -o -path "*/prefix/*" \) -exec cp -L {} "$ARTIFACT_DIR/" \; 2>/dev/null || true
+          done
 
           echo "=== Collected artifacts ==="
           ls -la "$ARTIFACT_DIR/"
