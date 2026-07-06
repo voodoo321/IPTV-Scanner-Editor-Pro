@@ -1,7 +1,7 @@
 import threading
 import weakref
 from concurrent.futures import Future
-from PySide6.QtCore import QThread, QTimer, QObject, Signal, Qt, Slot
+from PySide6.QtCore import QThread, QObject, Signal, Qt, Slot
 
 
 class _CallbackRelay(QObject):

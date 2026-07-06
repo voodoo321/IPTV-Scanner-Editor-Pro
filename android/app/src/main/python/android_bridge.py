@@ -1,10 +1,10 @@
-import importlib
 import logging
 import os
 import sys
 import time
 
 _t0 = time.time()
+
 
 def _log(msg, level='I'):
     """统一日志输出：Chaquopy 会把 print() 重定向到 logcat 的 python 标签"""
@@ -27,7 +27,7 @@ def _setup_android_paths(ext_files_dir='', files_dir=''):
 
     # 尝试通过 jnius 获取路径（Chaquopy 某些版本支持）
     try:
-        from jnius import autoclass
+        from jnius import autoclass  # type: ignore
         Python = autoclass('com.chaquo.python.Python')
         app = Python.getPlatform().getApplication()
         Environment = autoclass('android.os.Environment')
@@ -109,7 +109,7 @@ def _migrate_old_data(app, files_dir, new_dir):
         # 新目录已有数据则不迁移（避免覆盖）
         new_files = [f for f in os.listdir(new_dir) if not f.startswith('.')]
         if new_files:
-            _log(f'_migrate_old_data: target dir not empty, skip migration')
+            _log('_migrate_old_data: target dir not empty, skip migration')
             return
         for item in old_files:
             src = os.path.join(old_dir, item)
@@ -129,8 +129,9 @@ def _migrate_old_data(app, files_dir, new_dir):
 def _setup_android_logging():
     """设置 Android 日志：优先用 AndroidLog，失败则用 print() fallback"""
     try:
-        from jnius import autoclass
+        from jnius import autoclass  # type: ignore
         AndroidLog = autoclass('android.util.Log')
+
         class AndroidLogHandler(logging.Handler):
             def emit(self, record):
                 msg = self.format(record)
@@ -308,7 +309,13 @@ def _register_mobile_routes(app, base_dir):
         content_type = _MIME_TYPES.get(ext, 'application/octet-stream')
         with open(file_path, 'rb') as f:
             content = f.read()
-        return web.Response(body=content, content_type=content_type, headers={'Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'})
+        return web.Response(
+            body=content, content_type=content_type,
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+            })
 
     app.router.add_get('/mobile/', _handle_mobile)
     app.router.add_get('/mobile/{path:.*}', _handle_mobile)
@@ -332,9 +339,13 @@ def _register_mobile_routes(app, base_dir):
             content_type = _MIME_TYPES.get(ext, 'application/octet-stream')
             with open(file_path, 'rb') as f:
                 content = f.read()
-            return web.Response(body=content, content_type=content_type,
-                              headers={'Cache-Control':'no-cache, no-store, must-revalidate',
-                                       'Pragma':'no-cache','Expires':'0'})
+            return web.Response(
+                body=content, content_type=content_type,
+                headers={
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                })
 
         # create_app() 内部已调用 _register_admin_routes 注册了 /admin/ 路由
         # 这里重复注册会抛 ValueError，用 try/except 忽略
@@ -358,8 +369,8 @@ def _register_mobile_routes(app, base_dir):
 #  - 调用者应在 Kotlin Dispatchers.IO 中调用，避免阻塞 UI 线程
 # ===================================================================
 
-import json as _json
-import threading as _threading
+import json as _json  # noqa: E402
+import threading as _threading  # noqa: E402
 
 _ctx_lock = _threading.Lock()
 _inited = False
@@ -542,6 +553,7 @@ def add_channel(url, name, group=''):
             'catchup_source': '', 'catchup_correction': '', 'fcc': '',
             'resolution': '', 'valid': None, 'status': '待检测',
             'id': len(ctx._channels) + 1,
+            'source': '',  # 空源 = 手动添加/本地频道
         }
         ctx._channels.append(new_ch)
         # 持久化：进程重启后添加的频道不丢失
@@ -595,10 +607,12 @@ def import_channels(content, name=''):
         from services.m3u_parser import parse_m3u_content
         channels, _ = parse_m3u_content(content)
         if channels:
-            # 给新频道 id
+            # 给新频道 id 和 source 标记
+            # source='' 表示手动导入的频道（非订阅源），在 Android 端 LOCAL tab 显示
             base_id = len(ctx._channels)
             for i, c in enumerate(channels):
                 c['id'] = base_id + i + 1
+                c['source'] = ''  # 手动导入 = 本地频道
             ctx._channels.extend(channels)
             # 持久化：导入的频道重启后不丢失
             ctx._save_channels_to_cache()
@@ -1452,7 +1466,7 @@ def get_admin_url():
 # prev_channel/next_channel
 # -------------------------------------------------------------------
 
-import queue as _queue
+import queue as _queue  # noqa: E402
 _remote_command_queue = _queue.Queue()
 
 # 播放状态存储（由 Kotlin 端定期更新，供 admin 遥控器页面查询）

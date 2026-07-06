@@ -445,18 +445,18 @@ class EPGController:
         data = item.data(Qt.ItemDataRole.UserRole)
         if not data:
             return
-            
+
         program = data.get('program')
         if not program:
             return
-        
+
         from core.log_manager import global_logger as logger
-        
+
         # 判断节目状态
         start_str = program.get('start', '')
         end_str = program.get('end', '')
         now = datetime.now()
-        
+
         is_past_program = False
         if start_str and end_str:
             try:
@@ -467,14 +467,14 @@ class EPGController:
                     is_past_program = True
             except (ValueError, TypeError):
                 pass
-        
+
         # 检查当前频道是否支持回看功能
         channel_catchup = ''
         if hasattr(self.window, 'current_channel') and self.window.current_channel:
             channel_catchup = self.window.current_channel.get('catchup_source', '')
             if not channel_catchup:
                 channel_catchup = self.window.current_channel.get('catchup', '')
-        
+
         # 如果是已播放/已结束的节目且频道支持回看，启动回看
         if is_past_program and channel_catchup and hasattr(self.window, 'start_catchup'):
             logger.info(f"用户点击EPG节目 '{program.get('title')}'，启动回看")
@@ -577,11 +577,11 @@ class EPGController:
         for i, program in enumerate(epg_list):
             start_str = program.get('start', '')
             end_str = program.get('end', '')
-            
+
             try:
                 start_dt = datetime.fromisoformat(start_str) if start_str else None
                 end_dt = datetime.fromisoformat(end_str) if end_str else None
-                
+
                 if start_dt and end_dt:
                     if start_dt <= now <= end_dt:
                         current_index = i
@@ -600,6 +600,7 @@ class EPGController:
     def _do_scroll_to_index(self, index, logger, label=""):
         if index < 0:
             return
+
         def do_scroll():
             if hasattr(self.window, 'epg_content') and self.window.epg_content.count() > index:
                 item = self.window.epg_content.item(index)
@@ -610,6 +611,7 @@ class EPGController:
                     )
                     logger.debug(f"EPG已定位到第 {index + 1} 个节目（{label}，居中显示）")
         QTimer.singleShot(100, do_scroll)
+
     def toggle_epg(self, checked: bool):
         """切换EPG面板显示/隐藏"""
         if hasattr(self.window, 'epg_panel'):

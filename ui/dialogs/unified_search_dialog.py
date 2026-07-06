@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt, QSize, Signal, QThread, QTimer
 from PySide6 import QtWidgets
 from ui.styles import AppStyles
 from ui.floating_dialog import FloatingDialog
-from core.log_manager import global_logger as logger
 
 
 class _EpgSearchWorker(QThread):
@@ -34,7 +33,11 @@ class _EpgSearchWorker(QThread):
             if tvg_id and tvg_id not in ch_map:
                 ch_map[tvg_id] = ch
 
-        epg_data = self._epg_parser.get_epg_data_copy() if hasattr(self._epg_parser, 'get_epg_data_copy') else getattr(self._epg_parser, '_epg_data', None)
+        epg_data = (
+            self._epg_parser.get_epg_data_copy()
+            if hasattr(self._epg_parser, 'get_epg_data_copy')
+            else getattr(self._epg_parser, '_epg_data', None)
+        )
         if not epg_data or not isinstance(epg_data, dict):
             self.results_ready.emit(results, result_channels)
             return
@@ -273,9 +276,14 @@ class UnifiedSearchDialog(FloatingDialog):
 
     def _render_results(self):
         c = AppStyles._get_colors()
-        r = AppStyles._get_style_border_radius()
-        name_style = f"color: {c.get('window_text', '#ffffff')}; background-color: transparent;"
-        secondary_style = f"color: {c.get('player_panel_secondary', c.get('window_text', '#aaaaaa'))}; background-color: transparent; font-size: 11px;"
+        name_style = (
+            f"color: {c.get('window_text', '#ffffff')};"
+            f" background-color: transparent;"
+        )
+        secondary_style = (
+            f"color: {c.get('player_panel_secondary', c.get('window_text', '#aaaaaa'))};"
+            f" background-color: transparent; font-size: 11px;"
+        )
         tr = self.window.language_manager.tr
 
         channel_results = self._results

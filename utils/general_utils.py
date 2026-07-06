@@ -214,7 +214,7 @@ def format_time(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    
+
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     elif minutes > 0:
@@ -463,5 +463,3 @@ def suppress_urllib3_warnings():
         _logging.getLogger('urllib3.connectionpool').setLevel(_logging.CRITICAL)
     except Exception:
         pass
-
-

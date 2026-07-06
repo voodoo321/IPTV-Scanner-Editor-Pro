@@ -1,12 +1,14 @@
 """调试 SubtitleCat .srt 链接解析"""
-import sys
+import importlib
 import os
+import re
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import importlib
-import services.subtitle_download_service as sds
+import services.subtitle_download_service as sds  # noqa: E402
 importlib.reload(sds)
-from services.subtitle_download_service import SubtitleDownloadService, SUBCAT_BASE_URL
+from services.subtitle_download_service import SubtitleDownloadService, SUBCAT_BASE_URL  # noqa: E402
 
 svc = SubtitleDownloadService()
 
@@ -19,7 +21,6 @@ html = svc._fetch_html_subtitlecat(detail_url)
 print(f"详情页 HTML 长度: {len(html)}")
 
 # 找所有 .srt 链接
-import re
 srt_links = re.findall(r'href="(/subs/[^"]+\.srt)"', html)
 print(f"找到 {len(srt_links)} 个 .srt 链接")
 for link in srt_links[:5]:
@@ -43,8 +44,8 @@ for link in srt_links2[:5]:
     print(f"  {link}")
 
 # 找中文链接
-zh_links = [l for l in srt_links2 if 'zh' in l.lower()]
-print(f"\n中文 .srt 链接:")
+zh_links = [link for link in srt_links2 if 'zh' in link.lower()]
+print("\n中文 .srt 链接:")
 for link in zh_links:
     print(f"  {SUBCAT_BASE_URL}{link}")
 

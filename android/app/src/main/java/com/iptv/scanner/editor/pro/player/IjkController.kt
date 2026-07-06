@@ -260,10 +260,14 @@ class IjkController(private val context: Context) : Player {
     private fun applyDefaultOptions(p: IjkMediaPlayer?) {
         if (p == null) return
         // OPT_CATEGORY_PLAYER：硬件解码 + RTSP over TCP
-        // mediacodec：1=硬解，0=软解（根据 hardwareDecode 状态切换）
+        // mediacodec：1=硬解（仅视频），0=软解（根据 hardwareDecode 状态切换）
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", if (hardwareDecode) 1L else 0L)
         if (hardwareDecode) {
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1L)
+            // 确保 MediaCodec 仅用于视频，不用于音频。
+            // 部分设备的 MediaCodec 音频解码器不兼容 IPTV 流的音频格式（如 MPEG-2/AC3），
+            // 导致硬解模式下无声音。显式禁用 MediaCodec 音频解码，强制使用 FFmpeg 软解音频。
+            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-audio", 0L)
         }
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "rtsp-tcp", 1L)
         // 音频输出：使用 AudioTrack（而非 OpenSL ES）。
@@ -305,7 +309,7 @@ class IjkController(private val context: Context) : Player {
         // 部分流的音频 sample rate（如 22050）或 channel count 不被设备 AudioTrack 直接支持，
         // 启用 swresample 强制重采样到设备支持的格式。
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_CODEC, "swresample", 1L)
-        Log.i(TAG, "applyDefaultOptions: hardwareDecode=$hardwareDecode, opensles=0(AudioTrack), soundtouch=0, swresample=1, min-frames=5, start-on-prepared=1")
+        Log.i(TAG, "applyDefaultOptions: hardwareDecode=$hardwareDecode, mediacodec-audio=0, opensles=0(AudioTrack), soundtouch=0, swresample=1, min-frames=5, start-on-prepared=1")
     }
 
     // -----------------------------------------------------------------

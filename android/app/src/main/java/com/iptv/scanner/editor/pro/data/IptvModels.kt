@@ -45,6 +45,8 @@ data class IptvChannel(
     /** valid: True=有效, False=无效, null=未检测 */
     @SerialName("valid") val valid: Boolean? = null,
     @SerialName("status") val status: String = "待检测",
+    /** 频道来源：空=手动添加/本地频道，非空=订阅源 URL */
+    @SerialName("source") val source: String = "",
 )
 
 @Serializable

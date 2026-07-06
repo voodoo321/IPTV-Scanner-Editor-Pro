@@ -245,11 +245,15 @@ class MPVView @JvmOverloads constructor(
         if (nativeInstanceAlive) {
             try {
                 MPVLib.command(arrayOf("stop"))
-                MPVLib.setPropertyString("vo", "null")
+                // 关键修复：不设置 vo=null。
+                // vo=null → vo=gpu 的运行时切换在部分设备上无法正确恢复视频输出，
+                // 导致切回 MPV 后 loadfile 成功但无画面。
+                // detachSurface() 已足够阻止渲染到已销毁的 Surface，
+                // 切回时 attachSurface + setPropertyString("vo", voInUse) 可立即恢复。
                 MPVLib.setPropertyString("force-window", "no")
                 MPVLib.detachSurface()
             } catch (e: Throwable) {
-                Log.w(TAG, "destroy: stop/vo=null/detachSurface failed: ${e.message}")
+                Log.w(TAG, "destroy: stop/detachSurface failed: ${e.message}")
             }
             Log.i(TAG, "destroy: instance kept alive (gen=$myGeneration), ready for reuse")
         }
@@ -343,16 +347,15 @@ class MPVView @JvmOverloads constructor(
         // 与 mpv-android 官方 BaseMPVView 对齐：始终在 surfaceCreated 中设置 vo。
         MPVLib.setPropertyString("vo", voInUse)
 
+        // 无论走哪个分支，都重置 skipReloadOnSurfaceCreated，
+        // 避免后续 Surface 重建时误跳过 reload。
+        skipReloadOnSurfaceCreated = false
+
         if (filePath != null) {
             Log.i(TAG, "surfaceCreated: 播放缓存的 filePath=$filePath")
             MPVLib.command(arrayOf("loadfile", filePath as String))
             MPVLib.setPropertyBoolean("pause", false)
             filePath = null
-        } else if (skipReloadOnSurfaceCreated) {
-            // 切回 MPV 复用实例：跳过 reload 旧 path，由后续 playFile(新 url) 单独 loadfile
-            // 避免双重 loadfile 导致 pendingResumePos 的 seek 位置丢失
-            skipReloadOnSurfaceCreated = false
-            Log.i(TAG, "surfaceCreated: skipped reload (instance reused, waiting for playFile)")
         } else {
             // 正常播放中 Surface 重建（如 PiP 切换、Activity 恢复）：
             // vo=gpu 在 Surface 重建后 EGL 渲染上下文可能未正确恢复，导致花屏。
@@ -387,7 +390,8 @@ class MPVView @JvmOverloads constructor(
             return
         }
         Log.i(TAG, "surfaceDestroyed: detaching surface")
-        MPVLib.setPropertyString("vo", "null")
+        // 不设置 vo=null，与 destroy() 保持一致。
+        // detachSurface() 已足够阻止渲染，避免 vo=null → vo=gpu 恢复失败的问题。
         MPVLib.setPropertyString("force-window", "no")
         MPVLib.detachSurface()
     }

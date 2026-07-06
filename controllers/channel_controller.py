@@ -333,8 +333,8 @@ class ChannelController:
                 if cover and not cover.isNull():
                     from utils.general_utils import set_default_channel_logo
                     scaled = cover.scaled(w.channel_logo.width(), w.channel_logo.height(),
-                                         Qt.AspectRatioMode.KeepAspectRatio,
-                                         Qt.TransformationMode.SmoothTransformation)
+                                          Qt.AspectRatioMode.KeepAspectRatio,
+                                          Qt.TransformationMode.SmoothTransformation)
                     w.channel_logo.setPixmap(scaled)
                     w.channel_logo.setText("")
                     if hasattr(w, 'player_controller') and w.player_controller:

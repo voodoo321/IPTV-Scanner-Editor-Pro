@@ -22,35 +22,35 @@ if sys.platform.startswith('linux') and not getattr(sys, 'platform', '') == 'and
     if is_wayland_env and not os.environ.get('QT_QPA_PLATFORM'):
         os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime  # noqa: E402
+from typing import Any, Dict, List, Optional  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core.play_state import PlayStateManager
-from core.panel_visibility import PanelVisibilityManager
-from controllers.main_window_protocol import CatchupProgram
-from controllers.progress_controller import ProgressController
-from models.channel_model import ChannelListModel
-from PySide6.QtWidgets import (
+from core.play_state import PlayStateManager  # noqa: E402
+from core.panel_visibility import PanelVisibilityManager  # noqa: E402
+from controllers.main_window_protocol import CatchupProgram  # noqa: E402
+from controllers.progress_controller import ProgressController  # noqa: E402
+from models.channel_model import ChannelListModel  # noqa: E402
+from PySide6.QtWidgets import (  # noqa: E402
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel,
-    QStatusBar, QSizePolicy, QDialog,
+    QStatusBar,
     QFrame,
 )
-from PySide6 import QtWidgets
-from PySide6.QtCore import Qt, QSize, QTimer, Signal, QRectF
-from PySide6 import QtCore
-from PySide6.QtGui import QIcon, QFont, QFontMetrics, QColor, QPainter, QBrush, QPen, QLinearGradient, QPainterPath, QPixmap
+from PySide6.QtCore import Qt, QTimer, Signal, QRectF  # noqa: E402
+from PySide6 import QtCore  # noqa: E402
+from PySide6.QtGui import (  # noqa: E402
+    QIcon, QFont, QFontMetrics, QColor, QPainter, QBrush, QPen,
+    QLinearGradient, QPainterPath,
+)
 
-from PySide6.QtGui import QShortcut
+from PySide6.QtGui import QShortcut  # noqa: E402
 
-from core.log_manager import global_logger as logger
-from core.application_state import app_state
-from core.language_manager import LanguageManager
-from ui.styles import AppStyles
+from core.log_manager import global_logger as logger  # noqa: E402
+from core.language_manager import LanguageManager  # noqa: E402
+from ui.styles import AppStyles  # noqa: E402
 
 
-from controllers import (
+from controllers import (  # noqa: E402
     WindowController,
     PlaybackController,
     EPGController,
@@ -68,22 +68,22 @@ from controllers import (
     EpgReminderController
 )
 
-from utils.general_utils import calculate_adaptive_delay
-from mixins.server_mixin import ServerMixin
-from mixins.tray_mixin import TrayMixin
-from mixins.update_mixin import UpdateMixin
-from mixins.thumbnail_mixin import ThumbnailMixin
-from mixins.file_ops_mixin import FileOpsMixin
-from mixins.panel_mixin import PanelMixin
-from mixins.progress_mixin import ProgressMixin
-from mixins.playback_mixin import PlaybackMixin
-from mixins.epg_mixin import EpgMixin
-from mixins.channel_mixin import ChannelMixin
-from mixins.settings_mixin import SettingsMixin
-from mixins.window_mixin import WindowMixin
-from mixins.control_panel_mixin import ControlPanelMixin
-from mixins.playlist_panel_mixin import PlaylistPanelMixin
-from mixins.event_mixin import EventMixin
+from utils.general_utils import calculate_adaptive_delay  # noqa: E402
+from mixins.server_mixin import ServerMixin  # noqa: E402
+from mixins.tray_mixin import TrayMixin  # noqa: E402
+from mixins.update_mixin import UpdateMixin  # noqa: E402
+from mixins.thumbnail_mixin import ThumbnailMixin  # noqa: E402
+from mixins.file_ops_mixin import FileOpsMixin  # noqa: E402
+from mixins.panel_mixin import PanelMixin  # noqa: E402
+from mixins.progress_mixin import ProgressMixin  # noqa: E402
+from mixins.playback_mixin import PlaybackMixin  # noqa: E402
+from mixins.epg_mixin import EpgMixin  # noqa: E402
+from mixins.channel_mixin import ChannelMixin  # noqa: E402
+from mixins.settings_mixin import SettingsMixin  # noqa: E402
+from mixins.window_mixin import WindowMixin  # noqa: E402
+from mixins.control_panel_mixin import ControlPanelMixin  # noqa: E402
+from mixins.playlist_panel_mixin import PlaylistPanelMixin  # noqa: E402
+from mixins.event_mixin import EventMixin  # noqa: E402
 
 
 class _RoundedContainer(QWidget):
@@ -106,7 +106,7 @@ class _RoundedContainer(QWidget):
 class VideoOverlayBadge(QWidget):
     """视频区域叠加标识 Widget，用 QPainter 绘制精美的回看/时移标签"""
 
-    MODE_CATCHUP   = 'catchup'
+    MODE_CATCHUP = 'catchup'
     MODE_TIMESHIFT = 'timeshift'
 
     @staticmethod
@@ -151,7 +151,10 @@ class VideoOverlayBadge(QWidget):
             from PySide6.QtGui import QPixmap
             px = QPixmap(icon_path)
             if not px.isNull():
-                self._icon_pixmap = px.scaled(14, 14, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self._icon_pixmap = px.scaled(
+                    14, 14,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation)
                 return
         self._icon_pixmap = None
 
@@ -212,10 +215,15 @@ class VideoOverlayBadge(QWidget):
 
 
 # 导入播放器服务
-from services.mpv_player_service import MpvPlayerController
+from services.mpv_player_service import MpvPlayerController  # noqa: E402
 
 
-class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMixin, PanelMixin, ProgressMixin, PlaybackMixin, EpgMixin, ChannelMixin, SettingsMixin, WindowMixin, ControlPanelMixin, PlaylistPanelMixin, EventMixin, QMainWindow):
+class IPTVPlayer(
+    ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMixin,
+    PanelMixin, ProgressMixin, PlaybackMixin, EpgMixin, ChannelMixin,
+    SettingsMixin, WindowMixin, ControlPanelMixin, PlaylistPanelMixin,
+    EventMixin, QMainWindow
+):
     epg_status_signal = Signal(str)
     channel_list_updated = Signal()
     epg_list_updated = Signal()
@@ -433,7 +441,11 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
 
     PLAYLIST_EXTENSIONS = ('.m3u', '.m3u8', '.txt')
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.ts', '.webm')
-    AUDIO_EXTENSIONS = ('.mp3', '.flac', '.wav', '.aac', '.ogg', '.opus', '.wma', '.m4a', '.ape', '.alac', '.wv', '.tta', '.dts', '.ac3', '.mid', '.midi')
+    AUDIO_EXTENSIONS = (
+        '.mp3', '.flac', '.wav', '.aac', '.ogg', '.opus',
+        '.wma', '.m4a', '.ape', '.alac', '.wv', '.tta',
+        '.dts', '.ac3', '.mid', '.midi',
+    )
     ALL_DROP_EXTENSIONS = PLAYLIST_EXTENSIONS + VIDEO_EXTENSIONS + AUDIO_EXTENSIONS
 
     is_fullscreen = False
@@ -451,7 +463,7 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
     current_epg_date: Optional[date] = None
     _window_title = ''
     _theme_manager = None
-    
+
     def __init__(self, parent: Optional[QWidget] = None, flags: Qt.WindowType = Qt.WindowType.Window):
         from utils.general_utils import suppress_urllib3_warnings
         suppress_urllib3_warnings()
@@ -607,7 +619,7 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
     def _create_custom_title_bar(self):
         """创建自定义标题栏（委托给WindowController）"""
         title_bar = self.window_ctrl.create_custom_title_bar(self._window_title)
-        
+
         # 保存引用（兼容原有代码）
         self._title_bar = title_bar
         self._title_icon_label = self.window_ctrl._title_icon_label
@@ -616,10 +628,9 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
         self._minimize_btn = self.window_ctrl._minimize_btn
         self._maximize_btn = self.window_ctrl._maximize_btn
         self._close_btn = self.window_ctrl._close_btn
-        
+
         # 将标题栏添加到主布局顶部
         self.main_layout.addWidget(self._title_bar)
-
 
     def _update_splash(self, message):
         try:
@@ -627,7 +638,10 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
             app = QApplication.instance()
             for widget in app.topLevelWidgets():
                 if isinstance(widget, QSplashScreen):
-                    widget.showMessage(message, Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, QColor(200, 200, 200))
+                    widget.showMessage(
+                        message,
+                        Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+                        QColor(200, 200, 200))
                     app.processEvents()
                     break
         except Exception:
@@ -699,13 +713,12 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
 
         logger.debug("_initialize_in_order: 完成")
 
-
     def _update_channel_list_ui(self):
         try:
             self.populate_channel_list(source='auto')
         except Exception as ex:
             logger.error(f"更新频道列表UI失败: {ex}")
-    
+
     def status_bar_show_message(self, message):
         """在状态栏显示消息"""
         try:
@@ -713,39 +726,38 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
                 self.status_bar.showMessage(message)
         except Exception as ex:
             logger.error(f"在状态栏显示消息失败: {ex}")
-    
-    
+
     def _init_video_components(self):
         """初始化视频相关组件"""
         logger.debug("_init_video_components: 开始")
-        
+
         # 第一步：创建菜单栏
         self._create_menu_bar()
-        
+
         logger.debug("_init_video_components: 完成")
-    
+
     def _create_menu_bar(self):
         """创建菜单栏"""
         logger.debug("_create_menu_bar: 开始")
-        
+
         # 菜单栏
         self.setup_menu_bar(skip_recent_files=True)
-        
+
         logger.debug("_create_menu_bar: 完成")
-    
+
     def _create_video_area(self):
         """创建视频区域"""
         logger.debug("_create_video_area: 开始")
-        
+
         # 上半部分布局
         self.top_layout = QHBoxLayout()
-        
+
         # 只创建视频播放区域（不创建悬浮窗）
         self.video_frame = QFrame()
         self.video_frame.setStyleSheet(AppStyles.player_background_style())
         self.video_frame.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.video_frame.customContextMenuRequested.connect(self.media_ctrl.show_video_context_menu)
-        
+
         # 创建默认背景（空闲态银河壁纸 + 软件图标）
         from utils.general_utils import get_icon_path
         from ui.wallpaper_widget import WallpaperWidget
@@ -792,28 +804,27 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
         self._audio_visual_widget = AudioVisualWidget(self.video_frame, player_controller=None)
         self._audio_visual_widget.hide()
 
-        
         # 添加视频区域到布局
         self.top_layout.addWidget(self.video_frame, 1)
         self.content_layout.addLayout(self.top_layout, 1)
-        
+
         logger.debug("_create_video_area: 完成")
-    
+
     def _create_status_bar(self):
         """创建状态栏"""
         logger.debug("_create_status_bar: 开始")
-        
+
         # 状态栏
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.setStyleSheet(AppStyles.statusbar_style())
         self.status_bar_show_message(self.language_manager.tr("ready", "Ready"))
-        
+
         logger.debug("_create_status_bar: 完成")
-    
+
     def _init_player(self):
         logger.debug("_init_player: 开始")
-        
+
         self.player_controller = MpvPlayerController(self.video_widget)
         if hasattr(self, '_audio_visual_widget') and self._audio_visual_widget:
             self.player_controller.audio_visual._widget = self._audio_visual_widget
@@ -917,20 +928,18 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
         self._setup_system_tray()
 
         logger.debug("_init_player: 完成")
-    
 
     def _create_timer(self):
         """创建定时器"""
         logger.debug("_create_timer: 开始")
-        
+
         # 创建定时器，定期更新悬浮窗信息
         from PySide6.QtCore import QTimer
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_floating_panel_info)
         self.player_controller.playback_position_updated.connect(self._on_playback_position_updated)
-        
-        logger.debug("_create_timer: 完成")
 
+        logger.debug("_create_timer: 完成")
 
     def _install_event_filters(self):
         """安装事件过滤器（幂等：多次调用只生效一次）"""
@@ -939,7 +948,7 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
             return
         self._event_filters_installed = True
         logger.debug("_install_event_filters: 开始")
-        
+
         # 安装事件过滤器
         if self.video_frame:
             self.video_frame.installEventFilter(self)
@@ -948,31 +957,30 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
             self.video_widget.installEventFilter(self)
         if self.video_placeholder:
             self.video_placeholder.installEventFilter(self)
-        
+
         # 安装 QApplication 级别事件过滤器（用于全局快捷键）
         from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
         if app:
             app.installEventFilter(self)
-        
+
         logger.debug("_install_event_filters: 完成")
-    
+
     def _populate_channel_list(self, source='subscription'):
         """填充频道列表（带EPG刷新）"""
         logger.debug("_populate_channel_list: 开始")
         self.populate_channel_list(source=source)
         self._populate_epg_list()
         logger.debug("_populate_channel_list: 完成")
-    
+
     def _populate_epg_list(self):
         """填充EPG列表"""
         logger.debug("_populate_epg_list: 开始")
-        
+
         # 延迟填充EPG列表，等待EPG数据下载完成
         self.populate_epg_list()
-        
+
         logger.debug("_populate_epg_list: 完成")
-    
 
     def _deferred_initial_position(self):
         """窗口首次渲染后的延迟定位：
@@ -1003,33 +1011,33 @@ class IPTVPlayer(ServerMixin, TrayMixin, UpdateMixin, ThumbnailMixin, FileOpsMix
                     self.video_widget.setGeometry(0, 0, w, h)
                 if hasattr(self, 'video_placeholder') and self.video_placeholder:
                     self.video_placeholder.setGeometry(0, 0, w, h)
-                if hasattr(self, '_audio_visual_widget') and self._audio_visual_widget and self._audio_visual_widget.isVisible():
+                if hasattr(self, '_audio_visual_widget') and self._audio_visual_widget \
+                        and self._audio_visual_widget.isVisible():
                     self._audio_visual_widget.setGeometry(0, 0, w, h)
                 if hasattr(self, '_lyrics_widget') and self._lyrics_widget and self._lyrics_widget.isVisible():
                     self._lyrics_widget.setGeometry(0, 0, w, h)
 
-
     def _update_recent_files_menu(self):
         """初始化最近打开文件菜单"""
         logger.debug("_update_recent_files_menu: 开始")
-        
+
         # 初始化最近打开文件菜单
         self.update_recent_files_menu()
-        
+
         self._panels_initialized = True
         self._initialization_complete = True
         self._restart_auto_hide_timer()
-        
 
         logger.debug("_update_recent_files_menu: 完成")
-    
+
     def update_status_bar(self, message):
         """更新状态栏消息"""
         if self.status_bar:
             self.status_bar.showMessage(message)
-    
+
     def setup_menu_bar(self, skip_recent_files=False):
         self.ui_ctrl.setup_menu_bar(skip_recent_files)
+
 
 if __name__ == "__main__":
 
@@ -1053,13 +1061,15 @@ if __name__ == "__main__":
         from PySide6.QtWidgets import QSplashScreen
         ico_path = get_icon_path()
         if os.path.exists(ico_path):
-            from PySide6.QtGui import QIcon
             splash_pixmap = QIcon(ico_path).pixmap(128, 128)
         else:
             splash_pixmap = QPixmap(128, 128)
             splash_pixmap.fill(Qt.GlobalColor.transparent)
         splash = QSplashScreen(splash_pixmap, Qt.WindowType.WindowStaysOnTopHint)
-        splash.showMessage("Loading...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, QColor(200, 200, 200))
+        splash.showMessage(
+            "Loading...",
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+            QColor(200, 200, 200))
         try:
             from core.config_manager import ConfigManager
             cfg = ConfigManager()
@@ -1087,14 +1097,12 @@ if __name__ == "__main__":
         file_path = sys.argv[1]
         if os.path.isfile(file_path):
             if file_path.lower().endswith(('.m3u', '.m3u8', '.txt')):
-                from PySide6.QtCore import QTimer
                 QTimer.singleShot(800, lambda fp=file_path: player.settings_ops.open_specific_file(fp))
             elif file_path.lower().endswith(('.mp4', '.mkv', '.avi', '.mov',
                                              '.flv', '.wmv', '.ts', '.webm',
                                              '.mp3', '.flac', '.wav', '.aac', '.ogg', '.opus',
                                              '.wma', '.m4a', '.ape', '.alac', '.wv', '.tta',
                                              '.dts', '.ac3', '.mid', '.midi')):
-                from PySide6.QtCore import QTimer
                 def _open_video_from_cmdline(fp=file_path):
                     player._add_local_video_and_track(fp)
                 QTimer.singleShot(800, _open_video_from_cmdline)

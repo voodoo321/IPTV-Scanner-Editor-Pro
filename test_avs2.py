@@ -2,7 +2,6 @@
 """测试不同 demuxer 选项是否能避免 davs2 崩溃"""
 import ctypes
 import os
-import sys
 import time
 import faulthandler
 
@@ -37,6 +36,7 @@ MPV_EVENT_LOG_MESSAGE = 2
 MPV_EVENT_END_FILE = 7
 MPV_EVENT_FILE_LOADED = 8
 
+
 class mpv_event_log_message(ctypes.Structure):
     _fields_ = [
         ('prefix', ctypes.c_char_p),
@@ -44,11 +44,13 @@ class mpv_event_log_message(ctypes.Structure):
         ('text', ctypes.c_char_p),
     ]
 
+
 class mpv_event_end_file(ctypes.Structure):
     _fields_ = [
         ('reason', ctypes.c_int),
         ('error', ctypes.c_int),
     ]
+
 
 class mpv_event(ctypes.Structure):
     _fields_ = [
@@ -58,7 +60,9 @@ class mpv_event(ctypes.Structure):
         ('data', ctypes.c_void_p),
     ]
 
+
 REASON_MAP = {0: 'EOF', 2: 'STOP', 3: 'QUIT', 4: 'ERROR'}
+
 
 def test(label, mpv_url, options):
     print(f"\n{'='*60}")
@@ -142,7 +146,11 @@ def test(label, mpv_url, options):
                         end_file = ctypes.cast(event.data, ctypes.POINTER(mpv_event_end_file)).contents
                         end_file_reason = end_file.reason
                         end_file_error = end_file.error
-                        print(f"  >>> EVENT: END_FILE reason={end_file.reason}({REASON_MAP.get(end_file.reason, '?')}) error={end_file_error}")
+                        print(
+                            f"  >>> EVENT: END_FILE reason={end_file.reason}"
+                            f"({REASON_MAP.get(end_file.reason, '?')})"
+                            f" error={end_file_error}"
+                        )
                     except Exception:
                         pass
                 break
@@ -164,6 +172,7 @@ def test(label, mpv_url, options):
         pass
 
     return file_loaded
+
 
 avs2_file = r'D:\桌面\4K_AVS2_AAC5.1.ts'
 

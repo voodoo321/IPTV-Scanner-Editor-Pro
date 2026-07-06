@@ -1,20 +1,19 @@
-import sys
 import os
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+import sys
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mixins.server_mixin import ServerMixin
-from mixins.tray_mixin import TrayMixin
-from mixins.update_mixin import UpdateMixin
-from mixins.thumbnail_mixin import ThumbnailMixin
-from mixins.file_ops_mixin import FileOpsMixin
-from mixins.panel_mixin import PanelMixin
-from mixins.progress_mixin import ProgressMixin
-from mixins.playback_mixin import PlaybackMixin
-from mixins.epg_mixin import EpgMixin
-from tests.conftest import MockMainWindow
+from mixins.server_mixin import ServerMixin  # noqa: E402
+from mixins.tray_mixin import TrayMixin  # noqa: E402
+from mixins.update_mixin import UpdateMixin  # noqa: E402
+from mixins.thumbnail_mixin import ThumbnailMixin  # noqa: E402
+from mixins.file_ops_mixin import FileOpsMixin  # noqa: E402
+from mixins.panel_mixin import PanelMixin  # noqa: E402
+from mixins.progress_mixin import ProgressMixin  # noqa: E402
+from mixins.playback_mixin import PlaybackMixin  # noqa: E402
+from mixins.epg_mixin import EpgMixin  # noqa: E402
+from tests.conftest import MockMainWindow  # noqa: E402
 
 
 class _ServerTestHost(MockMainWindow, ServerMixin):

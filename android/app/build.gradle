@@ -46,8 +46,20 @@ android {
         versionCode versionCodeVal
         versionName versionNameStr
 
-        // ARM 架构通过 splits.abi 按位数分包，不在此处用 abiFilters 过滤
+        // ARM 架构通过 ndk.abiFilters 指定目标 ABI（Chaquopy 要求此属性）
+        // 通过 -PtargetAbi=xxx 构建参数控制单 ABI 分包：
+        //   gradlew assembleRelease -PtargetAbi=arm64-v8a   → 64 位 APK
+        //   gradlew assembleRelease -PtargetAbi=armeabi-v7a → 32 位 APK
+        // 不传参数时默认包含两个 ABI（通用包）
         // x86/x86_64 仅供模拟器，单独构建 debug 即可
+        def targetAbi = project.findProperty('targetAbi')
+        ndk {
+            if (targetAbi != null) {
+                abiFilters targetAbi.split(',')
+            } else {
+                abiFilters 'arm64-v8a', 'armeabi-v7a'
+            }
+        }
     }
 
     /* APK 签名配置（用于 release 构建）
@@ -75,43 +87,30 @@ android {
         }
     }
 
-    /* ABI 分包：32 位和 64 位分别生成独立 APK
-     *
-     * 原因：
-     * - 通用 APK 包含 arm64-v8a + armeabi-v7a 两套 native 库（mpv/FFmpeg/davs2 + VLC + IJK），
-     *   体积约 307MB，其中一半的 .so 对用户设备无用
-     * - 分包后 64 位约 180MB，32 位约 170MB，用户按设备选择对应包
-     * - arm64-v8a = 64 位（绝大多数现代手机/TV）
-     * - armeabi-v7a = 32 位（老旧设备/部分电视盒子）
-     *
-     * universalApk=false：不生成通用包（用户明确要求分开）
-     * 每个 ABI 的 versionCode 加偏移量区分，确保 Play Store（如未来上架）能正确区分 */
-    splits {
-        abi {
-            enable true
-            reset()
-            include 'arm64-v8a', 'armeabi-v7a'
-            universalApk false
-        }
-    }
-
     /* 自定义 APK 输出文件名：按 ABI 命名
-     * arm64-v8a -> IPTV Scanner Editor Pro-Android-arm64.apk
-     * armeabi-v7a -> IPTV Scanner Editor Pro-Android-arm32.apk
+     *
+     * 通过 -PtargetAbi=xxx 控制单 ABI 构建：
+     * - gradlew assembleRelease -PtargetAbi=arm64-v8a   → IPTV Scanner Editor Pro-Android-arm64.apk
+     * - gradlew assembleRelease -PtargetAbi=armeabi-v7a → IPTV Scanner Editor Pro-Android-arm32.apk
+     * - 不传参数 → IPTV Scanner Editor Pro-Android-universal.apk（含两个 ABI）
      *
      * versionCode 按 ABI 区分（确保各 ABI 的 versionCode 唯一）：
      * arm64-v8a: versionCode 不变（主版本）
      * armeabi-v7a: versionCode + 1（避免与 arm64 冲突） */
     applicationVariants.all { variant ->
         variant.outputs.each { output ->
-            def abi = output.getFilter("ABI")
+            def targetAbi = project.findProperty('targetAbi')
             def abiSuffix = ''
-            if (abi != null) {
-                abiSuffix = abi == 'arm64-v8a' ? '-arm64' : '-arm32'
-                // 32 位 versionCode 加 1 偏移，确保两个 APK 的 versionCode 不同
-                if (abi == 'armeabi-v7a') {
-                    output.versionCode = variant.versionCode + 1
+            if (targetAbi != null) {
+                if (targetAbi == 'arm64-v8a') {
+                    abiSuffix = '-arm64'
+                } else if (targetAbi == 'armeabi-v7a') {
+                    abiSuffix = '-arm32'
+                    // 32 位 versionCode 加 1 偏移，确保两个 APK 的 versionCode 不同
+                    output.versionCodeOverride = variant.versionCode + 1
                 }
+            } else {
+                abiSuffix = '-universal'
             }
             output.outputFileName = "IPTV Scanner Editor Pro-Android${abiSuffix}.apk"
         }
@@ -288,5 +287,4 @@ dependencies {
      * - 每次启动时开启后台 logcat 进程记录日志
      * - 下次启动检测上次是否异常退出，若是则保存 logcat 为崩溃报告 */
     implementation 'ch.acra:acra-core:5.9.7'
-    implementation 'ch.acra:acra-toast:5.9.7'
 }

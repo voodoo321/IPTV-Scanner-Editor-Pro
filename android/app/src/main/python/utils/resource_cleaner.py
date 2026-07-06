@@ -105,4 +105,3 @@ def cleanup_on_exit():
     """程序退出时清理资源（便捷函数）"""
     logger.info("程序退出，执行资源清理...")
     cleanup_all()
-

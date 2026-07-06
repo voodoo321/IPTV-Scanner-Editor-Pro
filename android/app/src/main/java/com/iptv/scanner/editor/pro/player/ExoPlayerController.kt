@@ -693,17 +693,18 @@ override val capabilities: PlayerCapabilities = PlayerCapabilities(
      * 切换硬件/软件解码。
      *
      * ExoPlayer 通过 [DefaultRenderersFactory.setExtensionRendererMode] 控制：
-     * - 硬解：[DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF]（仅 MediaCodec）
-     * - 软解：[DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER]（优先 FFmpeg 扩展）
+ * - 硬解：[DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON]（MediaCodec 优先，FFmpeg 作为音频回退）
+ * - 软解：[DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER]（优先 FFmpeg 扩展）
      *
      * 切换需重建 ExoPlayer 实例（RenderersFactory 在构造时固定）。
      * 重建后自动恢复播放 URL 和进度，并重新绑定 Surface。
      *
-     * 注意：软解模式需要 FFmpeg 扩展依赖，未安装时自动回退到 MediaCodec 硬解。
+     * 注意：硬解模式使用 EXTENSION_RENDERER_MODE_ON（非 OFF），
+ * 确保 FFmpeg 音频解码器作为回退可用，避免部分音频 codec（AC3/EAC3 等）无声音。
      */
 override fun setHardwareDecode(enabled: Boolean): Boolean {
 // 已集成 Jellyfin media3-ffmpeg-decoder 扩展，软解通过 FFmpeg 扩展渲染器实现。
-// 硬解：EXTENSION_RENDERER_MODE_OFF（仅 MediaCodec）
+// 硬解：EXTENSION_RENDERER_MODE_ON（MediaCodec 优先，FFmpeg 回退音频）
 // 软解：EXTENSION_RENDERER_MODE_PREFER（优先 FFmpeg 扩展渲染器）
 if (hardwareDecode == enabled) return true
 Log.i(TAG, "setHardwareDecode: enabled=$enabled, rebuilding ExoPlayer")
@@ -836,12 +837,12 @@ Log.i(TAG, "setHardwareDecode: enabled=$enabled, rebuilding ExoPlayer")
          * 创建 ExoPlayer 实例。
          *
          * @param context Android Context
-         * @param hardwareDecode true=仅 MediaCodec 硬解，false=优先 FFmpeg 软解扩展
+         * @param hardwareDecode true=MediaCodec 硬解优先（FFmpeg 音频回退），false=优先 FFmpeg 软解扩展
          */
         private fun createExoPlayer(context: Context, hardwareDecode: Boolean): ExoPlayer {
             val renderersFactory = DefaultRenderersFactory(context).apply {
                 setExtensionRendererMode(
-                    if (hardwareDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+                    if (hardwareDecode) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
                     else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
                 )
                 // 启用解码器回退：主解码器失败时自动尝试其它解码器。

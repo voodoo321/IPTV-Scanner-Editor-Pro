@@ -1,4 +1,4 @@
-from PySide6 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets
 from ui.styles import AppStyles
 from utils.singleton import Singleton
 from utils.platform_utils import is_windows, is_macos, is_android
@@ -173,6 +173,7 @@ class ThemeManager(Singleton, QtCore.QObject):
                         ('GradientColor', ctypes.c_uint),
                         ('AnimationId', ctypes.c_int),
                     ]
+
                 class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure):
                     _fields_ = [
                         ('Attrib', ctypes.c_int),
@@ -334,17 +335,42 @@ class ThemeManager(Singleton, QtCore.QObject):
             QtWidgets.QListWidget: lambda w: AppStyles.player_list_style(),
             QtWidgets.QStatusBar: lambda w: AppStyles.statusbar_style(),
             QtWidgets.QTabWidget: lambda w: AppStyles.tab_widget_style(),
-            QtWidgets.QToolButton: lambda w: None if hasattr(w, 'style_type') else AppStyles.toolbar_button_style(),
-            QtWidgets.QLineEdit: lambda w: AppStyles.common_line_edit_style() if (not w.styleSheet() or 'common_line_edit' not in w.styleSheet()) else None,
-            QtWidgets.QComboBox: lambda w: AppStyles.common_combo_box_style() if (not w.styleSheet() or 'common_combo' not in w.styleSheet()) else None,
-            QtWidgets.QLabel: lambda w: AppStyles.label_style() if hasattr(AppStyles, 'label_style') else None,
+            QtWidgets.QToolButton: lambda w: (
+                None if hasattr(w, 'style_type')
+                else AppStyles.toolbar_button_style()
+            ),
+            QtWidgets.QLineEdit: lambda w: (
+                AppStyles.common_line_edit_style()
+                if (not w.styleSheet() or 'common_line_edit' not in w.styleSheet())
+                else None
+            ),
+            QtWidgets.QComboBox: lambda w: (
+                AppStyles.common_combo_box_style()
+                if (not w.styleSheet() or 'common_combo' not in w.styleSheet())
+                else None
+            ),
+            QtWidgets.QLabel: lambda w: (
+                AppStyles.label_style() if hasattr(AppStyles, 'label_style') else None
+            ),
             QtWidgets.QCheckBox: lambda w: AppStyles.common_check_box_style(),
-            QtWidgets.QRadioButton: lambda w: AppStyles.common_radio_button_style() if hasattr(AppStyles, 'common_radio_button_style') else None,
+            QtWidgets.QRadioButton: lambda w: (
+                AppStyles.common_radio_button_style()
+                if hasattr(AppStyles, 'common_radio_button_style') else None
+            ),
             QtWidgets.QProgressBar: lambda w: AppStyles.progress_style(),
             QtWidgets.QGroupBox: lambda w: AppStyles.common_group_box_style(),
-            QtWidgets.QScrollArea: lambda w: AppStyles.scroll_area_style() if hasattr(AppStyles, 'scroll_area_style') else None,
-            QtWidgets.QSlider: lambda w: AppStyles.player_slider_style() if hasattr(AppStyles, 'player_slider_style') else None,
-            QtWidgets.QTextEdit: lambda w: AppStyles.text_edit_style() if hasattr(AppStyles, 'text_edit_style') else None,
+            QtWidgets.QScrollArea: lambda w: (
+                AppStyles.scroll_area_style()
+                if hasattr(AppStyles, 'scroll_area_style') else None
+            ),
+            QtWidgets.QSlider: lambda w: (
+                AppStyles.player_slider_style()
+                if hasattr(AppStyles, 'player_slider_style') else None
+            ),
+            QtWidgets.QTextEdit: lambda w: (
+                AppStyles.text_edit_style()
+                if hasattr(AppStyles, 'text_edit_style') else None
+            ),
             QtWidgets.QFrame: lambda w: None if hasattr(w, 'style_type') else None,
         }
         for widget_type, style_func in style_map.items():

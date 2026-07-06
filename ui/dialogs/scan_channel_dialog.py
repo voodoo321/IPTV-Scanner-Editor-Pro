@@ -19,7 +19,7 @@ from utils.progress_manager import init_progress_manager
 from utils.config_notifier import register_config_observer
 from utils.scan_state_manager import get_scan_state_manager, register_retry_task, RetryScanStateContext
 from utils.logging_helper import (
-    log_ui_info, log_ui_warning, log_ui_error, log_scan_info,
+    log_ui_warning, log_ui_error, log_scan_info,
     log_scan_warning, log_config_error, log_config_info
 )
 from core.config_manager import ConfigManager
@@ -82,7 +82,8 @@ class UrlRangeInputWidget(QtWidgets.QWidget):
 
     def keyPressEvent(self, event):
         # Ctrl+Enter 触发 editingFinished（方便用户确认输入完成）
-        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier and event.key() in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter):
+        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier \
+                and event.key() in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter):
             self.editingFinished.emit()
             event.accept()
         else:
@@ -243,7 +244,6 @@ class ScanChannelDialog(FloatingDialog):
                     self.channel_list.clearSelection()
         super().mousePressEvent(event)
 
-
     def _stop_all_timers(self):
         """安全停止所有定时器"""
         if hasattr(self, '_timers'):
@@ -256,7 +256,7 @@ class ScanChannelDialog(FloatingDialog):
                             timer, "stop", QtCore.Qt.ConnectionType.QueuedConnection
                         )
             self._timers.clear()
-        
+
         if hasattr(self, 'scanner') and self.scanner:
             for attr in ('_batch_flush_timer', '_validation_flush_timer'):
                 try:
@@ -307,10 +307,13 @@ class ScanChannelDialog(FloatingDialog):
         self.progress_indicator.setValue(0)
         self.progress_indicator.setTextVisible(True)
         self.progress_indicator.setMinimumWidth(150)
-        self.progress_indicator.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self.progress_indicator.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed
+        )
         # 初始隐藏进度条，开始扫描后再显示
         self.progress_indicator.hide()
-        
+
         # 创建统计信息标签用于显示扫描状态
         self.stats_label = QtWidgets.QLabel(tr("ready", "Ready"))
         self.stats_label.setStyleSheet(AppStyles.common_label_style())
@@ -767,7 +770,10 @@ class ScanChannelDialog(FloatingDialog):
         self.btn_append_scan = QtWidgets.QPushButton(tr("append_scan", "Append Scan"))
         self.btn_append_scan.setStyleSheet(AppStyles.common_button_style())
         self.btn_append_scan.setMinimumHeight(32)  # 减少按钮高度
-        self.btn_append_scan.setToolTip(tr("append_scan_tooltip", "Append valid channels to existing list without clearing"))
+        self.btn_append_scan.setToolTip(
+            tr("append_scan_tooltip",
+               "Append valid channels to existing list without clearing")
+        )
         self.btn_append_scan.setAutoDefault(False)
 
         # 新增直接生成列表按钮
@@ -775,7 +781,6 @@ class ScanChannelDialog(FloatingDialog):
         self.btn_generate.setStyleSheet(AppStyles.common_button_style())
         self.btn_generate.setMinimumHeight(32)
         self.btn_generate.setToolTip(tr("generate_list_tooltip", "仅生成URL列表不验证"))
-
 
     def _add_scan_controls_to_layout(self, scan_layout):
         """添加扫描控件到布局（优化版，适合窄边栏）"""
@@ -1031,7 +1036,7 @@ class ScanChannelDialog(FloatingDialog):
         return menu
 
     def _get_all_channels(self) -> list:
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         if hasattr(self, '_channels_cache') and self._channels_cache is not None:
             return self._channels_cache
         channels = []
@@ -1069,7 +1074,7 @@ class ScanChannelDialog(FloatingDialog):
 
     def _show_auto_classify_dialog(self):
         from services.channel_classifier import ChannelClassifier
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         tr = self.language_manager.tr
 
         channels = self._get_all_channels()
@@ -1169,7 +1174,7 @@ class ScanChannelDialog(FloatingDialog):
 
     def _show_clean_names_dialog(self):
         from services.channel_cleaner import ChannelCleaner
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         tr = self.language_manager.tr
 
         channels = self._get_all_channels()
@@ -1252,7 +1257,7 @@ class ScanChannelDialog(FloatingDialog):
         self._exec_themed_dialog(dialog)
 
     def _show_assign_fields_dialog(self):
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         tr = self.language_manager.tr
 
         channels = self._get_all_channels()
@@ -1347,7 +1352,11 @@ class ScanChannelDialog(FloatingDialog):
 
         def do_preview():
             action_idx = radio_group.checkedId()
-            action_key = assign_options[action_idx][0] if 0 <= action_idx < len(assign_options) else assign_options[0][0]
+            action_key = (
+                assign_options[action_idx][0]
+                if 0 <= action_idx < len(assign_options)
+                else assign_options[0][0]
+            )
             only_empty = only_empty_check.isChecked()
             indices = selected_indices if selected_indices else list(range(len(channels)))
             results = _compute_assign(action_key, only_empty, indices)
@@ -1428,7 +1437,7 @@ class ScanChannelDialog(FloatingDialog):
 
         try:
             from services.logo_matcher import LogoMatcher
-            from models.channel_model import ChannelListModel as CLM
+            from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
             matcher = LogoMatcher()
             updates = []
             for i, ch in enumerate(channels):
@@ -1471,7 +1480,7 @@ class ScanChannelDialog(FloatingDialog):
 
     def _show_clear_params_dialog(self):
         tr = self.language_manager.tr
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
 
         channels = self._get_all_channels()
         if not channels:
@@ -1546,7 +1555,6 @@ class ScanChannelDialog(FloatingDialog):
 
     def _sort_by_group(self):
         from services.channel_classifier import ChannelClassifier
-        tr = self.language_manager.tr
 
         channels = self._get_all_channels()
         if not channels:
@@ -1745,7 +1753,7 @@ class ScanChannelDialog(FloatingDialog):
         menu = QtWidgets.QMenu()
         menu.setStyleSheet(AppStyles.common_menu_style())
 
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         if hasattr(self, '_filter_proxy'):
             source_index = self._filter_proxy.mapToSource(index)
             source_row = source_index.row()
@@ -1812,7 +1820,9 @@ class ScanChannelDialog(FloatingDialog):
         menu.addSeparator()
 
         selected_count = len(self.channel_list.selectionModel().selectedRows())
-        delete_label = tr("delete_selected_channels", "Delete Selected") + (f" ({selected_count})" if selected_count > 1 else "")
+        delete_label = tr("delete_selected_channels", "Delete Selected") + (
+            f" ({selected_count})" if selected_count > 1 else ""
+        )
         delete_action = QtGui.QAction(delete_label, self)
         delete_action.triggered.connect(self._delete_selected_channels)
         menu.addAction(delete_action)
@@ -1847,7 +1857,7 @@ class ScanChannelDialog(FloatingDialog):
             return
 
         existing_groups = set()
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         for row in range(self.model.rowCount()):
             g = self.model.data(self.model.index(row, CLM.COL_GROUP))
             if g:
@@ -1873,7 +1883,7 @@ class ScanChannelDialog(FloatingDialog):
             return
 
         matcher = LogoMatcher()
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         matched = 0
         for row in indices:
             name = str(self.model.data(self.model.index(row, CLM.COL_NAME)) or '')
@@ -1896,7 +1906,11 @@ class ScanChannelDialog(FloatingDialog):
         tr = self.language_manager.tr
         from utils.error_handler import show_confirm
         title = tr("confirm_delete", "Confirm Delete") or "Confirm Delete"
-        message = tr("confirm_delete_message", "Are you sure you want to delete the selected channel?") or "Are you sure you want to delete the selected channel?"
+        message = (
+            tr("confirm_delete_message",
+               "Are you sure you want to delete the selected channel?")
+            or "Are you sure you want to delete the selected channel?"
+        )
         if show_confirm(title, message, parent=self):
             if hasattr(self, '_filter_proxy'):
                 source_row = self._filter_proxy.mapToSource(index).row()
@@ -1928,13 +1942,21 @@ class ScanChannelDialog(FloatingDialog):
         for row in range(model.rowCount()):
             index = model.index(row, 0)
             if selection_model.isSelected(index):
-                selection_model.select(index, QtCore.QItemSelectionModel.SelectionFlag.Deselect | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+                selection_model.select(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.Deselect
+                    | QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
             else:
-                selection_model.select(index, QtCore.QItemSelectionModel.SelectionFlag.Select | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+                selection_model.select(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.Select
+                    | QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
 
     def _select_by_validity(self, select_valid: bool):
         """按有效性选择频道"""
-        from models.channel_model import ChannelListModel as CLM
+        from models.channel_model import ChannelListModel as CLM  # noqa: F401,E402
         model = self._filter_proxy if hasattr(self, '_filter_proxy') else self.model
         selection_model = self.channel_list.selectionModel()
         selection_model.clearSelection()
@@ -1948,18 +1970,22 @@ class ScanChannelDialog(FloatingDialog):
             if channel:
                 is_valid = channel.get('valid', False)
                 if is_valid == select_valid:
-                    selection_model.select(model.index(row, 0), QtCore.QItemSelectionModel.SelectionFlag.Select | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+                    selection_model.select(
+                        model.index(row, 0),
+                        QtCore.QItemSelectionModel.SelectionFlag.Select
+                        | QtCore.QItemSelectionModel.SelectionFlag.Rows
+                    )
 
     def _on_header_clicked(self, logical_index):
         """处理表头点击排序"""
         if not hasattr(self, 'model') or not self.model:
             return
-        
+
         # 使用实例变量跟踪排序状态，避免被model.reset()重置
         if not hasattr(self, '_last_sort_column'):
             self._last_sort_column = -1
             self._last_sort_order = QtCore.Qt.SortOrder.AscendingOrder
-        
+
         # 判断是否点击了同一列
         if self._last_sort_column == logical_index:
             # 同一列：切换排序顺序
@@ -1970,14 +1996,14 @@ class ScanChannelDialog(FloatingDialog):
         else:
             # 不同列：默认升序
             new_order = QtCore.Qt.SortOrder.AscendingOrder
-        
+
         # 保存当前排序状态
         self._last_sort_column = logical_index
         self._last_sort_order = new_order
-        
+
         # 先执行排序
         self.model.sort(logical_index, new_order)
-        
+
         # 排序完成后重新设置指示器（重要：必须在sort之后！）
         self.header.setSortIndicator(logical_index, new_order)
 
@@ -2379,7 +2405,10 @@ class ScanChannelDialog(FloatingDialog):
         user_agent = self.user_agent_input.text() or None
         referer = self.referer_input.text() or None
 
-        self.scanner.start_scan(url, scan_threads, scan_timeout, user_agent=user_agent, referer=referer, skip_urls=skip_urls)
+        self.scanner.start_scan(
+            url, scan_threads, scan_timeout,
+            user_agent=user_agent, referer=referer, skip_urls=skip_urls
+        )
 
         self._set_scan_model()
 
@@ -2764,7 +2793,9 @@ class ScanChannelDialog(FloatingDialog):
                 self,
                 tr("save_scope", "保存范围"),
                 tr("save_selected_or_all", "是否仅保存选中的{n}个频道？").format(n=len(selected_indices)),
-                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel,
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No
+                | QtWidgets.QMessageBox.StandardButton.Cancel,
             )
             if reply == QtWidgets.QMessageBox.StandardButton.Cancel:
                 return
@@ -2788,11 +2819,18 @@ class ScanChannelDialog(FloatingDialog):
 
         try:
             if save_selected:
-                channels_to_save = [self.model.channels[i] for i in selected_indices if i < len(self.model.channels)]
+                channels_to_save = [
+                    self.model.channels[i]
+                    for i in selected_indices if i < len(self.model.channels)
+                ]
                 if fmt == 'm3u':
-                    content = self.model._channels_to_m3u(channels_to_save) if hasattr(self.model, '_channels_to_m3u') else self.model.to_m3u()
+                    content = self.model._channels_to_m3u(channels_to_save) \
+                        if hasattr(self.model, '_channels_to_m3u') \
+                        else self.model.to_m3u()
                 else:
-                    content = self.model._channels_to_txt(channels_to_save) if hasattr(self.model, '_channels_to_txt') else self.model.to_txt()
+                    content = self.model._channels_to_txt(channels_to_save) \
+                        if hasattr(self.model, '_channels_to_txt') \
+                        else self.model.to_txt()
             else:
                 if fmt == 'm3u':
                     content = self.model.to_m3u()
@@ -2850,7 +2888,10 @@ class ScanChannelDialog(FloatingDialog):
         """处理发现有效频道事件"""
         self._invalidate_channels_cache()
         is_valid = channel_info.get('valid') is True
-        channel_info['status'] = self.language_manager.tr('valid', '有效') if is_valid else self.language_manager.tr('invalid', '无效')
+        channel_info['status'] = (
+            self.language_manager.tr('valid', '有效') if is_valid
+            else self.language_manager.tr('invalid', '无效')
+        )
         self.model.add_channel(channel_info)
 
     @QtCore.Slot()
@@ -2933,15 +2974,15 @@ class ScanChannelDialog(FloatingDialog):
                 newly_valid += 1
             else:
                 remaining_invalid.append(url)
-        
+
         self._validation_retry_urls = remaining_invalid
-        
+
         if newly_valid > 0:
             self.logger.info(f"验证重试发现 {newly_valid} 个新有效频道")
-        
+
         max_retries = 3
         current_count = getattr(self, '_validation_retry_count', 0) or 0
-        
+
         if remaining_invalid and current_count < max_retries:
             if getattr(self, '_is_stopping', False):
                 self.logger.info("检测重试被用户停止，不启动下一轮")
@@ -3109,7 +3150,10 @@ class ScanChannelDialog(FloatingDialog):
             if hasattr(self, '_empty_hint') and self._empty_hint:
                 self._empty_hint.setStyleSheet(AppStyles.hint_label_style() + "font-size: 14px; padding: 40px;")
             if hasattr(self, 'scan_scroll'):
-                self.scan_scroll.setStyleSheet(AppStyles.scroll_area_style() if hasattr(AppStyles, 'scroll_area_style') else '')
+                self.scan_scroll.setStyleSheet(
+                    AppStyles.scroll_area_style()
+                    if hasattr(AppStyles, 'scroll_area_style') else ''
+                )
             for chk in [getattr(self, 'enable_retry_checkbox', None),
                         getattr(self, 'enable_mapping_checkbox', None)]:
                 if chk and hasattr(chk, 'setStyleSheet'):
@@ -3238,7 +3282,7 @@ class ScanChannelDialog(FloatingDialog):
         self.scan_state_manager.increment_retry_count(self.retry_id)
         retry_count = self.scan_state_manager.get_retry_count(self.retry_id)
         self.logger.debug(f"当前重试次数：{retry_count}")
-        
+
         # 检查是否超过最大重试次数
         max_retries = 3
         if retry_count > max_retries:
@@ -3246,7 +3290,7 @@ class ScanChannelDialog(FloatingDialog):
             # 使用 clear_failed_channels 代替不存在的 reset_retry_scan
             self.scan_state_manager.clear_failed_channels(self.retry_id)
             return
-        
+
         # 收集失败的频道
         self._collect_failed_channels()
 
@@ -3276,10 +3320,10 @@ class ScanChannelDialog(FloatingDialog):
 
             # 获取已经重试过的 URL，避免重复重试
             retried_urls = self.scan_state_manager.get_retried_urls(self.retry_id)
-            
+
             # 过滤掉已经重试过的 URL
             new_retry_urls = [url for url in retry_urls if url not in retried_urls]
-            
+
             self.logger.debug(f"智能重试：原始={len(retry_urls)}, 已重试={len(retried_urls)}, 新重试={len(new_retry_urls)}")
 
             # 清空之前的失败频道列表，避免累积
@@ -3398,7 +3442,7 @@ class ScanChannelDialog(FloatingDialog):
         # 改进的重试策略：只要还有失败的频道且未达上限，就继续重试
         # 不再要求必须发现新有效频道才继续（因为超时短可能导致误判）
         failed_channels = self.scan_state_manager.get_failed_channels(self.retry_id)
-        
+
         if retry_count < max_retries and failed_channels and len(failed_channels) > 0:
             # 还有失败频道且重试次数未达上限，继续重试
             self.logger.info(f"还有{len(failed_channels)}个失败频道，继续重试 (第{retry_count + 1}次)")

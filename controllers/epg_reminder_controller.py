@@ -115,8 +115,8 @@ class EpgReminderController:
             logger.debug(f"系统托盘通知失败: {e}")
 
     def toggle_reminder_for_program(self, channel_name: str, program_title: str,
-                                     start_time: str, end_time: str,
-                                     tvg_id: str = ''):
+                                    start_time: str, end_time: str,
+                                    tvg_id: str = ''):
         if not self._service:
             return
         if self.has_reminder(channel_name, program_title, start_time):

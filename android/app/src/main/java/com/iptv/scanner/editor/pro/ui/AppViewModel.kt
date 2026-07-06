@@ -1200,7 +1200,7 @@ val logLevel: StateFlow<String> = _logLevel.asStateFlow()
         val filtered: List<Pair<IptvChannel, Int>> = when (tab) {
             ChannelTab.SUB -> all.mapIndexed { idx, c -> c to idx }
             ChannelTab.LOCAL -> all.mapIndexed { idx, c -> c to idx }
-                .filter { (c, _) -> ProgressHelper.isLocalFile(c.url) }
+                .filter { (c, _) -> c.source.isEmpty() || ProgressHelper.isLocalFile(c.url) }
             ChannelTab.FAV -> all.mapIndexed { idx, c -> c to idx }
                 .filter { (c, idx) -> _favorites.value.contains(idx) }
             ChannelTab.HIST -> _history.value.mapNotNull { idx ->
@@ -4195,7 +4195,9 @@ PlayerType.EXO -> scheme in setOf("http", "https", "rtsp")
     }
 
     /**
-     * 播放网络流 URL（直接调 mpv.playFile，不走频道列表）。
+     * 播放网络流 URL。
+     * 同时将 URL 添加到本地频道列表（source='' 标记为本地频道），
+     * 方便用户后续在本地列表中找到并再次播放。
      * @param url M3U/M3U8/HLS/RTSP/RTMP 等协议 URL
      */
     fun playUrl(url: String) {
@@ -4204,15 +4206,24 @@ PlayerType.EXO -> scheme in setOf("http", "https", "rtsp")
             return
         }
         Log.i(TAG, "playUrl: $url")
-        _currentIdx.value = -1
+        // 添加到本地频道列表（如果尚未存在）
+        viewModelScope.launch {
+            val existing = _channels.value.find { it.url == url }
+            if (existing == null) {
+                val name = url.substringAfterLast('/').takeIf { it.isNotEmpty() } ?: url
+                repository.addChannel(url, name, "本地").onSuccess { idx ->
+                    loadChannels()
+                    _currentIdx.value = idx
+                }
+            } else {
+                _currentIdx.value = _channels.value.indexOfFirst { it.url == url }
+            }
+        }
         _playbackState.value = PlaybackState(mode = PlayMode.LIVE)
-        // 续播位置：记录网络流信息（VOD 才保存，直播流自动过滤）
         currentPlaybackUrl = url
         currentPlaybackName = url
-        currentIsLocalFile = true  // 网络流走本地视频路径（chIdx=-1）
-        // 刷新当前 URL 的书签列表
+        currentIsLocalFile = true
         refreshCurrentBookmarks()
-        // 协议兼容性检查（与 playChannel 一致）
         if (!isUrlSupportedByPlayer(url, _playerType.value)) {
             Log.w(TAG, "playUrl: ${_playerType.value.displayName} does not support $url, switching to MPV")
             showOsd("协议不支持", "${_playerType.value.displayName} 不支持此协议，已切换到 MPV")

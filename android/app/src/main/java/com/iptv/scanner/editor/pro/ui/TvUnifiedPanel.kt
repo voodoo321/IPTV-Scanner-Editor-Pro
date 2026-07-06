@@ -135,7 +135,7 @@ fun TvUnifiedPanel(viewModel: AppViewModel) {
     val groups = remember(allGroups, channels, channelsTab) {
         if (channelsTab == ChannelTab.LOCAL) {
             channels
-                .filter { ProgressHelper.isLocalFile(it.url) }
+                .filter { it.source.isEmpty() || ProgressHelper.isLocalFile(it.url) }
                 .map { it.group }
                 .filter { it.isNotEmpty() }
                 .distinct()
@@ -633,7 +633,7 @@ private fun ChannelsColumn(
     val filteredChannels = remember(channels, selectedGroup, channelsTab) {
         val all = channels.mapIndexed { idx, c -> c to idx }
         val tabbed = if (channelsTab == ChannelTab.LOCAL) {
-            all.filter { (c, _) -> ProgressHelper.isLocalFile(c.url) }
+            all.filter { (c, _) -> c.source.isEmpty() || ProgressHelper.isLocalFile(c.url) }
         } else {
             all
         }

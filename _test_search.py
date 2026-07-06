@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, '.')
 
-from services.subtitle_download_service import SubtitleDownloadService
+from services.subtitle_download_service import SubtitleDownloadService  # noqa: E402
 
 svc = SubtitleDownloadService()
 

@@ -1,6 +1,6 @@
 import os
 
-from PySide6 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame
 import asyncio
@@ -28,7 +28,7 @@ class AboutDialog(FloatingDialog):
 
         from ..theme_manager import get_theme_manager
         get_theme_manager().register_window(self)
-    
+
     def _init_ui(self):
         """初始化 UI"""
         from ui.styles import AppStyles
@@ -44,7 +44,7 @@ class AboutDialog(FloatingDialog):
         # 图标居中显示
         logo_label = QtWidgets.QLabel()
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        from PySide6.QtGui import QPixmap, QIcon
+        from PySide6.QtGui import QIcon
         from utils.general_utils import get_icon_path
         ico_path = get_icon_path()
         if os.path.exists(ico_path):
@@ -58,10 +58,13 @@ class AboutDialog(FloatingDialog):
                 pixmap = icon.pixmap(max_size)
             else:
                 pixmap = icon.pixmap(256, 256)  # 默认使用 256x256
-            
+
             if not pixmap.isNull():
                 # 缩放到 128x128，保持宽高比，使用平滑变换
-                scaled = pixmap.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                scaled = pixmap.scaled(
+                    128, 128,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation)
                 logo_label.setPixmap(scaled)
         else:
 
@@ -140,10 +143,17 @@ class AboutDialog(FloatingDialog):
         bottom_layout.setSpacing(12)
 
         self.copyright_label = QtWidgets.QLabel(tr("copyright_text", "© 2025-2026 IPTV Scanner Editor Pro"))
-        self.copyright_label.setStyleSheet(f"font-size: 10px; color: {c['player_panel_secondary']}; background-color: transparent;")
+        self.copyright_label.setStyleSheet(
+            f"font-size: 10px; color: {c['player_panel_secondary']};"
+            f" background-color: transparent;"
+        )
 
         github_link = QtWidgets.QLabel()
-        github_link.setText(f'<a href="https://github.com/sumingyd/IPTV-Scanner-Editor-Pro" style="color: {c["accent"]}; text-decoration: none; font-size: 10px;">{tr("github_repo", "GitHub Repository")}</a>')
+        github_link.setText(
+            f'<a href="https://github.com/sumingyd/IPTV-Scanner-Editor-Pro" '
+            f'style="color: {c["accent"]}; text-decoration: none; font-size: 10px;">'
+            f'{tr("github_repo", "GitHub Repository")}</a>'
+        )
         github_link.setOpenExternalLinks(True)
 
         close_btn = QtWidgets.QPushButton(tr("close_button", "Close"))
@@ -164,7 +174,7 @@ class AboutDialog(FloatingDialog):
         import threading
         self._version_thread = threading.Thread(target=self._check_version_thread, daemon=True)
         self._version_thread.start()
-    
+
     def _check_version_thread(self):
         """在线程中检查版本（不阻塞 UI）"""
         tr = self.language_manager.tr
@@ -198,7 +208,7 @@ class AboutDialog(FloatingDialog):
             self._latest_version_result = tr("fetch_failed_text", "(Fetch Failed)")
             from utils.thread_safety import invoke_on_thread
             invoke_on_thread(self, self._update_version_ui)
-    
+
     def _update_version_ui(self):
         """在主线程中更新版本显示"""
         from core.log_manager import global_logger as logger
@@ -251,7 +261,10 @@ class AboutDialog(FloatingDialog):
             if child_name == "infoCard":
                 continue
             if child == getattr(self, 'copyright_label', None):
-                child.setStyleSheet(f"font-size: 10px; color: {c['player_panel_secondary']}; background-color: transparent;")
+                child.setStyleSheet(
+                    f"font-size: 10px; color: {c['player_panel_secondary']};"
+                    f" background-color: transparent;"
+                )
                 continue
             existing = child.styleSheet()
             if 'accent' in existing or val_style.split(';')[1] in existing:

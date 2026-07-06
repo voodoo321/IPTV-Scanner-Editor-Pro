@@ -1,10 +1,9 @@
 from PySide6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-                             QProgressBar, QWidget, QApplication)
-from PySide6.QtCore import Qt, QTimer, QRect
-from PySide6.QtGui import QFont, QCursor
+                               QProgressBar, QApplication)
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QFont
 from ui.floating_dialog import FloatingDialog
 from ui.styles import AppStyles
-from core.log_manager import global_logger as logger
 from utils.platform_utils import wayland_move
 
 

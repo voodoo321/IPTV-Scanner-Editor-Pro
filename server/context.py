@@ -1,5 +1,6 @@
 import os
-import sys
+import json
+import time
 import threading
 import logging
 from typing import Optional, List, Dict
@@ -141,8 +142,10 @@ class StandaloneScanner:
                                 chunk = next(r.iter_content(2048), b'') or b''
                             except Exception:
                                 pass
-                            try: r.close()
-                            except: pass
+                            try:
+                                r.close()
+                            except Exception:
+                                pass
                             # 判断内容类型
                             is_media = False
                             media_kind = ''
@@ -220,8 +223,10 @@ class StandaloneScanner:
                                   'tvg_id': '', 'tvg_name': name, 'valid': True}
                             return (u, True, f'收到数据 {len(data)}B', latency, ch)
                         finally:
-                            try: sock.close()
-                            except: pass
+                            try:
+                                sock.close()
+                            except Exception:
+                                pass
                     except socket.timeout:
                         latency = int((_t.time() - t0) * 1000)
                         # 超时未收到数据：不添加为频道（避免生成大量无效频道）
@@ -277,7 +282,6 @@ class StandaloneScanner:
                 self._ctx._channels = self._ctx._channels + found_channels
                 # 持久化到 channels_cache.json：进程重启后扫描频道不丢失
                 self._ctx._save_channels_to_cache()
-                import time
                 self._ctx._last_load_time = time.time()
                 self.last_message = f'完成：发现 {len(found_channels)} 个有效频道'
                 logger.info(f"URL 范围扫描完成，发现 {len(found_channels)} 个有效频道，已持久化")
@@ -369,7 +373,6 @@ class StandaloneScanner:
             # 更新 context 的频道列表
             if all_channels and not self._stop_event.is_set():
                 self._ctx._channels = all_channels
-                import time
                 self._ctx._last_load_time = time.time()
                 self.last_message = f'完成：共 {len(all_channels)} 个频道'
                 logger.info(f"独立模式扫描完成，加载了 {len(all_channels)} 个频道")
@@ -424,7 +427,6 @@ class ServerContext:
 
     def _get_channels_cache_path(self) -> str:
         """频道缓存文件路径（与 config.ini 同目录）"""
-        import os
         return os.path.join(self._config.config_dir, 'channels_cache.json')
 
     def _load_channels_from_cache(self):
@@ -432,7 +434,6 @@ class ServerContext:
         if not self._config:
             return
         try:
-            import os, json, time
             cache_path = self._get_channels_cache_path()
             if os.path.exists(cache_path):
                 with open(cache_path, 'r', encoding='utf-8') as f:
@@ -452,7 +453,6 @@ class ServerContext:
         if not self._config:
             return
         try:
-            import os, json, time
             cache_path = self._get_channels_cache_path()
             data = {'channels': self._channels, 'saved_at': time.time()}
             with open(cache_path, 'w', encoding='utf-8') as f:
@@ -494,7 +494,6 @@ class ServerContext:
                 else:
                     self._channels = all_channels
                     logger.info("独立模式加载了 0 个频道（无缓存可保留）")
-            import time
             self._last_load_time = time.time()
         except Exception as e:
             logger.error(f"加载频道数据失败: {e}")
@@ -502,7 +501,6 @@ class ServerContext:
     def reload_if_needed(self, max_age=300):
         if not self._standalone:
             return
-        import time
         if time.time() - self._last_load_time > max_age:
             self._load_channels_from_file()
 
@@ -529,7 +527,9 @@ class ServerContext:
             if not config:
                 with self._source_load_lock:
                     self._source_loading = False
-                    self._source_load_status = {'loading': False, 'total': 0, 'loaded': 0, 'channels': 0, 'message': '配置未初始化'}
+                    self._source_load_status = {
+                        'loading': False, 'total': 0, 'loaded': 0,
+                        'channels': 0, 'message': '配置未初始化'}
                 return
 
             # 收集要加载的源
@@ -548,7 +548,9 @@ class ServerContext:
             if not sources:
                 with self._source_load_lock:
                     self._source_loading = False
-                    self._source_load_status = {'loading': False, 'total': 0, 'loaded': 0, 'channels': 0, 'message': '无订阅源'}
+                    self._source_load_status = {
+                        'loading': False, 'total': 0, 'loaded': 0,
+                        'channels': 0, 'message': '无订阅源'}
                 return
 
             all_channels: List[Dict] = []
@@ -574,6 +576,9 @@ class ServerContext:
                     from datetime import datetime
                     config.update_playlist_source_last_update(idx, datetime.now().isoformat())
                     if channels:
+                        # 标记频道来源（订阅源 URL），用于 Android 端区分 SUB/LOCAL tab
+                        for c in channels:
+                            c['source'] = src_url
                         all_channels.extend(channels)
                     else:
                         err = 'M3U 解析为空'
@@ -589,18 +594,23 @@ class ServerContext:
                 # 合并而非覆盖：保留不在订阅源中的扫描/导入频道（按 URL 去重）
                 # 根因：之前 self._channels = all_channels 完全覆盖，导致扫描/导入的频道丢失
                 existing_urls = {c.get('url', '') for c in all_channels if c.get('url', '')}
-                extra_channels = [c for c in self._channels if c.get('url', '') and c.get('url', '') not in existing_urls]
+                extra_channels = [
+                    c for c in self._channels
+                    if c.get('url', '') and c.get('url', '') not in existing_urls
+                ]
                 if extra_channels:
                     self._channels = all_channels + extra_channels
                     logger.info(f"订阅源 {len(all_channels)} 个 + 本地保留 {len(extra_channels)} 个（扫描/导入）")
                 else:
                     self._channels = all_channels
                 self._save_channels_to_cache()
-                import time
                 self._last_load_time = time.time()
                 with self._source_load_lock:
                     self._source_loading = False
-                    self._source_load_status = {'loading': False, 'total': len(sources), 'loaded': len(sources), 'channels': len(self._channels), 'message': f'完成：{len(self._channels)} 个频道'}
+                    self._source_load_status = {
+                        'loading': False, 'total': len(sources),
+                        'loaded': len(sources), 'channels': len(self._channels),
+                        'message': f'完成：{len(self._channels)} 个频道'}
                 logger.info(f"订阅源加载完成，共 {len(self._channels)} 个频道")
             else:
                 # 加载到空列表时不覆盖已有频道，提示当前频道数和失败原因
@@ -614,18 +624,22 @@ class ServerContext:
                     msg = '未加载到频道'
                 with self._source_load_lock:
                     self._source_loading = False
-                    self._source_load_status = {'loading': False, 'total': len(sources), 'loaded': len(sources), 'channels': existing, 'message': msg}
+                    self._source_load_status = {
+                        'loading': False, 'total': len(sources),
+                        'loaded': len(sources), 'channels': existing,
+                        'message': msg}
         except Exception as e:
             logger.error(f"订阅源加载异常: {e}")
             with self._source_load_lock:
                 self._source_loading = False
-                self._source_load_status = {'loading': False, 'total': 0, 'loaded': 0, 'channels': 0, 'message': f'异常: {e}'}
+                self._source_load_status = {
+                    'loading': False, 'total': 0, 'loaded': 0,
+                    'channels': 0, 'message': f'异常: {e}'}
 
     def get_source_load_status(self) -> Dict:
         """获取订阅源加载状态"""
         with self._source_load_lock:
             return dict(self._source_load_status)
-
 
     def get_all_channels(self) -> List[Dict]:
         if self._main_window:

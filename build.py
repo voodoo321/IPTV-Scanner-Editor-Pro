@@ -25,6 +25,7 @@ def _run(cmd, **kwargs):
     print(f"执行: {' '.join(cmd) if isinstance(cmd, list) else cmd}")
     return subprocess.run(cmd, **kwargs)
 
+
 print(f"当前 Python 版本: {sys.version}")
 print(f"当前工作目录: {os.getcwd()}")
 print(f"当前平台: {sys.platform}")
@@ -52,13 +53,19 @@ if IS_WINDOWS:
     ICON_PATH = str(PROJECT_ROOT / "resources" / "logo.ico")
 elif IS_MACOS:
     DATA_SEP = ':'
-    ICON_PATH = str(PROJECT_ROOT / "resources" / "logo.png") if (PROJECT_ROOT / "resources" / "logo.png").exists() else None
+    ICON_PATH = (
+        str(PROJECT_ROOT / "resources" / "logo.png")
+        if (PROJECT_ROOT / "resources" / "logo.png").exists() else None
+    )
 elif IS_ANDROID:
     DATA_SEP = ':'
     ICON_PATH = None
 elif IS_LINUX:
     DATA_SEP = ':'
-    ICON_PATH = str(PROJECT_ROOT / "resources" / "logo.png") if (PROJECT_ROOT / "resources" / "logo.png").exists() else None
+    ICON_PATH = (
+        str(PROJECT_ROOT / "resources" / "logo.png")
+        if (PROJECT_ROOT / "resources" / "logo.png").exists() else None
+    )
 else:
     DATA_SEP = ':'
     ICON_PATH = None
@@ -646,7 +653,7 @@ def post_process_macos_app():
         except (subprocess.CalledProcessError, FileNotFoundError):
             print("提示: iconutil 不可用，跳过 .icns 生成（macOS 上需要）")
             if logo_png.exists():
-                print(f"  将使用 logo.png 作为图标")
+                print("  将使用 logo.png 作为图标")
 
     print(f"macOS .app 打包完成: {app_path}")
 
@@ -724,7 +731,7 @@ echo "安装完成! 可以从应用菜单启动 {APP_NAME}"
     install_path.chmod(install_path.stat().st_mode | stat.S_IEXEC)
     print(f"安装脚本已生成: {install_path}")
 
-    print(f"Linux 打包后处理完成")
+    print("Linux 打包后处理完成")
 
 
 def clean_build():

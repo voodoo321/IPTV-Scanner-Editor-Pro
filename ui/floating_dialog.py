@@ -1,18 +1,16 @@
-from PySide6.QtWidgets import (QDialog, QDockWidget, QWidget, QApplication,
-                              QHBoxLayout, QLabel, QPushButton)
+from PySide6.QtWidgets import (QDialog, QDockWidget, QWidget,
+                               QHBoxLayout, QLabel, QPushButton)
 from PySide6 import QtWidgets
 from PySide6.QtGui import QPainter, QColor, QPainterPath, QCursor, QIcon, QBitmap
 from PySide6.QtCore import Qt, QRectF, QSize
 import PySide6.QtCore as QtCore
-import sys
-from utils.platform_utils import is_windows, is_macos, is_android, is_linux, is_wayland, wayland_move
+from utils.platform_utils import is_windows, is_macos, is_android, is_linux, is_wayland
 
 
 def _hide_from_taskbar(window):
     if is_windows():
         try:
             import ctypes
-            from ctypes import wintypes
             GWL_EXSTYLE = -20
             WS_EX_TOOLWINDOW = 0x00000080
             WS_EX_APPWINDOW = 0x00040000
@@ -74,7 +72,6 @@ class FloatingDockWidget(QDockWidget):
             parent_window = self.parent()
             if parent_window is None:
                 return
-            from PySide6.QtGui import QWindow
             parent_handle = parent_window.windowHandle()
             if parent_handle is None:
                 parent_window.createWinId()
@@ -302,7 +299,7 @@ class FloatingDockWidget(QDockWidget):
         super().mouseReleaseEvent(event)
 
     def paintEvent(self, event):
-        from ui.styles import AppStyles, color_to_hex, rgba_to_blended_hex
+        from ui.styles import AppStyles, rgba_to_blended_hex
 
         if not self._dwm_blur_enabled:
             self._try_enable_dwm_blur()
@@ -321,7 +318,10 @@ class FloatingDockWidget(QDockWidget):
                 bg = (0, 0, 0) if effective_mode == 'dark' else (255, 255, 255)
                 self._cached_frosted_colors = {}
                 for k, v in colors.items():
-                    self._cached_frosted_colors[k] = rgba_to_blended_hex(v, bg) if isinstance(v, str) and v.startswith('rgba') else v
+                    self._cached_frosted_colors[k] = (
+                        rgba_to_blended_hex(v, bg)
+                        if isinstance(v, str) and v.startswith('rgba') else v
+                    )
                 self._cached_frosted_theme = current_theme
             dock_colors = self._cached_frosted_colors
         else:
@@ -350,8 +350,6 @@ class FloatingDialog(QDialog):
     def create_dialog_title_bar(title_text, close_target, min_width=46, height=32):
         from ui.styles import AppStyles
         colors = AppStyles._get_colors()
-        r = AppStyles._get_style_border_radius()
-        title_bg = colors.get('window', '#1e1e1e')
         title_text_color = colors.get('window_text', '#ffffff')
         close_hover = AppStyles.COLOR_CLOSE_HOVER if hasattr(AppStyles, 'COLOR_CLOSE_HOVER') else '#e81123'
 
@@ -381,7 +379,7 @@ class FloatingDialog(QDialog):
         close_btn.setToolTip('关闭')
         close_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: transparent; border: none; border-radius: {r}px;
+                background-color: transparent; border: none; border-radius: 6px;
             }}
             QPushButton:hover {{
                 background-color: {close_hover}; color: white;
@@ -428,7 +426,6 @@ class FloatingDialog(QDialog):
             QtCore.QTimer.singleShot(50, self._fix_first_paint)
         if is_linux() and self.parent():
             try:
-                from PySide6.QtGui import QWindow
                 parent_handle = self.parent().windowHandle()
                 if parent_handle is None:
                     self.parent().createWinId()
@@ -560,7 +557,7 @@ class FloatingDialog(QDialog):
     def paintEvent(self, event):
         from PySide6.QtGui import QPainterPath
         from PySide6.QtCore import QRectF
-        from ui.styles import AppStyles, color_to_hex, rgba_to_blended_hex
+        from ui.styles import AppStyles, rgba_to_blended_hex
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -576,7 +573,10 @@ class FloatingDialog(QDialog):
                 bg = (0, 0, 0) if effective_mode == 'dark' else (255, 255, 255)
                 self._cached_frosted_colors = {}
                 for k, v in colors.items():
-                    self._cached_frosted_colors[k] = rgba_to_blended_hex(v, bg) if isinstance(v, str) and v.startswith('rgba') else v
+                    self._cached_frosted_colors[k] = (
+                        rgba_to_blended_hex(v, bg)
+                        if isinstance(v, str) and v.startswith('rgba') else v
+                    )
                 self._cached_frosted_theme = current_theme
             dlg_colors = self._cached_frosted_colors
         else:
@@ -595,4 +595,3 @@ class FloatingDialog(QDialog):
             painter.drawPath(path)
 
         super().paintEvent(event)
-

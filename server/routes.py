@@ -1,8 +1,6 @@
 import asyncio
-import json
 import logging
 import os
-import time
 from aiohttp import web, web_response
 
 from server.app import get_channel_model, get_config, get_main_window, get_server, get_context
@@ -44,9 +42,10 @@ def _register_admin_routes(app):
         content_type = _MIME_TYPES.get(ext, 'application/octet-stream')
         with open(file_path, 'rb') as f:
             content = f.read()
-        return web.Response(body=content, content_type=content_type,
-                          headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                   'Pragma': 'no-cache', 'Expires': '0'})
+        return web.Response(
+            body=content, content_type=content_type,
+            headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
+                     'Pragma': 'no-cache', 'Expires': '0'})
 
     try:
         app.router.add_get('/admin/', _handle_admin)
@@ -244,9 +243,10 @@ async def handle_index(request):
     if os.path.isfile(admin_index):
         with open(admin_index, 'rb') as f:
             content = f.read()
-        return web.Response(body=content, content_type='text/html', charset='utf-8',
-                          headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                   'Pragma': 'no-cache', 'Expires': '0'})
+        return web.Response(
+            body=content, content_type='text/html', charset='utf-8',
+            headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
+                     'Pragma': 'no-cache', 'Expires': '0'})
     # fallback: 原来的 API 文档页面
     server = get_server()
     base_url = f"http://{request.host}"
@@ -325,14 +325,23 @@ def _render_index_page(base_url, server, lang='en'):
             mc = method_colors.get(api["method"], "#999")
             type_badge = ""
             if api["type"] == "link":
-                type_badge = f'<a href="{base_url}{api["path"]}" target="_blank" style="color:#4CAF50;font-size:11px;text-decoration:none;">&#128279; Open</a>'
+                type_badge = (
+                    f'<a href="{base_url}{api["path"]}" target="_blank" '
+                    f'style="color:#4CAF50;font-size:11px;text-decoration:none;">'
+                    f'&#128279; Open</a>'
+                )
             elif api["type"] == "stream":
                 type_badge = '<span style="color:#9C27B0;font-size:11px;">STREAM</span>'
             else:
                 type_badge = '<span style="color:#607D8B;font-size:11px;">JSON</span>'
             rows += f"""
             <tr>
-                <td style="padding:8px 12px;"><span style="background:{mc};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">{api["method"]}</span></td>
+                <td style="padding:8px 12px;">
+                    <span style="background:{mc};color:#fff;padding:2px 8px;
+                               border-radius:4px;font-size:11px;font-weight:600;">
+                        {api["method"]}
+                    </span>
+                </td>
                 <td style="padding:8px 12px;font-family:monospace;font-size:13px;color:#E0E0E0;">{api["path"]}</td>
                 <td style="padding:8px 12px;font-size:12px;color:#BDBDBD;">{api["desc"]}</td>
                 <td style="padding:8px 12px;">{type_badge}</td>
@@ -340,7 +349,9 @@ def _render_index_page(base_url, server, lang='en'):
         api_sections += f"""
         <div style="margin-bottom:24px;">
             <h3 style="color:#E0E0E0;margin:0 0 8px 0;font-size:15px;">{group["icon"]} {group["title"]}</h3>
-            <table style="width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;
+                   background:rgba(255,255,255,0.03);
+                   border-radius:8px;overflow:hidden;">
                 {rows}
             </table>
         </div>"""
@@ -356,23 +367,40 @@ def _render_index_page(base_url, server, lang='en'):
 <title>{_t(lang, 'title')} - API</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#1a1a2e; color:#E0E0E0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; min-height:100vh; }}
+body {{ background:#1a1a2e; color:#E0E0E0;
+        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+        min-height:100vh; }}
 .container {{ max-width:960px; margin:0 auto; padding:40px 24px; }}
 .header {{ text-align:center; margin-bottom:40px; }}
 .header h1 {{ font-size:28px; font-weight:700; color:#fff; margin-bottom:8px; }}
 .header p {{ font-size:14px; color:#9E9E9E; }}
-.lang-toggle {{ position:absolute; top:16px; right:24px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:6px 14px; color:#BDBDBD; font-size:12px; text-decoration:none; transition:all 0.2s; }}
+.lang-toggle {{ position:absolute; top:16px; right:24px;
+                background:rgba(255,255,255,0.08);
+                border:1px solid rgba(255,255,255,0.12);
+                border-radius:6px; padding:6px 14px; color:#BDBDBD;
+                font-size:12px; text-decoration:none; transition:all 0.2s; }}
 .lang-toggle:hover {{ background:rgba(255,255,255,0.15); color:#fff; }}
-.status-card {{ display:flex; align-items:center; justify-content:center; gap:16px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; margin-bottom:32px; }}
-.status-dot {{ width:12px; height:12px; border-radius:50%; background:{status_color}; box-shadow:0 0 8px {status_color}; }}
+.status-card {{ display:flex; align-items:center; justify-content:center;
+                gap:16px; background:rgba(255,255,255,0.05);
+                border:1px solid rgba(255,255,255,0.08);
+                border-radius:12px; padding:20px; margin-bottom:32px; }}
+.status-dot {{ width:12px; height:12px; border-radius:50%;
+               background:{status_color};
+               box-shadow:0 0 8px {status_color}; }}
 .status-info {{ text-align:left; }}
 .status-info .label {{ font-size:12px; color:#9E9E9E; text-transform:uppercase; letter-spacing:1px; }}
 .status-info .value {{ font-size:16px; font-weight:600; color:#fff; }}
 .quick-links {{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:32px; }}
-.quick-link {{ background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:12px 20px; text-decoration:none; color:#E0E0E0; font-size:13px; transition:all 0.2s; }}
+.quick-link {{ background:rgba(255,255,255,0.06);
+               border:1px solid rgba(255,255,255,0.1);
+               border-radius:8px; padding:12px 20px;
+               text-decoration:none; color:#E0E0E0;
+               font-size:13px; transition:all 0.2s; }}
 .quick-link:hover {{ background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.2); color:#fff; }}
 .quick-link .path {{ font-family:monospace; color:#4CAF50; font-size:12px; }}
-.footer {{ text-align:center; margin-top:40px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.06); color:#616161; font-size:12px; }}
+.footer {{ text-align:center; margin-top:40px; padding-top:20px;
+           border-top:1px solid rgba(255,255,255,0.06);
+           color:#616161; font-size:12px; }}
 </style>
 </head>
 <body>
@@ -394,10 +422,14 @@ body {{ background:#1a1a2e; color:#E0E0E0; font-family:-apple-system,BlinkMacSys
         </div>
     </div>
     <div class="quick-links">
-        <a class="quick-link" href="{base_url}/api/m3u" target="_blank">&#9654; {_t(lang, 'quick_m3u')} <span class="path">/api/m3u</span></a>
-        <a class="quick-link" href="{base_url}/api/channels" target="_blank">&#128250; {_t(lang, 'quick_channels')} <span class="path">/api/channels</span></a>
-        <a class="quick-link" href="{base_url}/api/status" target="_blank">&#8505; {_t(lang, 'quick_status')} <span class="path">/api/status</span></a>
-        <a class="quick-link" href="{base_url}/api/epg" target="_blank">&#128197; {_t(lang, 'quick_epg')} <span class="path">/api/epg</span></a>
+        <a class="quick-link" href="{base_url}/api/m3u" target="_blank">
+            &#9654; {_t(lang, 'quick_m3u')} <span class="path">/api/m3u</span></a>
+        <a class="quick-link" href="{base_url}/api/channels" target="_blank">
+            &#128250; {_t(lang, 'quick_channels')} <span class="path">/api/channels</span></a>
+        <a class="quick-link" href="{base_url}/api/status" target="_blank">
+            &#8505; {_t(lang, 'quick_status')} <span class="path">/api/status</span></a>
+        <a class="quick-link" href="{base_url}/api/epg" target="_blank">
+            &#128197; {_t(lang, 'quick_epg')} <span class="path">/api/epg</span></a>
     </div>
     {api_sections}
     <div class="footer">
@@ -578,7 +610,7 @@ async def handle_channel_add(request):
     data.setdefault('name', data['url'].split('/')[-1])
     data.setdefault('group', '未分类')
     data.setdefault('valid', None)
-    data.setdefault('status', '')
+    data.setdefault('source', '')  # 空源 = 手动添加/本地频道
     model = get_channel_model()
     if model:
         model.add_channel(data)
@@ -591,16 +623,17 @@ async def handle_channels_import(request):
     except Exception:
         return _json_error('无效的请求数据', 400)
     content = data.get('content', '')
-    name = data.get('name', 'imported')
     if not content:
         return _json_error('内容为空', 400)
     try:
         from services.m3u_parser import parse_m3u_content
         channels, _ = parse_m3u_content(content)
+        # 标记为手动导入（source=''），在 Android 端 LOCAL tab 显示
+        for c in channels:
+            c['source'] = ''
         ctx = get_context()
         if ctx and hasattr(ctx, '_channels'):
             ctx._channels.extend(channels)
-            existing_groups = set(ctx._channels and [c.get('group', '') for c in ctx._channels] or [])
             all_groups = list(dict.fromkeys([c.get('group', '未分组') for c in ctx._channels]))
             ctx._channels_list = all_groups if hasattr(ctx, '_channels_list') else None
         return _json_success(imported=len(channels))
@@ -841,8 +874,8 @@ async def handle_scan_start(request):
     url = data.get('url', '').strip()
     if not url:
         return _json_error('需要提供扫描URL')
-    from PySide6.QtCore import QMetaObject, Qt
     from utils.thread_safety import invoke_on_thread
+
     def _trigger():
         try:
             scan_dialog.ip_range_input.setEditText(url)
@@ -875,6 +908,7 @@ async def handle_scan_stop(request):
     if not scan_dialog:
         return _json_error('扫描窗口未打开', 400)
     from utils.thread_safety import invoke_on_thread
+
     def _trigger():
         try:
             if hasattr(scan_dialog, '_on_scan_clicked'):
@@ -1053,6 +1087,7 @@ async def handle_mappings_refresh(request):
     try:
         # 在后台线程中刷新，避免阻塞
         import threading
+
         def _do_refresh():
             try:
                 mm.refresh_cache()
@@ -1094,7 +1129,11 @@ async def handle_epg(request):
                 data = epg_parser.get_epg_data_copy() or {}
                 channels = [{'id': k, 'name': k, 'programmes': len(v)} for k, v in data.items()]
                 if search:
-                    channels = [ch for ch in channels if search in ch.get('name', '').lower() or search in ch.get('id', '').lower()]
+                    channels = [
+                        ch for ch in channels
+                        if search in ch.get('name', '').lower()
+                        or search in ch.get('id', '').lower()
+                    ]
                 return _json_success(channels=channels)
         # 桌面端 EPG parser 接口
         if hasattr(epg_parser, 'get_programmes_for_channel'):
@@ -1116,7 +1155,11 @@ async def handle_epg(request):
         if hasattr(epg_parser, 'get_all_channels'):
             channels = epg_parser.get_all_channels()
             if search:
-                channels = [ch for ch in channels if search in ch.get('name', '').lower() or search in ch.get('id', '').lower()]
+                channels = [
+                    ch for ch in channels
+                    if search in ch.get('name', '').lower()
+                    or search in ch.get('id', '').lower()
+                ]
             return _json_success(channels=channels)
     except Exception as e:
         logger.error(f"获取EPG失败: {e}")

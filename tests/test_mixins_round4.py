@@ -1,14 +1,13 @@
-import sys
 import os
-import pytest
+import sys
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mixins.channel_mixin import ChannelMixin
-from mixins.settings_mixin import SettingsMixin
-from mixins.window_mixin import WindowMixin
-from tests.conftest import MockMainWindow
+from mixins.channel_mixin import ChannelMixin  # noqa: E402
+from mixins.settings_mixin import SettingsMixin  # noqa: E402
+from mixins.window_mixin import WindowMixin  # noqa: E402
+from tests.conftest import MockMainWindow  # noqa: E402
 
 
 class _ChannelTestHost(MockMainWindow, ChannelMixin):

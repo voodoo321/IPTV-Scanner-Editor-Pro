@@ -3,5 +3,9 @@
         "./core",
         "./ui/dialogs"
     ],
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "catpawpyright.analysis.extraPaths": [
+        "./core",
+        "./ui/dialogs"
+    ]
 }

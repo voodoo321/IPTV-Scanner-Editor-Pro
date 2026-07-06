@@ -15,7 +15,6 @@ class FavoritesController:
         from services.favorites_service import FavoritesService
         self._service = FavoritesService(config_manager)
 
-
     @property
     def service(self):
         return self._service

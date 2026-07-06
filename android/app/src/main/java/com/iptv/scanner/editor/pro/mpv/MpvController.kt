@@ -840,17 +840,41 @@ class MpvController : MPVLib.EventObserver, Player {
     }
 
     /**
-     * 重建后恢复播放状态。loadfile + seek absolute 恢复进度。
-     * 注意：seek 在 file-loaded 事件后才会生效，调用方应在收到 fileLoaded 后再 seek。
+     * 重建后恢复播放状态。
+     *
+     * 关键修复：使用 [MPVView.playFile] 而非直接调用 MPVLib.command("loadfile")。
+     *
+     * 原因：切换播放器（MPV → EXO/IJK/VLC → MPV）后切回 MPV 时，
+     * MPVView.initialize() 复用 native mpv 实例（nativeInstanceAlive=true），
+     * 此时 mpv 的 vo 仍为 "null"（destroy() 时设置），Surface 尚未 attach。
+     * 若直接 loadfile，mpv 在 vo=null + 无 Surface 的状态下加载文件，
+     * 后续 surfaceCreated 恢复 vo 后 mpv 已陷入无法渲染的状态。
+     *
+     * playFile 会检查 Surface 有效性：
+     * - Surface 未就绪 → 存入 filePath，等 surfaceCreated 时（vo 已恢复）才 loadfile
+     * - Surface 已就绪 → 直接 loadfile（vo 已在 surfaceCreated 中恢复）
+     *
+     * seek 位置通过 [MPVView.pendingResumePos] 传递，
+     * FILE_LOADED 事件回调中读取并执行 seek。
      */
     override fun restorePlaybackState(url: String, timePosSec: Double) {
         postOnUiThread {
-            MPVLib.command(arrayOf("loadfile", url))
-            if (timePosSec > 0) {
-                // 用 absolute+exact 模式精确 seek
-                MPVLib.command(arrayOf("seek", timePosSec.toString(), "absolute", "exact"))
+            val v = mpvView
+            if (v != null) {
+                // 先设置 pendingResumePos，FILE_LOADED 事件回调中会读取并 seek
+                if (timePosSec > 0) {
+                    v.pendingResumePos = timePosSec
+                }
+                // 通过 playFile 加载：Surface 未就绪时延迟到 surfaceCreated
+                v.playFile(url)
+            } else {
+                // mpvView 为 null 时的兜底（正常流程不应发生）
+                MPVLib.command(arrayOf("loadfile", url))
+                if (timePosSec > 0) {
+                    MPVLib.command(arrayOf("seek", timePosSec.toString(), "absolute", "exact"))
+                }
+                MPVLib.setPropertyBoolean("pause", false)
             }
-            MPVLib.setPropertyBoolean("pause", false)
         }
     }
 

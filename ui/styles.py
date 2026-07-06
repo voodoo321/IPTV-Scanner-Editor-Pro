@@ -2071,13 +2071,13 @@ class AppStyles:
             QSlider {{
                 background-color: transparent;
             }}
-            QSlider::groove:horizontal {{ 
+            QSlider::groove:horizontal {{
                 {groove}
-            }} 
+            }}
             QSlider::sub-page:horizontal {{
                 {sub_page}
             }}
-            QSlider::handle:horizontal {{ 
+            QSlider::handle:horizontal {{
                 {handle}
             }}
         """
@@ -2087,13 +2087,13 @@ class AppStyles:
         colors = AppStyles._get_qss_colors()
         groove, sub_page, handle = AppStyles._style_slider_decoration(colors)
         return f"""
-            QSlider::groove:horizontal {{ 
+            QSlider::groove:horizontal {{
                 {groove}
-            }} 
+            }}
             QSlider::sub-page:horizontal {{
                 {sub_page}
             }}
-            QSlider::handle:horizontal {{ 
+            QSlider::handle:horizontal {{
                 {handle}
             }}
         """

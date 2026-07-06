@@ -97,10 +97,10 @@ class MemoryManager(Singleton):
         """扩容对象池"""
         old_max = pool_info['max_size']
         initial_size = pool_info.get('initial_max_size', old_max)
-        
+
         # 计算新的max_size（翻倍，但不超过上限）
         new_max = min(old_max * 2, initial_size * self._max_pool_multiplier)
-        
+
         pool_info['max_size'] = new_max
         logger.info(f"对象池自动扩容: {old_max} -> {new_max}（上限: {initial_size * self._max_pool_multiplier}）")
 
@@ -127,14 +127,14 @@ class MemoryManager(Singleton):
         old_max = pool_info['max_size']
         initial_size = pool_info.get('initial_max_size', old_max)
         pool = pool_info['pool']
-        
+
         # 计算新的max_size（减半，但不小于初始大小）
         new_max = max(old_max // 2, initial_size)
-        
+
         # 如果新大小小于当前池中对象数量，先移除多余对象
         while len(pool) > new_max and pool:
             pool.pop()
-        
+
         pool_info['max_size'] = new_max
         logger.info(f"对象池自动缩容: {old_max} -> {new_max}（初始大小: {initial_size}）")
 
@@ -150,7 +150,7 @@ class MemoryManager(Singleton):
 
             if len(pool) < pool_info['max_size']:
                 pool.append(obj)
-                
+
                 # 检查是否需要缩容（在返回对象时异步检查）
                 if self._auto_resize_enabled and len(pool) > 10:
                     if self._should_shrink_pool(pool_info):
@@ -298,5 +298,3 @@ def log_memory_stats():
     """记录内存统计信息（便捷函数）"""
     manager = get_memory_manager()
     manager.log_memory_stats()
-
-
