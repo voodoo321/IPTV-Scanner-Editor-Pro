@@ -162,6 +162,8 @@ jobs:
             --disable-ffplay \
             --disable-programs \
             --enable-network \
+            --disable-xlib \
+            --disable-libxcb \
             --extra-cflags="-I$HOME/davs2-install/include" \
             --extra-ldflags="-L$HOME/davs2-install/lib -Wl,-rpath,$HOME/davs2-install/lib"
           make -j$(sysctl -n hw.ncpu)
@@ -252,19 +254,22 @@ jobs:
                       /usr/lib/*|/System/Library/*) continue ;;
                   esac
                   [ -e "$dep" ] || continue
-                  # 解析符号链接（macOS readlink 不支持 -f，用 python 获取真实路径）
-                  real_dep=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$dep" 2>/dev/null || echo "$dep")
-                  [ -e "$real_dep" ] || continue
-                  bname=$(basename "$real_dep")
+                  # 使用 dep 的 basename（兼容性名称，如 libluajit-5.1.2.dylib），
+                  # 而非 realpath 解析后的 basename（完整版本号，如 libluajit-5.1.2.1.1782726002.dylib）。
+                  # otool 引用的是兼容性名称，rpath 修复循环也按兼容性名称查找文件，
+                  # 如果用 realpath 的 basename，文件名不匹配，rpath 修复会失败。
+                  bname=$(basename "$dep")
                   # 跳过已处理（避免死循环）
                   grep -qxF "$bname" "$SEEN_FILE" 2>/dev/null && continue
                   echo "$bname" >> "$SEEN_FILE"
-                  # 如果不在目标目录，复制并递归收集其依赖
+                  # 如果不在目标目录，复制（cp -L 跟随符号链接，复制实际文件内容，但保留兼容性名称）
                   if [ ! -f "$dest_dir/$bname" ]; then
-                      cp -L "$real_dep" "$dest_dir/" 2>/dev/null || continue
-                      echo "  收集: $bname <- $real_dep"
-                      collect_deps "$dest_dir/$bname" "$dest_dir"
+                      cp -L "$dep" "$dest_dir/$bname" 2>/dev/null || continue
+                      echo "  收集: $bname <- $dep"
                   fi
+                  # 始终递归收集依赖，即使文件已存在（FFmpeg 库在 collect_deps 之前被预复制，
+                  # 但其间接依赖如 libX11/libxcb 尚未收集）
+                  collect_deps "$dest_dir/$bname" "$dest_dir"
               done
           }
           collect_deps "$STAGING/lib/libmpv.2.dylib" "$STAGING/lib"
