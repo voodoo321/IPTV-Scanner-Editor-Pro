@@ -168,6 +168,18 @@ jobs:
           # 必须用 refspec `master:refs/remotes/origin/master` 显式创建引用，
           # 否则 `git rev-list --count origin/master` 仍然失败。
           git fetch origin --depth 1 master:refs/remotes/origin/master
+          # 根因修复：davs2 AVS2 解码器在播放某些 AVS2 文件时崩溃（段错误）
+          # 根因：aec_read_intra_pmode_c() (source/common/aec.cc) 在解码色度预测模式
+          # 出错（act_sym==4）时直接 `return 4`，但未设置 `p_aec->b_bit_error` 标志。
+          # 调用者 cu_read_header() 中的 AEC_RETURN_ON_ERROR(-1) 宏检查此标志，
+          # 由于未设置，错误不被捕获，解码器继续使用错误的色度预测模式，
+          # bitstream 不同步，最终导致段错误（access violation/UnsatisfiedLinkError）。
+          # 修复：在 return 4 前设置 b_bit_error = 1，让 AEC_RETURN_ON_ERROR 触发，
+          # 解码器跳过错误的 CU 并继续解码后续内容。
+          # 当前工作目录是 davs2 源码根目录（path.sh 设置）
+          sed -i '/Error in intra_chroma_pred_mode/{n;s/return 4;/p_aec->b_bit_error = 1; return 4;/}' source/common/aec.cc
+          echo "=== Patched aec.cc (crash fix) ==="
+          grep -A1 "Error in intra_chroma_pred_mode" source/common/aec.cc
           cd build/linux
           ./configure \
           	--host=$ndk_triple \

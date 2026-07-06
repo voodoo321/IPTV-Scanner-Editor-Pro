@@ -117,6 +117,23 @@ jobs:
           grep -E "GIT_TAG|_EP_GIT_RESET" packages/spirv-tools.cmake
           echo "=== Patched glslang.cmake ==="
           grep -E "GIT_TAG|_EP_GIT_RESET" packages/glslang.cmake
+          # 5. 修复 davs2 AVS2 解码器崩溃 bug
+          # 根因：aec_read_intra_pmode_c() 在解码出错时直接 return 4，但未设置
+          # p_aec->b_bit_error 标志。调用者的 AEC_RETURN_ON_ERROR 宏检查此标志，
+          # 由于未设置，错误不会被捕获，解码器继续使用错误的色度预测模式，
+          # bitstream 不同步，最终导致段错误（access violation）。
+          # 修复：在 return 4 前设置 b_bit_error = 1，让 AEC_RETURN_ON_ERROR 触发，
+          # 解码器跳过错误的 CU 并继续解码后续内容。
+          python3 << 'PYEOF'
+          with open('packages/davs2.cmake', 'r') as f:
+              content = f.read()
+          patch_line = "    PATCH_COMMAND bash -c \"sed -i '/Error in intra_chroma_pred_mode/{n;s/return 4;/p_aec->b_bit_error = 1; return 4;/}' <SOURCE_DIR>/source/common/aec.cc\""
+          content = content.replace('UPDATE_COMMAND ""', 'UPDATE_COMMAND ""\n' + patch_line)
+          with open('packages/davs2.cmake', 'w') as f:
+              f.write(content)
+          PYEOF
+          echo "=== Patched davs2.cmake (crash fix) ==="
+          grep -A1 "PATCH_COMMAND" packages/davs2.cmake
 
       - name: Loading toolchain cache
         # 缓存 GCC 交叉编译工具链构建结果，失败也保存（重试可复用源码和配置）
@@ -224,6 +241,12 @@ jobs:
           rm -f build_x86_64/packages/spirv-headers-prefix/src/spirv-headers-stamp/HEAD
           rm -f build_x86_64/packages/spirv-tools-prefix/src/spirv-tools-stamp/HEAD
           rm -f build_x86_64/packages/glslang-prefix/src/glslang-stamp/HEAD
+          # 删除 davs2 的 patch stamp 文件，强制重新应用崩溃修复 patch
+          # 原因：修改了 davs2.cmake 添加 PATCH_COMMAND，如果 davs2-patch stamp
+          # 文件已存在，ninja 会跳过 patch 步骤，修复不会生效
+          rm -f build_x86_64/packages/davs2-prefix/src/davs2-stamp/davs2-patch
+          rm -f build_x86_64/packages/davs2-prefix/src/davs2-stamp/davs2-configure
+          rm -f build_x86_64/packages/davs2-prefix/src/davs2-stamp/davs2-build
           ninja -C build_x86_64 update
           # 在 ninja 构建前下载 CAVS patches 到 src_packages/cavs_patches
           # PATCH_COMMAND 在 SOURCE_DIR (src_packages/ffmpeg) 中执行，用 ../cavs_patches/ 引用
