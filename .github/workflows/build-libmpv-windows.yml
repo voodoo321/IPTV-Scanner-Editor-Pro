@@ -124,19 +124,44 @@ jobs:
           # bitstream 不同步，最终导致段错误（access violation）。
           # 修复：在 return 4 前设置 b_bit_error = 1，让 AEC_RETURN_ON_ERROR 触发，
           # 解码器跳过错误的 CU 并继续解码后续内容。
+          #
+          # 实现方式：将 sed 命令写入独立的 shell 脚本文件，避免在 CMake
+          # PATCH_COMMAND 字符串中直接包含分号。
+          # 原因：CMake ExternalProject 将 PATCH_COMMAND 值作为列表处理，
+          # 分号(;)是列表分隔符。即使在 CMake 引号字符串中用 \; 转义，
+          # 变量展开后分号仍会被视为列表分隔符，导致 bash -c "..." 中的
+          # 命令被拆分成多个参数。使用独立脚本文件完全避免此问题。
+          mkdir -p cavs_patches
+          cat > cavs_patches/davs2_crash_fix.sh << 'SHEOF'
+          #!/bin/bash
+          set -e
+          AEC_FILE="$1/source/common/aec.cc"
+          if grep -q "Error in intra_chroma_pred_mode" "$AEC_FILE"; then
+            if ! grep -q "p_aec->b_bit_error = 1" "$AEC_FILE"; then
+              sed -i '/Error in intra_chroma_pred_mode/{n;s/return 4;/p_aec->b_bit_error = 1; return 4;/}' "$AEC_FILE"
+              echo "davs2 crash fix applied successfully"
+            else
+              echo "davs2 crash fix already applied, skipping"
+            fi
+          else
+            echo "WARNING: Pattern 'Error in intra_chroma_pred_mode' not found in $AEC_FILE"
+          fi
+          SHEOF
+          chmod +x cavs_patches/davs2_crash_fix.sh
           python3 << 'PYEOF'
           with open('packages/davs2.cmake', 'r') as f:
               content = f.read()
-          # 注意：sed 命令中的分号必须用 \; 转义，否则 CMake 会将分号视为
-          # 列表分隔符，导致 bash -c "..." 中的命令字符串被拆分成多个参数
-          # \\; 在 Python 字符串中生成 \;，CMake 将 \; 解释为字面分号
-          patch_line = "    PATCH_COMMAND bash -c \"sed -i '/Error in intra_chroma_pred_mode/{n\\;s/return 4\\;/p_aec->b_bit_error = 1\\; return 4\\;/}' <SOURCE_DIR>/source/common/aec.cc\""
+          # PATCH_COMMAND 在 SOURCE_DIR (src_packages/davs2) 中执行
+          # 从 src_packages/davs2/ 到根目录 cavs_patches/ 的相对路径是 ../../cavs_patches/
+          patch_line = '    PATCH_COMMAND bash ../../cavs_patches/davs2_crash_fix.sh <SOURCE_DIR>'
           content = content.replace('UPDATE_COMMAND ""', 'UPDATE_COMMAND ""\n' + patch_line)
           with open('packages/davs2.cmake', 'w') as f:
               f.write(content)
           PYEOF
           echo "=== Patched davs2.cmake (crash fix) ==="
           grep -A1 "PATCH_COMMAND" packages/davs2.cmake
+          echo "=== davs2 crash fix script ==="
+          cat cavs_patches/davs2_crash_fix.sh
 
       - name: Loading toolchain cache
         # 缓存 GCC 交叉编译工具链构建结果，失败也保存（重试可复用源码和配置）
@@ -255,6 +280,8 @@ jobs:
           # PATCH_COMMAND 在 SOURCE_DIR (src_packages/ffmpeg) 中执行，用 ../cavs_patches/ 引用
           CAVS_PATCHES="d208cf8 48ad875 e633613 fb9a3ec 0de8ee1 4cd3e6d"
           mkdir -p src_packages/cavs_patches
+          # 复制 davs2 崩溃修复脚本到 src_packages/cavs_patches/（保障路径可用性）
+          cp cavs_patches/davs2_crash_fix.sh src_packages/cavs_patches/ 2>/dev/null || true
           for sha in $CAVS_PATCHES; do
             if [ ! -f "src_packages/cavs_patches/${sha}.patch" ]; then
               echo "Downloading CAVS patch $sha..."
