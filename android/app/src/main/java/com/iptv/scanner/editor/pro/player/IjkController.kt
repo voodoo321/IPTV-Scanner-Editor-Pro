@@ -264,19 +264,18 @@ class IjkController(private val context: Context) : Player {
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", if (hardwareDecode) 1L else 0L)
         if (hardwareDecode) {
             p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1L)
-            // 确保 MediaCodec 仅用于视频，不用于音频。
-            // 部分设备的 MediaCodec 音频解码器不兼容 IPTV 流的音频格式（如 MPEG-2/AC3），
-            // 导致硬解模式下无声音。显式禁用 MediaCodec 音频解码，强制使用 FFmpeg 软解音频。
-            p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-audio", 0L)
+            // 注意：不设置 mediacodec-audio。
+            // IJK 默认 mediacodec-audio=0（仅视频硬解，音频始终用 FFmpeg 软解），
+            // 显式设置 mediacodec-audio=0 在部分 IJK 版本上会导致音频解码器初始化异常
+            // （可能是选项名不识别导致 side effect），反而引起无声音问题。
         }
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "rtsp-tcp", 1L)
-        // 音频输出：使用 AudioTrack（而非 OpenSL ES）。
-        // 根因：部分 Android TV（如 MTK 平台）的音频 HAL 使用 PCM_32_BIT 格式，
-        // OpenSL ES 与该格式不兼容导致静默输出（dumpsys media.audio_flinger 显示 No output streams）。
-        // AudioTrack 直接使用 Android 音频框架，兼容性更好，能自动处理格式转换。
-        // 之前用 opensles=1 在某些设备上正常，但在 PCM_32_BIT HAL 设备上无声音，
-        // 统一改为 AudioTrack 以确保最大兼容性。
-        p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 0L)
+        // 音频输出：使用 OpenSL ES（opensles=1）。
+        // OpenSL ES 是 IJK 推荐的音频输出方式，在大多数手机和平板上正常工作。
+        // 之前用 opensles=0（AudioTrack）是为了兼容部分 Android TV 的 PCM_32_BIT HAL，
+        // 但在手机上 AudioTrack 对某些音频格式（如 AC3/EAC3）输出异常，导致无声音。
+        // 如果 TV 端出现无声音问题，可考虑根据设备类型动态切换。
+        p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 1L)
         // 禁用 SoundTouch 音频变速处理：部分流上 SoundTouch 会引入音频丢失/静音问题。
         // 禁用后 IJK 用原生 sample rate 输出 PCM，避免变速处理导致的兼容性问题。
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "soundtouch", 0L)
@@ -309,7 +308,7 @@ class IjkController(private val context: Context) : Player {
         // 部分流的音频 sample rate（如 22050）或 channel count 不被设备 AudioTrack 直接支持，
         // 启用 swresample 强制重采样到设备支持的格式。
         p.setOption(IjkMediaPlayer.OPT_CATEGORY_CODEC, "swresample", 1L)
-        Log.i(TAG, "applyDefaultOptions: hardwareDecode=$hardwareDecode, mediacodec-audio=0, opensles=0(AudioTrack), soundtouch=0, swresample=1, min-frames=5, start-on-prepared=1")
+        Log.i(TAG, "applyDefaultOptions: hardwareDecode=$hardwareDecode, opensles=1(OpenSL-ES), soundtouch=0, swresample=1, min-frames=5, start-on-prepared=1")
     }
 
     // -----------------------------------------------------------------

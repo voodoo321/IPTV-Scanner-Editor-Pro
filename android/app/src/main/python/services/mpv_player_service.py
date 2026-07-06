@@ -548,9 +548,10 @@ class MpvPlayerController(QObject):
         self._set_mpv_string('hdr-compute-peak', 'no')
         self._set_mpv_string('target-prim', 'bt.709')
         self._set_mpv_string('target-trc', sdr_trc)
-        self._set_mpv_string('target-peak', '')
+        # target-peak=100：显式 SDR 电平，确保 swapchain 切换到 sRGB 色彩空间
+        self._set_mpv_string('target-peak', '100')
         self._set_mpv_string('gamut-mapping-mode', '')
-        self.logger.info(f"HDR配置: tonemap → SDR (bt.709/{sdr_trc})")
+        self.logger.info(f"HDR配置: tonemap → SDR (bt.709/{sdr_trc}, target-peak=100)")
 
     def _apply_passthrough_config(self, is_pq_video=True):
         # d3d11-output-csp=pq + target-colorspace-hint=yes 已在初始化时设置
@@ -567,7 +568,14 @@ class MpvPlayerController(QObject):
         #   若设置 target-peak=10000，mpv 会将 HLG 的 1.0（参考白 1000 nits）映射到
         #   10000 nits，导致高光过度拉伸过曝，tone-mapping=clip 截断高光，形成阴阳脸
         #   （用户反馈的"HLG人脸阴阳脸"）。
-        #   修复：不设置 target-peak，用 hdr-compute-peak=yes 让 mpv 自动计算峰值，
+        #
+        #   target-peak=1000（HLG 参考白电平）：
+        #   必须设置非零 target-peak 才能触发 target-colorspace-hint 将 swapchain
+        #   切换到 PQ 色彩空间。target-peak='' （auto/0）时 mpv 无法确定输出为 HDR，
+        #   不切换 swapchain，HLG→PQ 输出在 sRGB swapchain 上显示为极暗画面
+        #   （用户反馈的"HLG黑乎乎"）。1000 是 HLG 标准参考白电平（1000 nits），
+        #   不会导致 target-peak=10000 的过曝/阴阳脸问题。
+        #   hdr-compute-peak=yes 仍保留用于动态计算场景峰值。
         #   tone-mapping=auto（gpu-next 中选 spline）让 mpv 平滑处理 HLG→PQ 转换。
         #
         # gamut-mapping-mode=relative：相对色域映射，保持色彩准确性，
@@ -583,10 +591,11 @@ class MpvPlayerController(QObject):
             self.logger.info("HDR配置: passthrough → PQ直通 (bt.2020/pq, target-peak=10000, gamut=relative)")
         else:
             # HLG 视频：让 mpv 自动处理 HLG→PQ 转换
+            # target-peak=1000：HLG 参考白电平，触发 PQ swapchain 切换（修复首次播放黑屏）
             self._set_mpv_string('tone-mapping', 'auto')
             self._set_mpv_string('hdr-compute-peak', 'yes')
-            self._set_mpv_string('target-peak', '')
-            self.logger.info("HDR配置: passthrough → HLG自动转换 (bt.2020/pq, compute-peak=yes, gamut=relative)")
+            self._set_mpv_string('target-peak', '1000')
+            self.logger.info("HDR配置: passthrough → HLG自动转换 (bt.2020/pq, target-peak=1000, compute-peak=yes, gamut=relative)")
 
     def _apply_scrgb_config(self, is_pq_video=True):
         # d3d11-output-csp=pq + target-colorspace-hint=yes 已在初始化时设置
@@ -613,9 +622,12 @@ class MpvPlayerController(QObject):
         self._set_mpv_string('hdr10-opt', 'no')
         self._set_mpv_string('target-prim', 'bt.2020')
         self._set_mpv_string('target-trc', sdr_trc)
-        self._set_mpv_string('target-peak', '')
+        # target-peak=100：显式 SDR 电平，确保 target-colorspace-hint 将 swapchain
+        # 切换到 sRGB 色彩空间。target-peak='' 时可能残留上次 HDR 视频的 PQ swapchain，
+        # 导致 SDR 内容在 PQ swapchain 上显示为极暗画面。
+        self._set_mpv_string('target-peak', '100')
         self._set_mpv_string('gamut-mapping-mode', 'relative')
-        self.logger.info(f"HDR配置: WCG → 保持bt.2020色域 (bt.2020/{sdr_trc}, gamut=relative)")
+        self.logger.info(f"HDR配置: WCG → 保持bt.2020色域 (bt.2020/{sdr_trc}, target-peak=100, gamut=relative)")
 
     def _reset_hdr_params(self):
         # 非 HDR 视频：显式指定 SDR 目标，确保 bt.2020 色域（WCG）视频能正确映射到 bt.709
@@ -630,9 +642,10 @@ class MpvPlayerController(QObject):
         self._set_mpv_string('hdr10-opt', 'no')
         self._set_mpv_string('target-prim', 'bt.709')
         self._set_mpv_string('target-trc', sdr_trc)
-        self._set_mpv_string('target-peak', '')
+        # target-peak=100：显式 SDR 电平，确保 swapchain 切换到 sRGB 色彩空间
+        self._set_mpv_string('target-peak', '100')
         self._set_mpv_string('gamut-mapping-mode', '')
-        self.logger.info(f"HDR配置: 已重置为SDR默认值 (bt.709/{sdr_trc})")
+        self.logger.info(f"HDR配置: 已重置为SDR默认值 (bt.709/{sdr_trc}, target-peak=100)")
 
 
     def _set_mpv_string(self, name, value):
