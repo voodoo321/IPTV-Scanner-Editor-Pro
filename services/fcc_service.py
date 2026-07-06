@@ -23,6 +23,43 @@ from typing import Optional, Tuple
 from core.log_manager import global_logger as logger
 
 
+# ---------------------------------------------------------------------------
+# 持久化 UDP socket —— 避免每次通知都创建/关闭 socket 的开销
+# ---------------------------------------------------------------------------
+_udp_sock_lock = threading.Lock()
+_udp_sock: Optional[socket.socket] = None
+
+
+def _get_udp_socket() -> socket.socket:
+    """获取（必要时创建）持久化 UDP socket。
+
+    使用非阻塞模式（setblocking(False)），sendto 永不阻塞，
+    实现 fire-and-forget 语义——UDP 本身不保证送达，无需等待。
+    """
+    global _udp_sock
+    if _udp_sock is not None:
+        return _udp_sock
+    with _udp_sock_lock:
+        if _udp_sock is None:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setblocking(False)  # 非阻塞：sendto 立即返回
+            _udp_sock = sock
+            logger.debug("FCC持久化UDP socket已创建")
+    return _udp_sock
+
+
+def _close_udp_socket():
+    """关闭持久化 UDP socket（应用退出时调用）"""
+    global _udp_sock
+    with _udp_sock_lock:
+        if _udp_sock is not None:
+            try:
+                _udp_sock.close()
+            except Exception:
+                pass
+            _udp_sock = None
+
+
 def parse_fcc_from_url(url: str) -> Optional[Tuple[str, int]]:
     """从频道 URL 中解析 FCC 代理地址
 
@@ -98,12 +135,15 @@ def send_fcc_notification(
 ) -> bool:
     """向 FCC 代理发送换台通知（UDP）
 
+    使用持久化非阻塞 socket，LEAVE+JOIN 合并为单个 UDP 包发送，
+    减少 socket 操作次数和网络往返延迟。
+
     Args:
         fcc_ip: FCC 代理IP
         fcc_port: FCC 代理端口
         leave_addr: 要离开的组播地址 (ip, port)，可为 None
         join_addr: 要加入的组播地址 (ip, port)，可为 None
-        timeout: UDP 超时秒数
+        timeout: 已弃用（非阻塞模式无需超时），保留以保持向后兼容
 
     Returns:
         是否发送成功
@@ -118,33 +158,39 @@ def send_fcc_notification(
         return True
 
     payload = '\n'.join(messages) + '\n'
-    return _send_udp(fcc_ip, fcc_port, payload.encode('utf-8'), timeout)
+    return _send_udp(fcc_ip, fcc_port, payload.encode('utf-8'))
 
 
-def _send_udp(ip: str, port: int, data: bytes, timeout: float = 1.0) -> bool:
-    """发送 UDP 数据包"""
-    sock = None
+def _send_udp(ip: str, port: int, data: bytes, timeout: float = 0.0) -> bool:
+    """发送 UDP 数据包（使用持久化非阻塞 socket）
+
+    非阻塞模式下的 sendto 行为：
+    - 正常情况：数据拷贝到内核发送缓冲区后立即返回
+    - 缓冲区满：抛出 BlockingIOError，静默忽略（UDP 不保证送达）
+    """
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(timeout)
+        sock = _get_udp_socket()
         sock.sendto(data, (ip, port))
         logger.debug(f"FCC通知已发送: {ip}:{port}, 数据: {data!r}")
         return True
+    except BlockingIOError:
+        # 内核发送缓冲区满，UDP 本就不保证送达，静默忽略
+        logger.debug(f"FCC通知发送缓冲区满，已丢弃: {ip}:{port}")
+        return False
     except Exception as e:
         logger.debug(f"FCC通知发送失败: {e}")
         return False
-    finally:
-        if sock:
-            try:
-                sock.close()
-            except Exception:
-                pass
 
 
 class FCCService:
     """FCC 快速换台服务管理器
 
     跟踪当前播放频道的组播地址，换台时自动向 FCC 代理发送 leave/join。
+
+    优化点：
+    - LEAVE+JOIN 合并为单个 UDP 包，一次 socket 操作完成换台通知
+    - 使用持久化非阻塞 socket，消除每次创建/关闭 socket 的开销
+    - 无需额外线程：单包发送足够快（微秒级），不会阻塞 UI 线程
     """
 
     def __init__(self):
@@ -152,7 +198,12 @@ class FCCService:
         self._current_fcc: Optional[Tuple[str, int]] = None
 
     def on_channel_change(self, new_url: str) -> None:
-        """频道切换时调用——同步发送FCC join通知，异步发送leave通知
+        """频道切换时调用——合并 LEAVE+JOIN 为单个 UDP 包同步发送
+
+        优化说明：
+        - 旧实现：JOIN 同步发送 + LEAVE 异步线程发送（2 次 socket 操作 + 1 次线程创建）
+        - 新实现：LEAVE+JOIN 合并为 1 个 UDP 包同步发送（1 次 socket 操作，0 次线程创建）
+        - rtp2httpd 收到 LEAVE+JOIN 后可立即释放旧流资源并转发新流
 
         Args:
             new_url: 新频道的URL
@@ -174,38 +225,29 @@ class FCCService:
         if leave_addr == join_addr:
             return
 
-        if join_addr:
+        # 合并 LEAVE+JOIN 为单个 UDP 包，一次发送完成
+        # 非阻塞 socket + sendto 耗时 < 0.1ms，无需异步线程
+        if join_addr or leave_addr:
             try:
-                send_fcc_notification(fcc_addr[0], fcc_addr[1], None, join_addr, timeout=0.5)
+                send_fcc_notification(
+                    fcc_addr[0], fcc_addr[1],
+                    leave_addr=leave_addr,
+                    join_addr=join_addr,
+                )
             except Exception as e:
-                logger.debug(f"FCC join同步发送失败: {e}")
-
-        if leave_addr:
-            threading.Thread(
-                target=self._notify_fcc,
-                args=(fcc_addr, leave_addr, None),
-                daemon=True,
-            ).start()
+                logger.debug(f"FCC通知发送失败: {e}")
 
     def on_stop(self) -> None:
         """停止播放时调用——发送 leave 通知"""
         if self._current_fcc and self._current_multicast:
             fcc = self._current_fcc
             leave = self._current_multicast
-            threading.Thread(
-                target=send_fcc_notification,
-                args=(fcc[0], fcc[1], leave, None),
-                daemon=True,
-            ).start()
+            try:
+                send_fcc_notification(fcc[0], fcc[1], leave_addr=leave)
+            except Exception as e:
+                logger.debug(f"FCC leave通知失败: {e}")
         self._current_multicast = None
         self._current_fcc = None
-
-    @staticmethod
-    def _notify_fcc(fcc_addr, leave_addr, join_addr):
-        try:
-            send_fcc_notification(fcc_addr[0], fcc_addr[1], leave_addr, join_addr)
-        except Exception as e:
-            logger.debug(f"FCC通知线程异常: {e}")
 
     def reset(self) -> None:
         """重置状态"""

@@ -1049,6 +1049,11 @@ class MpvPlayerController(QObject):
             return
         u = url.lower()
 
+        # FCC 频道检测：rtp2httpd 等 FCC 代理已预先加入组播并转发流，
+        # 数据到达速度快且编码通常为 H.264/H.265，可使用更小的探测参数加速首帧。
+        # 非 FCC 频道保留大 probesize 以兼容 CAVS 等编码。
+        is_fcc = '?fcc=' in u
+
         is_network = (u.startswith(('http://', 'https://', 'rtmp://', 'rtsp://', 'rtp://', 'udp://')) or
                       '.m3u8' in u)
         if u.startswith('bd://'):
@@ -1107,8 +1112,14 @@ class MpvPlayerController(QObject):
                 self._set_mpv_string('demuxer-lavf-probesize', '5000000')
                 self._set_mpv_string('demuxer-lavf-analyzeduration', '5')
                 self._set_mpv_string('force-seekable', 'yes')
+            elif is_fcc:
+                # FCC 快速换台：rtp2httpd 代理已预加入组播，流数据即时可用。
+                # probesize 2MB 足够识别各种编码，analyzeduration 2s 进一步减少首帧等待。
+                # （probesize 500KB 太小会导致部分频道无法识别编码 → 不出画面）
+                self._set_mpv_string('demuxer-lavf-probesize', '2000000')
+                self._set_mpv_string('demuxer-lavf-analyzeduration', '2')
             else:
-                # 直播流需要足够的探测数据让 demuxer 识别编码格式（如 CAVS）
+                # 非 FCC 直播流需要足够的探测数据让 demuxer 识别编码格式（如 CAVS）
                 # probesize=32 太少会导致 CAVS 流无法被识别（track-list 为空）
                 self._set_mpv_string('demuxer-lavf-probesize', '5000000')
                 self._set_mpv_string('demuxer-lavf-analyzeduration', '5')
@@ -1120,7 +1131,7 @@ class MpvPlayerController(QObject):
             self._set_cache_param('demuxer-max-bytes', f'{max_bytes_mib}MiB')
             self._set_mpv_string('demuxer-max-back-bytes', f'{max_bytes_mib}MiB')
             self._set_cache_param('demuxer-readahead-secs', '300')
-            self.logger.debug(f"[mpv] ts demux=mpegts cache={cache_secs}s back={max_bytes_mib}MiB dur={program_duration}s")
+            self.logger.debug(f"[mpv] ts demux=mpegts cache={cache_secs}s back={max_bytes_mib}MiB dur={program_duration}s fcc={is_fcc}")
             return
 
         if '.m3u8' in u or 'format=hls' in u:
@@ -1141,10 +1152,15 @@ class MpvPlayerController(QObject):
             return
 
         self._set_mpv_string('demuxer-lavf-format', '')
-        # 显式设置 probesize/analyzeduration，确保 CAVS 等编码能被 demuxer 正确识别
-        # （mpv 默认值可能因版本/平台不同而不一致）
-        self._set_mpv_string('demuxer-lavf-probesize', '5000000')
-        self._set_mpv_string('demuxer-lavf-analyzeduration', '5')
+        if is_fcc and not is_vod:
+            # FCC 频道：适度降低探测参数加速首帧（保留足够数据兼容各种编码）
+            self._set_mpv_string('demuxer-lavf-probesize', '2000000')
+            self._set_mpv_string('demuxer-lavf-analyzeduration', '2')
+        else:
+            # 显式设置 probesize/analyzeduration，确保 CAVS 等编码能被 demuxer 正确识别
+            # （mpv 默认值可能因版本/平台不同而不一致）
+            self._set_mpv_string('demuxer-lavf-probesize', '5000000')
+            self._set_mpv_string('demuxer-lavf-analyzeduration', '5')
         self._set_mpv_string('cache', 'yes')
         self._set_cache_param('cache-secs', str(cache_secs))
         self._set_cache_param('demuxer-max-bytes', f'{max_bytes_mib}MiB')
@@ -1152,7 +1168,7 @@ class MpvPlayerController(QObject):
         self._set_mpv_string('force-seekable', 'yes')
         self._set_cache_param('demuxer-readahead-secs', '120')
         self._set_mpv_string('demuxer-cache-wait', 'no')
-        self.logger.debug(f"[mpv] generic http cache=yes seekable=yes")
+        self.logger.debug(f"[mpv] generic http cache=yes seekable=yes fcc={is_fcc}")
 
         if (u.startswith('http://') or u.startswith('https://')):
             headers = settings.get('http_headers', '')
@@ -1564,6 +1580,13 @@ class MpvPlayerController(QObject):
             self.is_paused = False
             self.current_url = None
             self.media_info = {}
+
+            # 关闭 FCC 持久化 UDP socket
+            try:
+                from services.fcc_service import _close_udp_socket
+                _close_udp_socket()
+            except Exception:
+                pass
 
             self.logger.info("MPV播放器已完全终止")
         except Exception as e:

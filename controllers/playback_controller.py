@@ -180,7 +180,7 @@ class PlaybackController:
             logger.debug(f"play_channel: 开始切换频道 {channel.get('name', '?')} url={channel.get('url', '?')}")
             self._do_play_channel(channel)
         finally:
-            QTimer.singleShot(500, lambda: setattr(self, '_is_switching', False))
+            QTimer.singleShot(300, lambda: setattr(self, '_is_switching', False))
 
     def _do_play_channel(self, channel: Dict[str, Any]):
         if not (hasattr(self.window, 'player_controller') and self.window.player_controller and channel):

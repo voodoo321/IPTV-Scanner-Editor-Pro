@@ -12,42 +12,28 @@ import com.iptv.scanner.editor.pro.data.UserPrefs
 /**
  * 基于 SurfaceView 的 MPV 视频渲染视图。
  *
- * 为什么不用 TextureView？
- * - mpv 的 vo=gpu 在 Android 用 EGL 直接绑定 ANativeWindow 进行渲染
- * - SurfaceView 的 Surface 内部由 ANativeWindow 支撑，可以直接被 mpv vo=gpu 渲染
- * - TextureView 的 Surface 由 SurfaceTexture 支撑，渲染内容进入 BufferQueue 后需要外部
- *   消费 GL_TEXTURE_EXTERNAL_OES 纹理才能显示，而 mpv vo=gpu 不会消费 SurfaceTexture
- * - 实测：TextureView + mpv vo=gpu 表现为黑屏（有声音无画面）
+ * 生命周期策略（keep-alive）：
+ * - MPVLib.create() 只在进程首次使用 MPV 时调用一次
+ * - MPVLib.destroy() **永远不调用**（进程退出时 OS 自动回收）
+ * - 切换播放器时：destroy() 只做 stop + playlist-clear + detachSurface
+ * - 切回 MPV 时：initialize() 复用实例，surfaceCreated() 重新 attachSurface + 设置 vo
  *
- * SurfaceView 默认 Z-order 在普通 View 之后，会通过 View 树里的"洞"显示画面。
- * 因此 Compose 容器不能画不透明 background，否则会遮挡 SurfaceView 画面。
- * 这是 mpv-android 官方实现方式（参考 is.xyz.mpv.BaseMPVView）。
+ * 根因：MPVLib.destroy() 在部分设备（如华为 Kirin arm64）上会 SIGSEGV，
+ * 即使已先调用 stop() + detachSurface()。mpv 内部线程的清理时机不可控，
+ * destroy() 可能在线程仍持有锁/资源时释放底层结构，导致 use-after-free。
+ * keep-alive 策略从根本上避免 destroy() 调用，以内存换稳定性。
+ *
+ * 状态重置（防止多次复用后状态累积残留）：
+ * - destroy() 中：stop + playlist-clear + vo=null + force-window=no + detachSurface
+ * - surfaceCreated() 中：attachSurface + force-window=yes + vo=voInUse
+ * - playlist-clear 清除 mpv 内部播放列表，防止旧 path 残留导致双重 loadfile
+ * - vo=null → vo=voInUse 的切换强制 vo 模块重新初始化，防止渲染状态累积
  */
 class MPVView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : SurfaceView(context, attrs), SurfaceHolder.Callback {
 
-    /**
-     * mpv 渲染配置。与 PC 端 services/mpv_player_service.py 对齐。
-     *
-     * 设计原则：
-     * - 不在代码里硬编码任何针对特定 GPU/CPU 的 workaround
-     * - vo/hwdec 由调用方传入，默认值与 PC 端一致（vo=gpu, hwdec=auto-copy）
-     * - 若某设备 vo=gpu 出现兼容性问题（如 Mali-G76 黑屏），调用方可传入
-     *   vo=mediacodec_embed + hwdec=mediacodec 作为 fallback
-     * - 后续集成 IJK/Exo/VLC 时，本类可作为 Player 抽象层的一个实现
-     *
-     * @param vo video output，默认 "gpu"（与 PC 端一致）
-     *        - "gpu"：基于 EGL 的 GPU 渲染，支持 shader/HDR/OSD，兼容大多数 GPU
-     *        - "mediacodec_embed"：MediaCodec 直接渲染到 Surface，绕过 EGL
-     *          （GPU EGL 兼容性问题时的 fallback，但不支持 OSD/HDR）
-     * @param hwdec 硬件解码，默认 "auto-copy"（自动选择 + 拷贝到 CPU 内存）
-     *        - "auto-copy"：自动选择硬件解码器，拷贝到 CPU 内存（兼容性好，支持 vf 滤镜）
-     *        - "auto"：自动选择最佳硬解，优先直接输出（零拷贝，4K HDR 流畅，vf 滤镜不可用）
-     *        - "mediacodec"：MediaCodec 硬件解码（需配合 vo=mediacodec_embed）
-     *        - "no"：纯软件解码（兼容性最好，但耗电）
-     */
     @JvmOverloads
     fun initialize(
         configDir: String,
@@ -56,35 +42,31 @@ class MPVView @JvmOverloads constructor(
         hwdec: String = DEFAULT_HWDEC
     ) {
         voInUse = vo
-        // 代际计数器：本次 initialize 分配的代次，destroy() 时检查是否仍是当前活动代次。
         myGeneration = ++activeGeneration
-        Log.i(TAG, "initialize: generation=$myGeneration")
+        Log.i(TAG, "initialize: generation=$myGeneration, vo=$vo, hwdec=$hwdec")
 
-        // 如果存在旧的 native mpv 实例（之前 create 过但尚未 destroy），先销毁它。
-        //
-        // 时序保证：Compose 的 key(playerType) 确保旧 View 的 onRelease（→ destroy()）
-        // 在新 View 的 factory（→ initialize()）之前执行。因此当 initialize() 被调用时：
-        // 1. destroy() 已经执行过 stop() + detachSurface()，RenderThread 已无 Surface 可渲染
-        // 2. MpvController.detach() 已经执行过 removeObserver()，事件回调已移除
-        // 3. 旧 SurfaceView 已从 View 树移除，surfaceDestroyed 已触发
-        //
-        // 此时调用 MPVLib.destroy() 是安全的：RenderThread 已空闲（detachSurface 后阻塞等待新 Surface），
-        // 不会访问已释放资源。
         if (nativeInstanceCreated) {
+            // 复用现有 native mpv 实例（不 destroy + create）
+            Log.i(TAG, "initialize: reusing existing native mpv instance (generation=$myGeneration)")
             try {
-                MPVLib.destroy()
-                Log.i(TAG, "initialize: destroyed previous native instance")
+                // 运行时更新 hwdec（vo 由 surfaceCreated 设置，此时 surface 还没创建）
+                MPVLib.setPropertyString("hwdec", hwdec)
+                // 更新日志等级（运行时可切换）
+                updateLogLevel()
             } catch (e: Throwable) {
-                Log.w(TAG, "initialize: destroy previous instance failed: ${e.message}")
+                Log.w(TAG, "initialize: reuse setPropertyString failed: ${e.message}")
             }
+            // 清除 filePath，防止 surfaceCreated 走 filePath 分支加载旧路径
+            filePath = null
+            // 标记实例为活跃（surfaceDestroyed/destroy 会设为 false）
+            nativeInstanceAlive = true
+            holder.setFormat(PixelFormat.RGBA_8888)
+            holder.addCallback(this)
+            return
         }
 
-        // 创建全新的 native mpv 实例（不复用旧实例）。
-        //
-        // 之前尝试复用实例（stop + detachSurface → attachSurface），但多次 stop/detach/attach
-        // 循环后 mpv 内部状态（demuxer/decoder/vo）会累积残留，导致 path 属性不可用、
-        // video-reconfig 无效、loadfile 后无画面等问题。
-        // destroy + create 确保每次切回 MPV 都获得干净的实例状态。
+        // 首次创建：MPVLib.create + 完整初始化
+        Log.i(TAG, "initialize: creating new native mpv instance")
         MPVLib.create(context)
 
         MPVLib.setOptionString("config", "yes")
@@ -92,147 +74,91 @@ class MPVView @JvmOverloads constructor(
         for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir"))
             MPVLib.setOptionString(opt, cacheDir)
 
-        /* VO/HWDEC：与 PC 端 services/mpv_player_service.py 对齐。
-         * 默认 vo=gpu + hwdec=auto-copy，兼容大多数设备。
-         * 调用方可传入不同的 vo/hwdec 以适配特定设备。 */
         MPVLib.setOptionString("vo", vo)
         MPVLib.setOptionString("hwdec", hwdec)
         MPVLib.setOptionString("keep-open", "yes")
-
-        /* 视频比例保持（关键：解决竖屏下视频被拉伸铺满的问题）：
-         * - keepaspect=yes：视频在 surface 内部保持原始比例（默认值，显式设置确保）
-         * - keepaspect-window=no：不让窗口管理器试图保持视频比例
-         *   原因：Android 上 SurfaceView 的 surface 尺寸由 layout 决定（fillMaxSize=全屏），
-         *   keepaspect-window=yes（默认）会让 mpv 请求保持比例的窗口，与全屏 surface 冲突，
-         *   导致视频被拉伸铺满整个竖屏（1440x2984），破坏 16:9 比例。
-         *   设为 no 后，surface 用全屏尺寸，mpv 在 surface 内部按 keepaspect 计算显示区域，
-         *   视频会居中显示并保持比例（上下黑边）。
-         *   PC 端桌面版 mpv 不需要此设置（窗口管理器正确处理比例）。 */
         MPVLib.setOptionString("keepaspect", "yes")
         MPVLib.setOptionString("keepaspect-window", "no")
-
-        /* FBO 格式：部分 GPU（如 Mali-G76）不支持 rgba16f 浮点 FBO，
-         * 导致 vo=gpu 黑屏（有声音无画面）。使用 rgba8 整数格式确保兼容性。 */
         MPVLib.setOptionString("fbo-format", "rgba8")
 
-        /* 性能与音画同步（与 PC 端 _ensure_mpv_initialized 行 339-363 对齐，但 framedrop 调整）：
-         * - framedrop=all：解码慢或输出慢时都丢帧
-         *   PC 端用 framedrop=vo（只在输出慢时丢帧），但 Android 模拟器/低端设备解码慢，
-         *   仅 vo 模式会导致解码队列积压、视频帧延迟显示（音频比画面快）。
-         *   改用 all 模式在解码阶段就丢帧，减少积压延迟。性能充足时不会丢帧，无害。
-         * - video-sync=audio：以音频时钟为同步基准，视频帧迟到时丢帧而非阻塞
-         * - cache-pause-initial=no：初始缓存阶段不暂停，避免直播流启动卡顿 */
         MPVLib.setOptionString("framedrop", "all")
         MPVLib.setOptionString("video-sync", "audio")
         MPVLib.setOptionString("cache-pause-initial", "no")
 
-        /* 音画同步增强：
-         * 注意：不启用 audio-stream-silence（PC 端没有），该参数会让音频提前播放导致音画不同步
-         * 注意：不启用 video-latency-hacks（PC 端也没有），该参数可能导致 PTS 处理偏差 */
-
-        /* 缓冲与预读：与 PC 端 _load_playback_settings 默认值完全对齐
-         * PC 端默认：cache-secs=1.0, demuxer-max-bytes=16MiB, demuxer-max-back-bytes=4MiB
-         * 之前 Android 端设为 readahead=10s/max=50MiB/back=25MiB，导致视频解码队列过长产生 600ms 延迟
-         * 现在完全对齐 PC 端的小缓冲策略，保持低延迟 */
         MPVLib.setOptionString("demuxer-max-bytes", "16MiB")
         MPVLib.setOptionString("demuxer-max-back-bytes", "4MiB")
         MPVLib.setOptionString("demuxer-readahead-secs", "1")
         MPVLib.setOptionString("demuxer-seekable-cache", "yes")
         MPVLib.setOptionString("force-seekable", "yes")
 
-        /* 网络/直播优化（与 PC 端对齐，但 source-timeout 更宽松避免移动网络抖动） */
         MPVLib.setOptionString("network-timeout", "30")
         MPVLib.setOptionString("source-timeout", "10")
         MPVLib.setOptionString("stream-open-timeout", "30")
 
-        /* TLS 兼容性修复：
-         * mpv-android 用 mbedtls 作为 TLS 后端，部分 HTTPS 服务器（如非标准端口 8895 的 IPTV 源）
-         * 会 handshake 失败（mbedtls_ssl_handshake returned -0x4e = FATAL_ALERT_MESSAGE）。
-         * PC 端用 OpenSSL 无此问题。
-         * 临时方案：禁用 TLS 证书验证（verify=0），通过 stream-lavf-o 传给 ffmpeg。
-         * 风险：中间人攻击可替换流内容。对 IPTV 直播流可接受，敏感内容不适用。
-         * 根本方案：CI 工作流切换到 OpenSSL 版本的 mpv-android（或自行编译）。 */
         MPVLib.setOptionString("stream-lavf-o", "verify=0")
         MPVLib.setOptionString("tls-verify", "no")
 
-        /* 移动端解码优化：动态获取 CPU 核数（与 PC 端 _ensure_mpv_initialized 行 361-363 一致）
-         * PC 端：threads = max(2, cpu_count // 2)
-         * 之前 Android 端固定为 2，在多核设备上解码线程不足导致解码队列积压 */
         val cpuCount = Runtime.getRuntime().availableProcessors()
         val threads = maxOf(2, cpuCount / 2)
         MPVLib.setOptionString("vd-lavc-threads", threads.toString())
-
-        /* 注意：不启用 vd-queue-enable/ad-queue-enable
-         * 这两个参数会让解码器队列化数据，增加延迟导致音画不同步
-         * PC 端也没有这两个参数 */
 
         MPVLib.init()
 
         MPVLib.setOptionString("force-window", "no")
         MPVLib.setOptionString("idle", "once")
 
-        // 日志等级（与 PC 端 core/log_manager.py 对齐）
-        // 通过 msg-level 选项控制 mpv 的日志输出量。
-        // 可选值：debug / info / warn / error（映射到 mpv 的 trace/info/warn/error）
-        // 默认 info（与 PC 端一致）。
-        // Android Log 输出不受影响（MPVLib 的 MPVEventCallback 始终将日志输出到 logcat）。
-        val logLevel = UserPrefs.getInstance().getLogLevel()
-        val mpvMsgLevel = when (logLevel) {
-            "debug" -> "all=trace"
-            "info" -> "all=info"
-            "warn" -> "all=warn"
-            "error" -> "all=error"
-            else -> "all=info"
-        }
-        MPVLib.setOptionString("msg-level", mpvMsgLevel)
+        updateLogLevel()
 
-        // native mpv 实例已创建并初始化，标记为存活
         nativeInstanceAlive = true
         nativeInstanceCreated = true
 
-        // 显式设置 SurfaceHolder 像素格式为 RGBA_8888。
-        // 与 mpv-android 官方 BaseMPVView 对齐（其 init 块中调用 holder.setFormat(PixelFormat.RGBA_8888)）。
-        // SurfaceView 默认格式是 OPAQUE，与 mpv vo=gpu 通过 eglChooseConfig 请求的
-        // RGBA8888 EGL config 不匹配，可能导致 eglSwapBuffers 提交的 buffer 被错误解析。
-        // 这是通用配置，不是针对特定 GPU 的 workaround。
         holder.setFormat(PixelFormat.RGBA_8888)
-
-        // 不使用 setZOrderOnTop(true)：让 SurfaceView 用默认 Z-order（在普通 View 之下）。
-        // 这样 Compose 控制层可以显示在 SurfaceView 之上。
-        // 前提：Compose 容器不能有不透明 background，否则会遮挡视频。
-        // MainPlayerScreen 的根 Box 没有设置 background，IptvTheme 也没有用 Surface 包装，
-        // 所以 Compose 层是透明的，SurfaceView 的视频可以透过 Compose 层可见。
-        // 之前用 setZOrderOnTop(true) 会导致 SurfaceView 遮挡所有 Compose 控制层。
         holder.addCallback(this)
         observeProperties()
     }
 
+    /**
+     * 更新 mpv 日志等级（运行时切换）。
+     * 通过 setPropertyString("msg-level", ...) 实现，无需重启。
+     */
+    private fun updateLogLevel() {
+        try {
+            val logLevel = UserPrefs.getInstance().getLogLevel()
+            val mpvMsgLevel = when (logLevel) {
+                "debug" -> "all=trace"
+                "info" -> "all=info"
+                "warn" -> "all=warn"
+                "error" -> "all=error"
+                else -> "all=info"
+            }
+            MPVLib.setPropertyString("msg-level", mpvMsgLevel)
+        } catch (e: Throwable) {
+            Log.w(TAG, "updateLogLevel failed: ${e.message}")
+        }
+    }
+
     fun destroy() {
-        // 先移除回调，防止 surfaceDestroyed 在 MPVLib 操作之后触发
         holder.removeCallback(this)
-        // 代际检查：只有当前活动代次的 MPVView 才允许操作 native mpv 实例。
         if (myGeneration != activeGeneration) {
-            Log.i(TAG, "destroy: skipped (myGen=$myGeneration, activeGen=$activeGeneration), newer MPVView is active")
+            Log.i(TAG, "destroy: skipped (myGen=$myGeneration, activeGen=$activeGeneration)")
             return
         }
-        // 停止播放并断开 Surface，但不在此时调用 MPVLib.destroy()。
-        //
-        // 原因：destroy() 由 Compose onRelease 调用，此时 RenderThread 可能仍在处理
-        // 最后一帧渲染。立即调用 MPVLib.destroy() 可能导致 RenderThread 访问已释放资源。
-        //
-        // 方案：此处只 stop + detachSurface（让 RenderThread 空闲），标记 nativeInstanceAlive=false。
-        // 真正的 MPVLib.destroy() 延迟到下次 initialize() 执行（此时 Compose 已完成 View 切换，
-        // RenderThread 确保已停止），然后 MPVLib.create() 创建全新实例。
+        // keep-alive：不调用 MPVLib.destroy()，只做状态重置
         if (nativeInstanceAlive) {
             try {
                 MPVLib.command(arrayOf("stop"))
+                // playlist-clear 清除 mpv 内部播放列表，防止下次复用时旧 path 残留
+                MPVLib.command(arrayOf("playlist-clear"))
                 MPVLib.setPropertyString("force-window", "no")
+                // 设置 vo=null 释放 vo 模块资源（GPU/EGL 上下文），
+                // surfaceCreated 时会重新设置 vo=voInUse 恢复渲染
+                MPVLib.setPropertyString("vo", "null")
                 MPVLib.detachSurface()
             } catch (e: Throwable) {
-                Log.w(TAG, "destroy: stop/detachSurface failed: ${e.message}")
+                Log.w(TAG, "destroy: reset failed: ${e.message}")
             }
             nativeInstanceAlive = false
-            Log.i(TAG, "destroy: instance stopped, pending destroy in next initialize (gen=$myGeneration)")
+            Log.i(TAG, "destroy: instance kept alive, state reset (gen=$myGeneration)")
         }
     }
 
@@ -250,43 +176,16 @@ class MPVView @JvmOverloads constructor(
     private var filePath: String? = null
     private var voInUse: String = DEFAULT_VO
 
-    /**
-     * 标记 surfaceCreated 应跳过 reload 当前 path。
-     *
-     * 由 [initialize] 复用实例时设置为 true，[surfaceCreated] 检查并重置为 false。
-     *
-     * 用途：切回 MPV 时 initialize 复用 native 实例，mpv 内部可能还保留着之前播放的 path，
-     * 若 surfaceCreated 走 else 分支 reload 旧 path，会与随后 attachView + playFile(新 url)
-     * 形成"双重 loadfile"，导致 pendingResumePos 的 seek 位置丢失。
-     * 跳过 reload 后，由 playFile(新 url) 单独 loadfile，保留 seek 位置。
-     */
     @Volatile
-    private var skipReloadOnSurfaceCreated: Boolean = false
-
-    /**
-     * 本实例的代次（由 initialize() 分配）。
-     * destroy() 时与 [activeGeneration] 比较：若不一致，说明已有更新的 MPVView 接管，
-     * 本实例不应销毁 native mpv（否则会杀死新实例）。
-     */
     private var myGeneration: Int = 0
 
-    /**
-     * Surface 重建后重新 loadfile 时需恢复的播放位置（秒）。
-     * 由 surfaceCreated 设置，MpvController 在 FILE_LOADED 事件中读取并 seek。
-     * -1.0 表示不需要恢复（直播流或未播放）。
-     */
     @Volatile
     var pendingResumePos: Double = -1.0
 
-    /**
-     * 更新 voInUse（运行时切换 vo 时调用）。
-     * 下次 surfaceCreated 时会用新 vo 设置 mpv，确保 surface 重建后渲染正确。
-     */
     fun setVoInUse(vo: String) {
         voInUse = vo
     }
 
-    /** 提供给外部查询 surface 状态（替代 SurfaceView 的 holder.surface?.isValid） */
     val isSurfaceValid: Boolean
         get() = holder.surface != null && holder.surface.isValid
 
@@ -294,8 +193,6 @@ class MPVView @JvmOverloads constructor(
         val s = holder.surface
         if (s != null && s.isValid) {
             MPVLib.command(arrayOf("loadfile", path))
-            // 显式解除暂停：keep-open=yes 会让 mpv 在 stop/idle 后保留 pause=true，
-            // 不显式恢复会导致新文件加载后不播放（一直显示已暂停）
             MPVLib.setPropertyBoolean("pause", false)
         } else {
             filePath = path
@@ -309,24 +206,17 @@ class MPVView @JvmOverloads constructor(
     // ---- SurfaceHolder.Callback ----
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        Log.i(TAG, "surfaceCreated: attaching surface")
+        Log.i(TAG, "surfaceCreated: attaching surface (vo=$voInUse)")
         try {
             MPVLib.attachSurface(holder.surface)
             MPVLib.setOptionString("force-window", "yes")
-            Log.i(TAG, "attachSurface OK (SurfaceView)")
+            // 关键：surfaceCreated 必须总是把 vo 切回有效值。
+            // destroy() 中会设置 vo=null 释放 vo 模块，这里恢复。
+            MPVLib.setPropertyString("vo", voInUse)
+            Log.i(TAG, "attachSurface OK (SurfaceView), vo=$voInUse")
         } catch (e: Throwable) {
             Log.e(TAG, "attachSurface FAILED", e)
         }
-
-        // 关键：surfaceCreated 必须总是把 vo 切回有效值。
-        // surfaceDestroyed 时会把 vo 设为 "null"（见下方），如果 surface 重建后
-        // 走 filePath 分支只 loadfile 不设置 vo，mpv 会停留在 vo=null 不渲染画面。
-        // 与 mpv-android 官方 BaseMPVView 对齐：始终在 surfaceCreated 中设置 vo。
-        MPVLib.setPropertyString("vo", voInUse)
-
-        // 无论走哪个分支，都重置 skipReloadOnSurfaceCreated，
-        // 避免后续 Surface 重建时误跳过 reload。
-        skipReloadOnSurfaceCreated = false
 
         if (filePath != null) {
             Log.i(TAG, "surfaceCreated: 播放缓存的 filePath=$filePath")
@@ -334,23 +224,9 @@ class MPVView @JvmOverloads constructor(
             MPVLib.setPropertyBoolean("pause", false)
             filePath = null
         } else {
-            // 正常播放中 Surface 重建（如 PiP 切换、Activity 恢复）：
-            // vo=gpu 在 Surface 重建后 EGL 渲染上下文可能未正确恢复，导致花屏。
-            // 重新 loadfile 当前路径触发 vo 完整重初始化（切频道能恢复也是因为 loadfile）。
-            // 保留播放位置（本地文件）和暂停状态；直播流 time-pos 为 0 不 seek，从最新位置播放。
-            try {
-                val currentPath = MPVLib.getPropertyString("path")
-                if (currentPath != null && currentPath.isNotEmpty()) {
-                    val wasPaused = try { MPVLib.getPropertyBoolean("pause") } catch (e: Throwable) { false } ?: false
-                    val pos = try { MPVLib.getPropertyDouble("time-pos") } catch (e: Throwable) { -1.0 } ?: -1.0
-                    Log.i(TAG, "surfaceCreated: Surface rebuilt during playback, reloading '$currentPath' (pos=$pos, paused=$wasPaused)")
-                    pendingResumePos = if (pos > 0) pos else -1.0
-                    MPVLib.command(arrayOf("loadfile", currentPath))
-                    MPVLib.setPropertyBoolean("pause", wasPaused)
-                }
-            } catch (e: Throwable) {
-                Log.w(TAG, "surfaceCreated: reload current path failed: ${e.message}")
-            }
+            // 正常播放中 Surface 重建：不主动 reload，让外部 playFile/restorePlaybackState 驱动
+            // （复用实例时 destroy 已 playlist-clear，mpv 内部无 path 残留）
+            Log.i(TAG, "surfaceCreated: no pending filePath, waiting for external playFile")
         }
     }
 
@@ -359,11 +235,8 @@ class MPVView @JvmOverloads constructor(
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        // 防御 use-after-destroy：destroy() 中先 removeCallback 再操作，
-        // 但若 surfaceDestroyed 已在事件队列中排队，仍可能在 destroy 之后触发。
-        // 此时 nativeInstanceAlive 已为 false，跳过所有 native 调用。
         if (!nativeInstanceAlive) {
-            Log.i(TAG, "surfaceDestroyed: native instance not alive, skipping")
+            Log.i(TAG, "surfaceDestroyed: native instance not active, skipping")
             return
         }
         Log.i(TAG, "surfaceDestroyed: detaching surface")
@@ -378,42 +251,25 @@ class MPVView @JvmOverloads constructor(
     companion object {
         private const val TAG = "mpv"
 
-        /** 默认 video output，与 PC 端 services/mpv_player_service.py 对齐 */
         const val DEFAULT_VO = "gpu"
-
-        /**
-         * 默认硬件解码模式。
-         * auto-copy：自动选择硬件解码器，解码后的帧拷贝到 CPU 内存再上传 GPU。
-         * 兼容性好（不依赖 vo surface），与 vo=gpu 配合使用。
-         */
         const val DEFAULT_HWDEC = "auto-copy"
 
         /**
-         * native mpv 实例是否存活（MPVLib.create 已调用，MPVLib.destroy 未调用）。
-         *
-         * - true: 实例存活，可以调用 MPVLib 方法
-         * - false: 实例已 stop + detachSurface 但尚未 destroy（等待下次 initialize 时 destroy）
-         *
+         * native mpv 实例是否处于活跃状态（有 MPVView 关联，可以接收命令）。
+         * destroy() 设为 false，initialize() 设为 true。
          * surfaceDestroyed() 检查此标志，为 false 时跳过 native 调用。
          */
         @Volatile
         private var nativeInstanceAlive = false
 
         /**
-         * native mpv 实例是否曾被创建（MPVLib.create 至少调用过一次）。
-         *
-         * 用于 initialize() 判断是否需要先调用 MPVLib.destroy() 清理旧实例。
-         * 一旦为 true 永远为 true（进程内不重置）。
+         * native mpv 实例是否已创建（MPVLib.create 至少调用过一次）。
+         * 一旦为 true 永远为 true（keep-alive 策略不 destroy）。
+         * initialize() 用此标志判断是首次创建还是复用。
          */
         @Volatile
         private var nativeInstanceCreated = false
 
-        /**
-         * 当前活动 MPVView 的代次（每次 initialize 递增）。
-         *
-         * 用途：解决"旧 MPVView.destroy() 在新 MPVView.initialize() 之后执行"的竞态。
-         * destroy 时比较 myGeneration 与 activeGeneration，不一致则跳过。
-         */
         @Volatile
         private var activeGeneration: Int = 0
     }

@@ -5484,6 +5484,8 @@ showOsd("播放器设置", "日志等级: $levelName")
         subSyncJob?.cancel()
         reminderCheckJob?.cancel()
         resumeSaveJob?.cancel()
+        // 关闭 FCC 持久化 UDP socket
+        try { FccHelper.closeUdpSocket() } catch (_: Throwable) {}
         // 清理主播放器（MPV/EXO/VLC/IJK 都需要 stop + detach，避免 native 资源泄漏）
         // Activity.onDestroy 已先调用一次，这里兜底确保释放
         try {
