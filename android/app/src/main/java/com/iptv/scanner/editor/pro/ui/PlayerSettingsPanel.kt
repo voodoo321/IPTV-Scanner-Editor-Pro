@@ -64,6 +64,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
     val currentHwdec by viewModel.currentHwdec.collectAsState()
     val currentRtspTransport by viewModel.currentRtspTransport.collectAsState()
     val currentDeinterlace by viewModel.currentDeinterlace.collectAsState()
+    val logLevel by viewModel.logLevel.collectAsState()
     val hdrMode by viewModel.hdrMode.collectAsState()
     val hardwareDecode by viewModel.hardwareDecode.collectAsState()
     val isMpvMode = playerType == PlayerType.MPV
@@ -479,6 +480,62 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                     }
                     Text(
                         text = rtspDesc,
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
+                // -----------------------------------------------------------------
+                // 日志等级（与 PC 端 core/log_manager.py 对齐）
+                // -----------------------------------------------------------------
+                if (isMpvMode) {
+                    SectionTitle("日志等级")
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SectionDesc("控制 mpv 日志输出量（logcat）。修改后重启 App 生效")
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = logLevel == "error",
+                            onClick = { viewModel.setLogLevel("error") },
+                            label = { Text("错误") },
+                            modifier = Modifier.tvFocusBorder()
+                        )
+                        FilterChip(
+                            selected = logLevel == "warn",
+                            onClick = { viewModel.setLogLevel("warn") },
+                            label = { Text("警告") },
+                            modifier = Modifier.tvFocusBorder()
+                        )
+                        FilterChip(
+                            selected = logLevel == "info",
+                            onClick = { viewModel.setLogLevel("info") },
+                            label = { Text("信息") },
+                            modifier = Modifier.tvFocusBorder()
+                        )
+                        FilterChip(
+                            selected = logLevel == "debug",
+                            onClick = { viewModel.setLogLevel("debug") },
+                            label = { Text("调试") },
+                            modifier = Modifier.tvFocusBorder()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val logLevelDesc = when (logLevel) {
+                        "error" -> "仅输出错误信息。适合正式使用，日志量最小"
+                        "warn" -> "输出警告和错误。适合日常使用"
+                        "info" -> "输出信息、警告和错误（默认）。适合一般调试"
+                        "debug" -> "输出全部日志（含 trace）。适合深度调试，日志量很大"
+                        else -> "未知等级: $logLevel"
+                    }
+                    Text(
+                        text = logLevelDesc,
                         color = Color(0xFFB0BEC5),
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 4.dp)

@@ -129,13 +129,16 @@ class ExoPlayerController(private val context: Context) : Player {
     // -----------------------------------------------------------------
     // 能力声明与播放器类型
     // -----------------------------------------------------------------
-    override val capabilities: PlayerCapabilities = PlayerCapabilities(
-        supportsSpeedControl = true,
-        supportsTrackList = true,
-        supportsAddSubtitleFile = false,
-        supportsChapters = true,
-        supportsHardwareDecodeSwitch = true
-    )
+override val capabilities: PlayerCapabilities = PlayerCapabilities(
+    supportsSpeedControl = true,
+    supportsTrackList = true,
+    supportsAddSubtitleFile = false,
+    supportsChapters = true,
+    // ExoPlayer 软解切换需要 media3-decoder-ffmpeg 扩展库（含 native FFmpeg .so），
+    // 当前未集成该扩展，两种模式都只用 MediaCodec，切换无实际效果。
+    // 设为 false 让 UI 隐藏硬解/软解切换按钮，避免误导用户。
+    supportsHardwareDecodeSwitch = false
+)
 
     override val playerType: PlayerType = PlayerType.EXO
 
@@ -698,9 +701,17 @@ class ExoPlayerController(private val context: Context) : Player {
      *
      * 注意：软解模式需要 FFmpeg 扩展依赖，未安装时自动回退到 MediaCodec 硬解。
      */
-    override fun setHardwareDecode(enabled: Boolean): Boolean {
-        if (hardwareDecode == enabled) return true
-        Log.i(TAG, "setHardwareDecode: enabled=$enabled, rebuilding ExoPlayer")
+override fun setHardwareDecode(enabled: Boolean): Boolean {
+// ExoPlayer 软解需要 media3-decoder-ffmpeg 扩展（含 native FFmpeg .so），
+// 当前未集成该扩展，两种模式都只用 MediaCodec，切换无实际效果。
+// capabilities.supportsHardwareDecodeSwitch = false，UI 不会调用此方法，
+// 但保留实现以防未来集成 FFmpeg 扩展后启用。
+if (!enabled) {
+Log.w(TAG, "setHardwareDecode: 软解不可用（缺少 FFmpeg 扩展库），当前仅支持 MediaCodec 硬解")
+return false
+}
+if (hardwareDecode == enabled) return true
+Log.i(TAG, "setHardwareDecode: enabled=$enabled, rebuilding ExoPlayer")
 
         // 保存当前播放状态
         val savedUrl = currentUrl

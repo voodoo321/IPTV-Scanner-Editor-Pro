@@ -280,6 +280,23 @@ class UserPrefs private constructor() {
     }
 
     // -----------------------------------------------------------------
+    // 日志等级（与 PC 端 core/log_manager.py 对齐）
+    //
+    // 控制 mpv 的日志输出量（通过 msg-level 选项）。
+    // 可选值：debug / info / warn / error
+    // 默认 info（与 PC 端一致）。
+    // Android Log 输出不受影响（始终全量输出到 logcat）。
+    // -----------------------------------------------------------------
+
+    /** 获取日志等级，默认 "info" */
+    fun getLogLevel(): String = prefs.getString(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL) ?: DEFAULT_LOG_LEVEL
+
+    /** 设置日志等级 */
+    fun setLogLevel(level: String) {
+        prefs.edit().putString(KEY_LOG_LEVEL, level).apply()
+    }
+
+    // -----------------------------------------------------------------
     // IJK 启动崩溃保护
     //
     // IJK native 库在某些设备/片源上可能触发 SIGSEGV，Java try-catch 无法捕获。
@@ -703,6 +720,13 @@ class UserPrefs private constructor() {
         // 这里用字符串常量而非引用 MPVView，避免 UserPrefs 反向依赖 mpv 层
         private const val DEFAULT_VO_VALUE = "gpu"
         private const val DEFAULT_HWDEC_VALUE = "auto-copy"
+
+        // 日志等级（与 PC 端 core/log_manager.py 对齐）
+        // 可选值：debug / info / warn / error
+        // 通过 mpv 的 msg-level 选项控制 mpv 日志输出量；
+        // Android Log 输出不受影响（始终全量输出到 logcat）
+        private const val KEY_LOG_LEVEL = "log_level"
+        private const val DEFAULT_LOG_LEVEL = "info"
 
         @Volatile
         private var INSTANCE: UserPrefs? = null

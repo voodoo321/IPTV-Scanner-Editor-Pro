@@ -1,6 +1,7 @@
 package com.iptv.scanner.editor.pro.player
 
 import android.content.Context
+import android.graphics.PixelFormat
 import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceHolder
@@ -58,6 +59,11 @@ class VlcVideoView @JvmOverloads constructor(
      */
     fun attachController(controller: VlcController) {
         this.controller = controller
+        // 显式设置 SurfaceHolder 像素格式为 RGBA_8888（与 MPVView 对齐）。
+        // SurfaceView 默认格式是 OPAQUE，部分设备的 VLC 渲染管线在 OPAQUE 格式下
+        // 会出现颜色通道错位/花屏（尤其是硬件解码直通模式）。
+        // 设置 RGBA_8888 确保颜色格式与 VLC 的 OpenGL ES 渲染输出匹配。
+        holder.setFormat(PixelFormat.RGBA_8888)
         holder.addCallback(this)
         Log.i(TAG, "VlcVideoView attached to VlcController")
     }

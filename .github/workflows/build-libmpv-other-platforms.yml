@@ -526,9 +526,13 @@ jobs:
           find "$HOME/mpv-install" -name "libmpv*" -ls
 
       - name: Package libmpv
-        # 打包 libmpv 及其依赖
+        # 打包 libmpv 及其所有依赖
         # 注意：避免使用 cd 切换目录（之前的 cd "$STAGING/lib" 后 cd release 会切换到
         # 错误的嵌套目录，导致 tar.gz 创建在错误位置，上传步骤找不到文件）
+        #
+        # 关键：必须包含 libplacebo.so（从源码编译，用户系统没有），
+        # 否则 libmpv.so 加载时报 "libplacebo.so: cannot open shared object file"。
+        # 同时用 patchelf 设置 RPATH=$ORIGIN，让 .so 在同目录下互相查找依赖。
         run: |
           STAGING="release/libmpv-cavs-linux-x86_64"
           mkdir -p "$STAGING/lib"
@@ -540,6 +544,8 @@ jobs:
           cp -L "$HOME/ffmpeg-cavs/lib/"libsw*.so* "$STAGING/lib/" 2>/dev/null || true
           # 复制 libdavs2
           cp -L "$HOME/davs2-install/lib/"libdavs2.so* "$STAGING/lib/" 2>/dev/null || true
+          # 复制 libplacebo（从源码编译，用户系统没有，必须打包）
+          cp -L "$HOME/libplacebo-install/lib/"libplacebo.so* "$STAGING/lib/" 2>/dev/null || true
           # 复制头文件
           mkdir -p "$STAGING/include/mpv"
           cp -r "$HOME/mpv-install/include/mpv/"* "$STAGING/include/mpv/"
@@ -550,17 +556,42 @@ jobs:
           if [ ! -L "$STAGING/lib/libmpv.so.2" ] && [ -f "$STAGING/lib"/libmpv.so.2.* ]; then
             ln -sf libmpv.so.2.* "$STAGING/lib/libmpv.so.2"
           fi
+          # 用 patchelf 设置 RPATH=$ORIGIN，让所有 .so 在同目录下查找依赖
+          # （构建机器的 RPATH 指向 $HOME/xxx-install/lib/，用户机器上不存在）
+          sudo apt-get install -y patchelf
+          for f in "$STAGING/lib/"*.so*; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+              # 注意：单引号中 $ 不需要转义，直接写 $ORIGIN
+              # 之前用 '\$ORIGIN' 是错误的——单引号中反斜杠是字面量，
+              # patchelf 会设置 RPATH=\$ORIGIN（含反斜杠），动态链接器无法识别
+              patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true
+            fi
+          done
+          echo "=== RPATH after patchelf ==="
+          for f in "$STAGING/lib/"*.so*; do
+            [ -f "$f" ] && [ ! -L "$f" ] && echo "$(basename $f): $(patchelf --print-rpath "$f" 2>/dev/null || echo 'N/A')"
+          done
           # 打包（使用 -C 选项避免 cd）
           tar czf release/libmpv-cavs-linux-x86_64.tar.gz -C release libmpv-cavs-linux-x86_64
           ls -la release/libmpv-cavs-linux-x86_64.tar.gz
 
-      - name: Verify CAVS support
+      - name: Verify CAVS support and dependencies
+        # 验证 CAVS 支持和所有动态库依赖可解析
         run: |
           echo "=== Checking cavs/avs2 strings in libmpv ==="
           STAGING="release/libmpv-cavs-linux-x86_64/lib"
           find "$STAGING" -name "libmpv*" -exec sh -c 'echo "--- {} ---"; strings "{}" | grep -iE "guangdian|jizhun|cavs|avs2|libdavs2" | head -20' \;
           echo "=== ldd output (libmpv dependencies) ==="
-          ldd "$STAGING"/libmpv.so.2 2>/dev/null | head -30
+          LD_LIBRARY_PATH="$STAGING" ldd "$STAGING"/libmpv.so.2 2>/dev/null | head -30
+          echo "=== Checking for missing dependencies ==="
+          # 检查是否有 not found 的依赖
+          MISSING=$(LD_LIBRARY_PATH="$STAGING" ldd "$STAGING"/libmpv.so.2 2>/dev/null | grep "not found" || true)
+          if [ -n "$MISSING" ]; then
+            echo "WARNING: Missing dependencies:"
+            echo "$MISSING"
+          else
+            echo "OK: All dependencies resolved"
+          fi
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -756,9 +787,13 @@ jobs:
           find "$HOME/mpv-install" -name "libmpv*" -ls
 
       - name: Package libmpv
-        # 打包 libmpv 及其依赖
+        # 打包 libmpv 及其所有依赖
         # 注意：避免使用 cd 切换目录（之前的 cd "$STAGING/lib" 后 cd release 会切换到
         # 错误的嵌套目录，导致 tar.gz 创建在错误位置，上传步骤找不到文件）
+        #
+        # 关键：必须包含 libplacebo.so（从源码编译，用户系统没有），
+        # 否则 libmpv.so 加载时报 "libplacebo.so: cannot open shared object file"。
+        # 同时用 patchelf 设置 RPATH=$ORIGIN，让 .so 在同目录下互相查找依赖。
         run: |
           STAGING="release/libmpv-cavs-linux-arm64"
           mkdir -p "$STAGING/lib"
@@ -770,6 +805,8 @@ jobs:
           cp -L "$HOME/ffmpeg-cavs/lib/"libsw*.so* "$STAGING/lib/" 2>/dev/null || true
           # 复制 libdavs2
           cp -L "$HOME/davs2-install/lib/"libdavs2.so* "$STAGING/lib/" 2>/dev/null || true
+          # 复制 libplacebo（从源码编译，用户系统没有，必须打包）
+          cp -L "$HOME/libplacebo-install/lib/"libplacebo.so* "$STAGING/lib/" 2>/dev/null || true
           # 复制头文件
           mkdir -p "$STAGING/include/mpv"
           cp -r "$HOME/mpv-install/include/mpv/"* "$STAGING/include/mpv/"
@@ -780,17 +817,37 @@ jobs:
           if [ ! -L "$STAGING/lib/libmpv.so.2" ] && [ -f "$STAGING/lib"/libmpv.so.2.* ]; then
             ln -sf libmpv.so.2.* "$STAGING/lib/libmpv.so.2"
           fi
+          # 用 patchelf 设置 RPATH=$ORIGIN，让所有 .so 在同目录下查找依赖
+          sudo apt-get install -y patchelf
+          for f in "$STAGING/lib/"*.so*; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+              # 注意：单引号中 $ 不需要转义，直接写 $ORIGIN
+              patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true
+            fi
+          done
+          echo "=== RPATH after patchelf ==="
+          for f in "$STAGING/lib/"*.so*; do
+            [ -f "$f" ] && [ ! -L "$f" ] && echo "$(basename $f): $(patchelf --print-rpath "$f" 2>/dev/null || echo 'N/A')"
+          done
           # 打包（使用 -C 选项避免 cd）
           tar czf release/libmpv-cavs-linux-arm64.tar.gz -C release libmpv-cavs-linux-arm64
           ls -la release/libmpv-cavs-linux-arm64.tar.gz
 
-      - name: Verify CAVS support
+      - name: Verify CAVS support and dependencies
         run: |
           echo "=== Checking cavs/avs2 strings in libmpv ==="
           STAGING="release/libmpv-cavs-linux-arm64/lib"
           find "$STAGING" -name "libmpv*" -exec sh -c 'echo "--- {} ---"; strings "{}" | grep -iE "guangdian|jizhun|cavs|avs2|libdavs2" | head -20' \;
           echo "=== ldd output (libmpv dependencies) ==="
-          ldd "$STAGING"/libmpv.so.2 2>/dev/null | head -30
+          LD_LIBRARY_PATH="$STAGING" ldd "$STAGING"/libmpv.so.2 2>/dev/null | head -30
+          echo "=== Checking for missing dependencies ==="
+          MISSING=$(LD_LIBRARY_PATH="$STAGING" ldd "$STAGING"/libmpv.so.2 2>/dev/null | grep "not found" || true)
+          if [ -n "$MISSING" ]; then
+            echo "WARNING: Missing dependencies:"
+            echo "$MISSING"
+          else
+            echo "OK: All dependencies resolved"
+          fi
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

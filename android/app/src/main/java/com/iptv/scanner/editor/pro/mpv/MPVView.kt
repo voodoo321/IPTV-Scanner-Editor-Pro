@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import `is`.xyz.mpv.MPVLib
+import com.iptv.scanner.editor.pro.data.UserPrefs
 
 /**
  * 基于 SurfaceView 的 MPV 视频渲染视图。
@@ -186,6 +187,21 @@ class MPVView @JvmOverloads constructor(
 
         MPVLib.setOptionString("force-window", "no")
         MPVLib.setOptionString("idle", "once")
+
+        // 日志等级（与 PC 端 core/log_manager.py 对齐）
+        // 通过 msg-level 选项控制 mpv 的日志输出量。
+        // 可选值：debug / info / warn / error（映射到 mpv 的 trace/info/warn/error）
+        // 默认 info（与 PC 端一致）。
+        // Android Log 输出不受影响（MPVLib 的 MPVEventCallback 始终将日志输出到 logcat）。
+        val logLevel = UserPrefs.getInstance().getLogLevel()
+        val mpvMsgLevel = when (logLevel) {
+            "debug" -> "all=trace"
+            "info" -> "all=info"
+            "warn" -> "all=warn"
+            "error" -> "all=error"
+            else -> "all=info"
+        }
+        MPVLib.setOptionString("msg-level", mpvMsgLevel)
 
         // native mpv 实例已创建并初始化，标记为存活（供下次 initialize 检测残留实例）
         nativeInstanceAlive = true

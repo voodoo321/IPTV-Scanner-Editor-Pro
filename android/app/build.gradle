@@ -46,11 +46,8 @@ android {
         versionCode versionCodeVal
         versionName versionNameStr
 
-        // 仅保留 ARM 架构：真机覆盖率 99%+（x86/x86_64 仅供模拟器，单独构建 debug 即可）
-        // 移除 x86/x86_64 后体积从 ~636MB 降至 ~307MB
-        ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a'
-        }
+        // ARM 架构通过 splits.abi 按位数分包，不在此处用 abiFilters 过滤
+        // x86/x86_64 仅供模拟器，单独构建 debug 即可
     }
 
     /* APK 签名配置（用于 release 构建）
@@ -78,11 +75,45 @@ android {
         }
     }
 
-    /* 自定义 APK 输出文件名：单一通用 APK，不带 ABI 后缀
-     * 与其他平台（Windows/macOS/Linux）命名规则一致，不含版本号 */
+    /* ABI 分包：32 位和 64 位分别生成独立 APK
+     *
+     * 原因：
+     * - 通用 APK 包含 arm64-v8a + armeabi-v7a 两套 native 库（mpv/FFmpeg/davs2 + VLC + IJK），
+     *   体积约 307MB，其中一半的 .so 对用户设备无用
+     * - 分包后 64 位约 180MB，32 位约 170MB，用户按设备选择对应包
+     * - arm64-v8a = 64 位（绝大多数现代手机/TV）
+     * - armeabi-v7a = 32 位（老旧设备/部分电视盒子）
+     *
+     * universalApk=false：不生成通用包（用户明确要求分开）
+     * 每个 ABI 的 versionCode 加偏移量区分，确保 Play Store（如未来上架）能正确区分 */
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
+        }
+    }
+
+    /* 自定义 APK 输出文件名：按 ABI 命名
+     * arm64-v8a -> IPTV Scanner Editor Pro-Android-arm64.apk
+     * armeabi-v7a -> IPTV Scanner Editor Pro-Android-arm32.apk
+     *
+     * versionCode 按 ABI 区分（确保各 ABI 的 versionCode 唯一）：
+     * arm64-v8a: versionCode 不变（主版本）
+     * armeabi-v7a: versionCode + 1（避免与 arm64 冲突） */
     applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            outputFileName = "IPTV Scanner Editor Pro-Android.apk"
+        variant.outputs.each { output ->
+            def abi = output.getFilter("ABI")
+            def abiSuffix = ''
+            if (abi != null) {
+                abiSuffix = abi == 'arm64-v8a' ? '-arm64' : '-arm32'
+                // 32 位 versionCode 加 1 偏移，确保两个 APK 的 versionCode 不同
+                if (abi == 'armeabi-v7a') {
+                    output.versionCode = variant.versionCode + 1
+                }
+            }
+            output.outputFileName = "IPTV Scanner Editor Pro-Android${abiSuffix}.apk"
         }
     }
 

@@ -378,7 +378,8 @@ jobs:
             echo "Downloaded CAVS-enabled libmpv from: $CAVS_URL"
             mkdir -p /tmp/cavs-android
             tar xzf /tmp/cavs-libmpv-android.tar.gz -C /tmp/cavs-android
-            for arch in arm64-v8a armeabi-v7a x86_64 x86; do
+            # 只下载 arm64-v8a 和 armeabi-v7a（与 build.gradle 的 splits.abi 一致）
+            for arch in arm64-v8a armeabi-v7a; do
               if [ -d "/tmp/cavs-android/jniLibs/$arch" ]; then
                 mkdir -p "$JNILIBS_DIR/$arch"
                 cp /tmp/cavs-android/jniLibs/$arch/*.so "$JNILIBS_DIR/$arch/"
@@ -392,7 +393,8 @@ jobs:
           else
             echo "CAVS-enabled libmpv not found, falling back to official mpv-android APK"
             BASE_URL="https://github.com/mpv-android/mpv-android/releases/download/2026-04-25"
-            ARCHS=("arm64-v8a" "armeabi-v7a" "x86_64" "x86")
+            # 只下载 arm64-v8a 和 armeabi-v7a（与 build.gradle 的 splits.abi 一致）
+            ARCHS=("arm64-v8a" "armeabi-v7a")
             for arch in "${ARCHS[@]}"; do
               APK="app-default-${arch}-release.apk"
               curl -fsSL -o "mpv-${arch}.apk" "${BASE_URL}/${APK}"
@@ -432,16 +434,28 @@ jobs:
         id: apk
         working-directory: android
         run: |
-          # 单一通用 APK（包含所有 ABI），生成 1 个 APK
+          # ABI 分包构建：生成 2 个独立 APK（arm64 + arm32）
           APK_DIR="app/build/outputs/apk"
-          APK_COUNT=$(find "$APK_DIR" -name "IPTV Scanner Editor Pro-Android.apk" -type f | wc -l)
-          echo "Found $APK_COUNT APK file(s):"
-          find "$APK_DIR" -name "IPTV Scanner Editor Pro-Android.apk" -type f -exec ls -la {} \;
-          if [ "$APK_COUNT" -lt 1 ]; then
-            echo "Expected 1 APK, found $APK_COUNT"
+          echo "=== All APK files ==="
+          find "$APK_DIR" -name "*.apk" -type f -exec ls -la {} \;
+
+          ARM64_APK=$(find "$APK_DIR" -name "IPTV Scanner Editor Pro-Android-arm64.apk" -type f | head -1)
+          ARM32_APK=$(find "$APK_DIR" -name "IPTV Scanner Editor Pro-Android-arm32.apk" -type f | head -1)
+
+          if [ -z "$ARM64_APK" ]; then
+            echo "ERROR: arm64 APK not found"
             exit 1
           fi
-          echo "apk_glob=android/app/build/outputs/apk/**/IPTV Scanner Editor Pro-Android.apk" >> "$GITHUB_OUTPUT"
+          if [ -z "$ARM32_APK" ]; then
+            echo "ERROR: arm32 APK not found"
+            exit 1
+          fi
+
+          echo "arm64 APK: $ARM64_APK ($(ls -lh "$ARM64_APK" | awk '{print $5}'))"
+          echo "arm32 APK: $ARM32_APK ($(ls -lh "$ARM32_APK" | awk '{print $5}'))"
+
+          # 输出 glob 模式（相对于仓库根目录），匹配两个 APK
+          echo "apk_glob=android/app/build/outputs/apk/**/IPTV Scanner Editor Pro-Android-arm*.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload APKs to release
         uses: softprops/action-gh-release@v2

@@ -629,9 +629,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _currentRtspTransport = MutableStateFlow(userPrefs.getRtspTransport())
     val currentRtspTransport: StateFlow<String> = _currentRtspTransport.asStateFlow()
 
-    // 反交错（no/auto），供 UI 显示和切换
-    private val _currentDeinterlace = MutableStateFlow(userPrefs.getDeinterlace())
-    val currentDeinterlace: StateFlow<String> = _currentDeinterlace.asStateFlow()
+// 反交错（no/auto），供 UI 显示和切换
+private val _currentDeinterlace = MutableStateFlow(userPrefs.getDeinterlace())
+val currentDeinterlace: StateFlow<String> = _currentDeinterlace.asStateFlow()
+
+// 日志等级（debug/info/warn/error），与 PC 端 core/log_manager.py 对齐
+private val _logLevel = MutableStateFlow(userPrefs.getLogLevel())
+val logLevel: StateFlow<String> = _logLevel.asStateFlow()
 
     /** 当前是否使用硬件解码（所有播放器内核通用，UI 通过 collectAsState 自动响应） */
     private val _hardwareDecode = MutableStateFlow(userPrefs.getHwdec() != "no")
@@ -4492,13 +4496,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * deinterlace 是运行时可改属性，立即生效无需重新加载文件。
      * 仅对 MPV 模式生效。
      */
-    fun setDeinterlace(value: String) {
-        if (_currentDeinterlace.value == value) return
-        userPrefs.setDeinterlace(value)
-        _currentDeinterlace.value = value
-        (_player.value as? MpvController)?.setDeinterlace(value)
-        showOsd("播放器设置", "反交错: ${if (value == "auto") "自动" else "关闭"}")
-    }
+fun setDeinterlace(value: String) {
+if (_currentDeinterlace.value == value) return
+userPrefs.setDeinterlace(value)
+_currentDeinterlace.value = value
+(_player.value as? MpvController)?.setDeinterlace(value)
+showOsd("播放器设置", "反交错: ${if (value == "auto") "自动" else "关闭"}")
+}
+
+/**
+* 设置日志等级（debug/info/warn/error）。
+* 与 PC 端 core/log_manager.py 对齐，通过 mpv 的 msg-level 选项控制日志输出量。
+* 注意：日志等级在 MPVView.initialize 时通过 setOptionString("msg-level", ...) 设置，
+* 是启动时选项，运行时修改需要重新创建 mpv 实例才能生效。
+* 当前实现仅持久化设置，下次启动 mpv 实例时生效。
+* Android Log 输出不受影响（始终全量输出到 logcat）。
+*/
+fun setLogLevel(level: String) {
+if (_logLevel.value == level) return
+userPrefs.setLogLevel(level)
+_logLevel.value = level
+val levelName = when (level) {
+"debug" -> "调试"
+"info" -> "信息"
+"warn" -> "警告"
+"error" -> "错误"
+else -> level
+}
+showOsd("播放器设置", "日志等级: $levelName（重启后生效）")
+}
 
     /**
      * 切换硬件/软件解码（通用方法，适用于所有播放器内核）。
