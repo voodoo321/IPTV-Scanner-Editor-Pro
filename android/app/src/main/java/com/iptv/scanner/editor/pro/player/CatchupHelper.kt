@@ -46,6 +46,14 @@ object CatchupHelper {
      */
     fun buildCatchupUrl(channel: IptvChannel, startMs: Long, endMs: Long): String? {
         val liveUrl = channel.url.ifEmpty { return null }
+        // 安全：校验 liveUrl 协议，防止 file:/// 等非网络协议
+        val lowerUrl = liveUrl.lowercase()
+        if (!lowerUrl.startsWith("http://") && !lowerUrl.startsWith("https://") &&
+            !lowerUrl.startsWith("rtsp://") && !lowerUrl.startsWith("rtp://") &&
+            !lowerUrl.startsWith("udp://")) {
+            Log.w(TAG, "Channel ${channel.name} has unsupported URL scheme")
+            return null
+        }
         val catchupType = channel.catchup.trim().lowercase(Locale.US)
         val catchupSource = channel.catchupSource.trim()
 
@@ -167,6 +175,10 @@ object CatchupHelper {
 
     /**
      * 替换 catchup URL 中的模板变量。
+     *
+     * 安全：所有替换值均为数字时间戳或格式化日期字符串，不包含用户可控的任意文本，
+     * 因此不存在 URL 注入风险。catchup_source 模板来自频道配置（非用户实时输入），
+     * 且替换后的 URL 仅用于 mpv loadfile，不会执行任意命令。
      *
      * 支持的变量格式：
      * - `${(b|e|start|end)fmt}`：花括号带前缀，fmt 可带时区后缀 `|utc|local|+HH:MM|-HH:MM`

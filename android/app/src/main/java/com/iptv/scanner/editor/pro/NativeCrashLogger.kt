@@ -49,7 +49,29 @@ object NativeCrashLogger {
     /** 最多保留的崩溃报告数量 */
     private const val MAX_CRASH_FILES = 20
 
+    @Volatile
     private var logcatProcess: Process? = null
+
+    /**
+     * 停止 logcat 后台进程，释放资源。
+     * 在 Application.onTerminate 或 Activity.onDestroy 中调用。
+     */
+    fun stop() {
+        try {
+            logcatProcess?.let { proc ->
+                proc.destroy()
+                // 确保进程完全终止，避免僵尸进程
+                if (!proc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                    proc.destroyForcibly()
+                    proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "stop logcat process failed: ${e.message}")
+        } finally {
+            logcatProcess = null
+        }
+    }
 
     /**
      * 在 Application.onCreate 中调用。
@@ -185,10 +207,8 @@ object NativeCrashLogger {
     fun markCleanExit(context: Context) {
         try {
             File(context.filesDir, SESSION_FILE).writeText("false")
-            // 停止 logcat 进程
-            logcatProcess?.destroy()
-            logcatProcess = null
-            // 清理临时文件
+            // 停止 logcat 进程并清理临时文件
+            stop()
             File(context.filesDir, LOGCAT_TEMP_FILE).delete()
         } catch (e: Exception) {
             Log.w(TAG, "markCleanExit failed: ${e.message}")

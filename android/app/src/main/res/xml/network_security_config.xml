@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <!-- 默认禁止明文流量，强制使用 HTTPS -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <!-- 仅允许 localhost 使用明文（内置 HTTP 管理服务器需要） -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
     </domain-config>
+    <!-- IPTV 直播流常见协议使用明文（rtsp/udp/组播等非 HTTP 协议不受此配置影响） -->
+    <!-- 仅对 IPTV 流媒体 HTTP 代理服务器允许明文，通过运行时配置控制 -->
 </network-security-config>

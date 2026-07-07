@@ -39,6 +39,8 @@ import com.iptv.scanner.editor.pro.player.CatchupProgram
 import com.iptv.scanner.editor.pro.player.FccHelper
 import com.iptv.scanner.editor.pro.player.FccService
 import com.iptv.scanner.editor.pro.player.PlayMode
+import com.iptv.scanner.editor.pro.player.SubPlayer
+import com.iptv.scanner.editor.pro.player.SubPlayerState
 import com.iptv.scanner.editor.pro.player.PlaybackState
 import com.iptv.scanner.editor.pro.player.Player
 import com.iptv.scanner.editor.pro.player.PlayerCapabilities
@@ -184,11 +186,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // -----------------------------------------------------------------
     // 多画面状态（TV 端多画面功能）
     //
-// 主画面（index=0）用 MPV（单例）。
-// 副画面（index=1+）当前不可用（MPV 安卓端单例限制），仅保留 UI 结构。
-// -----------------------------------------------------------------
-private val _multiViewState = MutableStateFlow(MultiViewState())
-val multiViewState: StateFlow<MultiViewState> = _multiViewState.asStateFlow()
+    // 主画面（index=0）用 MPV（单例）。
+    // 副画面（index=1+）用 ExoPlayer（SubPlayer），支持多实例同时播放。
+    // -----------------------------------------------------------------
+    private val _multiViewState = MutableStateFlow(MultiViewState())
+    val multiViewState: StateFlow<MultiViewState> = _multiViewState.asStateFlow()
+
+    /** 副画面播放器实例池（key=视口索引，value=SubPlayer） */
+    private val subPlayers = mutableMapOf<Int, SubPlayer>()
+
+    /** 副画面播放器状态流（UI 观察用，key=视口索引） */
+    private val _subPlayerStates = MutableStateFlow<Map<Int, SubPlayerState>>(emptyMap())
+    val subPlayerStates: StateFlow<Map<Int, SubPlayerState>> = _subPlayerStates.asStateFlow()
 
     // -----------------------------------------------------------------
     // 频道列表面板状态
@@ -1167,7 +1176,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     // 多画面控制
     //
     // 主画面（index=0）用当前播放器（MPV）
-    // 副画面（index=1+）当前不可用（MPV 安卓端单例限制，仅保留 UI 结构）
+    // 副画面（index=1+）用 ExoPlayer（SubPlayer），支持多实例同时播放
     // -----------------------------------------------------------------
 
     /**
@@ -1197,11 +1206,13 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     }
 
     /**
-     * 退出多画面模式。主画面保持播放。
+     * 退出多画面模式。主画面保持播放，释放所有副画面播放器。
      */
     fun exitMultiView() {
         if (!_multiViewState.value.active) return
+        releaseAllSubPlayers()
         _multiViewState.value = MultiViewState()
+        _subPlayerStates.value = emptyMap()
         // 退出多画面后显示控制层（自动隐藏），让用户看到操作选项
         showControlsAutoHide()
         showOsd("多画面", "已退出多画面模式")
@@ -1213,6 +1224,12 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     fun switchMultiViewLayout(layout: MultiViewLayout) {
         val current = _multiViewState.value
         if (!current.active || current.layout == layout) return
+        // 缩小布局时，释放超出范围的副画面播放器
+        if (layout.count < current.layout.count) {
+            for (i in layout.count until current.layout.count) {
+                releaseSubPlayer(i)
+            }
+        }
         val newViewports = (0 until layout.count).map { i ->
             current.viewports.getOrNull(i) ?: MultiViewport(index = i)
         }
@@ -1250,9 +1267,28 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             return 0
         }
 
-        // 副画面当前不可用（MPV 单例限制），显示提示
-        showOsd("多画面", "副画面暂不可用（仅支持 MPV 单画面）")
-        return -1
+        // 副画面：创建/复用 SubPlayer 并播放
+        try {
+            val subPlayer = getOrCreateSubPlayer(targetIdx)
+            subPlayer.play(channel.url)
+
+            // 更新视口状态
+            _multiViewState.value = state.copy(
+                viewports = state.viewports.map {
+                    if (it.index == targetIdx) it.copy(
+                        channelIdx = channelIdx,
+                        channelName = channel.name,
+                        isMuted = true  // 副画面默认静音
+                    ) else it
+                }
+            )
+            showOsd("多画面", "${channel.name} → 画面 ${targetIdx + 1}")
+            return targetIdx
+        } catch (e: Throwable) {
+            Log.e(TAG, "addChannelToMultiView: failed to play on viewport $targetIdx", e)
+            showOsd("多画面", "副画面播放失败: ${e.message}")
+            return -1
+        }
     }
 
     /**
@@ -1277,10 +1313,12 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             }
         )
 
-        // 应用到 Player（仅主画面可用）
+        // 应用到 Player
         try {
             if (viewportIndex == 0) {
                 _player.value.setMute(newMuted)
+            } else {
+                subPlayers[viewportIndex]?.setMuted(newMuted)
             }
         } catch (e: Throwable) {
             Log.w(TAG, "toggleMultiViewMute: viewport=$viewportIndex, failed: ${e.message}")
@@ -1296,10 +1334,48 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     fun removeFromMultiView(viewportIndex: Int) {
         val state = _multiViewState.value
         if (!state.active || viewportIndex == 0) return
+        // 释放对应副画面播放器
+        releaseSubPlayer(viewportIndex)
         val newViewports = state.viewports.map { vp ->
             if (vp.index == viewportIndex) MultiViewport(index = viewportIndex) else vp
         }
         _multiViewState.value = state.copy(viewports = newViewports)
+    }
+
+    /**
+     * 获取指定视口的副画面播放器（供 UI 层渲染 PlayerView）。
+     * @param viewportIndex 视口索引（1-8）
+     * @return SubPlayer 实例，如果不存在或已释放则返回 null
+     */
+    fun getSubPlayer(viewportIndex: Int): SubPlayer? {
+        return subPlayers[viewportIndex]
+    }
+
+    /**
+     * 创建或复用副画面播放器。
+     * 如果该视口已有 SubPlayer 实例则复用，否则创建新实例并初始化。
+     */
+    private fun getOrCreateSubPlayer(viewportIndex: Int): SubPlayer {
+        return subPlayers.getOrPut(viewportIndex) {
+            val app = getApplication<Application>()
+            SubPlayer(app).also { it.init() }
+        }
+    }
+
+    /**
+     * 释放指定视口的副画面播放器。
+     */
+    private fun releaseSubPlayer(viewportIndex: Int) {
+        subPlayers.remove(viewportIndex)?.release()
+        _subPlayerStates.value = _subPlayerStates.value.toMutableMap().apply { remove(viewportIndex) }
+    }
+
+    /**
+     * 释放所有副画面播放器。
+     */
+    private fun releaseAllSubPlayers() {
+        subPlayers.values.forEach { it.release() }
+        subPlayers.clear()
     }
 
     /**
@@ -1386,8 +1462,12 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             playChannel(prev)
             return
         }
-        val next = if (cur > 0) cur - 1 else _channels.value.lastIndex
-        if (next >= 0 && next < _channels.value.size) playChannel(next)
+        val channels = _channels.value
+        if (channels.isEmpty()) return
+        // 边界保护：只有 1 个频道时不循环
+        if (channels.size <= 1) return
+        val next = if (cur > 0) cur - 1 else channels.lastIndex
+        if (next >= 0 && next < channels.size) playChannel(next)
     }
 
     /** 下一频道 */
@@ -2321,6 +2401,21 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             _apkDownloadState.value = ApkDownloadState.Error("下载地址为空")
             return
         }
+        // 安全：校验 URL 协议和域名，防止恶意 APK 下载
+        val parsedUrl = try {
+            android.net.Uri.parse(url)
+        } catch (e: Exception) {
+            _apkDownloadState.value = ApkDownloadState.Error("无效的下载地址")
+            return
+        }
+        val scheme = parsedUrl.scheme?.lowercase()
+        val host = parsedUrl.host?.lowercase() ?: ""
+        if (scheme != "https" || (host != "github.com" && !host.endsWith(".github.com") &&
+                !host.endsWith(".githubusercontent.com"))) {
+            _apkDownloadState.value = ApkDownloadState.Error("仅允许从 GitHub 下载更新")
+            Log.w(TAG, "downloadAndInstallApk: blocked non-GitHub URL: $url")
+            return
+        }
         if (_apkDownloadState.value is ApkDownloadState.Downloading) {
             Log.w(TAG, "downloadAndInstallApk: already downloading, ignored")
             return
@@ -2617,8 +2712,11 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     /** 比较版本号（与 PC 端 _is_newer_version 对齐），判断 latest 是否比 current 新 */
     private fun isNewerVersion(current: String, latest: String): Boolean {
         return try {
-            val currentParts = current.split(".").map { it.toInt() }
-            val latestParts = latest.split(".").map { it.toInt() }
+            // 清理版本号中的非数字前缀（如 v1.0.0）
+            val cleanCurrent = current.trim().trimStart('v', 'V')
+            val cleanLatest = latest.trim().trimStart('v', 'V')
+            val currentParts = cleanCurrent.split(".").map { it.toIntOrNull() ?: 0 }
+            val latestParts = cleanLatest.split(".").map { it.toIntOrNull() ?: 0 }
             val maxLen = maxOf(currentParts.size, latestParts.size)
             val c = currentParts + List(maxLen - currentParts.size) { 0 }
             val l = latestParts + List(maxLen - latestParts.size) { 0 }
@@ -4664,7 +4762,7 @@ showOsd("播放器设置", "日志等级: $levelName")
                 } catch (e: Exception) {
                     // 轮询失败不中断，继续下一轮
                 }
-                delay(100)
+                delay(200)  // 200ms 轮询（原 100ms 过于频繁，导致 Chaquopy GIL 争用）
             }
         }
         // 同时启动播放状态上报（供 admin 遥控器页面显示）
@@ -5142,6 +5240,10 @@ showOsd("播放器设置", "日志等级: $levelName")
             p.stop()
             p.detach()
         } catch (_: Throwable) {}
+        // 清理副画面播放器（ExoPlayer 实例）
+        try {
+            releaseAllSubPlayers()
+        } catch (_: Throwable) {}
         // 清理 APK 下载资源（避免 receiver 泄漏）
         try {
             apkProgressJob?.cancel()
@@ -5160,8 +5262,20 @@ showOsd("播放器设置", "日志等级: $levelName")
         try {
             adminCountdownJob?.cancel()
             stopRemoteCommandPolling()
+            // 使用后台线程 + 超时，避免 runBlocking 阻塞线程
             Thread {
-                runCatching { runBlocking { repository.stopAdminServer() } }
+                runCatching {
+                    val scope = kotlinx.coroutines.CoroutineScope(
+                        kotlinx.coroutines.SupervisorJob() +
+                            kotlinx.coroutines.Dispatchers.IO
+                    )
+                    kotlinx.coroutines.runCatching {
+                        kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                            repository.stopAdminServer()
+                        }
+                    }
+                    scope.cancel()
+                }
             }.start()
         } catch (_: Throwable) {}
     }

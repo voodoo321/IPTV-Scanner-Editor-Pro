@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.iptv.scanner.editor.pro.player.SubPlayer
 import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 
 /**
@@ -31,13 +34,14 @@ import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
  * 根据 [MultiViewState.layout] 渲染网格：
  * - DUAL：左右分屏（主画面左，副画面右）
  * - QUAD：2x2 网格（主画面左上，副画面右上/左下/右下）
+ * - NINE：3x3 网格（主画面左上，副画面 1-8 填充其余位置）
  *
- * 主画面（index=0）由 [primaryContent] Composable 渲染（复用 MainPlayerScreen 现有播放器 View 逻辑）。
- * 副画面（index=1+）当前不可用（MPV 单例限制），显示占位提示。
+ * 主画面（index=0）由 [primaryContent] Composable 渲染（MPV SurfaceView）。
+ * 副画面（index=1+）由 ExoPlayer [SubPlayer] 渲染（PlayerView）。
  *
  * @param state 多画面状态
  * @param primaryContent 主画面内容 Composable
- * @param getSubPlayer 获取副画面 Player 实例（按 index）
+ * @param getSubPlayer 获取副画面 SubPlayer 实例（按 index）
  * @param onViewportClick 视口点击回调（TV 端焦点切换 / 手机端点击添加频道）
  * @param onViewportClose 视口关闭回调（副画面关闭按钮）
  * @param modifier Modifier
@@ -46,7 +50,7 @@ import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 fun MultiViewOverlay(
     state: MultiViewState,
     primaryContent: @Composable BoxScope.() -> Unit,
-    getSubPlayer: (Int) -> com.iptv.scanner.editor.pro.player.Player?,
+    getSubPlayer: (Int) -> SubPlayer?,
     onViewportClick: (Int) -> Unit,
     onViewportClose: (Int) -> Unit,
     onToggleMute: (Int) -> Unit,
@@ -259,15 +263,6 @@ private fun ViewportCell(
             )
         }
 
-        // 错误画面提示
-        if (viewport != null && viewport.isError) {
-            ErrorViewportHint(
-                channelName = viewport.channelName,
-                errorMessage = viewport.errorMessage,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-
         // 频道名标签（左上角）
         if (viewport != null && !viewport.isEmpty) {
             ChannelLabel(
@@ -321,41 +316,87 @@ private fun ViewportCell(
 }
 
 /**
- * 副画面内容占位。
+ * 副画面内容：ExoPlayer PlayerView 渲染。
  *
- * MPV 在安卓端为单例，不支持多实例，副画面当前不可用。
- * 仅保留 UI 结构，显示"暂不可用"提示。
+ * 使用 [SubPlayer] 的 ExoPlayer 实例创建 [PlayerView]（media3-ui），
+ * 通过 [AndroidView] 嵌入 Compose 树。
+ *
+ * - 空画面（无频道）：不渲染 PlayerView，空画面提示由 [ViewportCell] 显示
+ * - 缓冲中：显示 CircularProgressIndicator
+ * - 错误：显示错误信息
+ * - 正常播放：全屏渲染 PlayerView
  */
 @Composable
 private fun SubViewportContent(
     viewportIndex: Int,
     viewport: MultiViewport?,
-    getSubPlayer: (Int) -> com.iptv.scanner.editor.pro.player.Player?
+    getSubPlayer: (Int) -> SubPlayer?
 ) {
-    // MPV 单例限制：副画面不可用，显示占位提示
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-            Icon(
-                Icons.Default.Error,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.3f),
-                modifier = Modifier.size(28.dp)
+    // 空画面不渲染 PlayerView
+    if (viewport == null || viewport.isEmpty) return
+
+    val subPlayer = getSubPlayer(viewportIndex)
+
+    if (subPlayer == null) {
+        // SubPlayer 尚未创建，显示加载中
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                color = Color.White.copy(alpha = 0.5f),
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "副画面暂不可用",
-                color = Color.White.copy(alpha = 0.4f),
-                fontSize = 11.sp
+        }
+        return
+    }
+
+    val playerState by subPlayer.state.collectAsState()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // ExoPlayer PlayerView
+        AndroidView(
+            factory = { ctx ->
+                androidx.media3.ui.PlayerView(ctx).apply {
+                    useController = false  // 不显示 ExoPlayer 默认控制器
+                    setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                    // 保持宽高比，填满容器
+                    resizeMode = androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                    player = subPlayer.getExoPlayer()
+                }
+            },
+            update = { view ->
+                // 确保 ExoPlayer 实例正确绑定（SubPlayer 可能被重新创建）
+                val exoPlayer = subPlayer.getExoPlayer()
+                if (view.player !== exoPlayer) {
+                    view.player = exoPlayer
+                }
+            },
+            onRelease = { view ->
+                // 清除 PlayerView 对 ExoPlayer 的引用，避免泄漏
+                view.player = null
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 缓冲指示器
+        if (playerState.isBuffering && !playerState.isError) {
+            CircularProgressIndicator(
+                color = Color.White.copy(alpha = 0.7f),
+                strokeWidth = 2.dp,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(28.dp)
             )
-            Text(
-                text = "仅支持 MPV 单画面",
-                color = Color.White.copy(alpha = 0.3f),
-                fontSize = 10.sp
+        }
+
+        // 错误提示
+        if (playerState.isError) {
+            ErrorViewportHint(
+                channelName = viewport.channelName,
+                errorMessage = playerState.errorMessage,
+                modifier = Modifier.align(Alignment.Center)
             )
         }
     }

@@ -9,7 +9,7 @@ package com.iptv.scanner.editor.pro.ui
  * - NINE：九画面（3x3 网格，主+8副）
  *
  * 主画面始终用 MPV（功能最全）。
- * 副画面当前不可用（MPV 在安卓端是单例，不支持多实例），仅保留 UI 结构。
+ * 副画面用 ExoPlayer（SubPlayer），支持多实例同时播放。
  */
 enum class MultiViewLayout(val count: Int, val displayName: String) {
     SINGLE(1, "单画面"),

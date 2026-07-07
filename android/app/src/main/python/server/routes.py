@@ -1,12 +1,116 @@
 import asyncio
+import contextlib
+import ipaddress
 import logging
 import os
+from datetime import datetime, timezone, timedelta
 from aiohttp import web, web_response
+from urllib.parse import urlparse
 
 from server.app import get_channel_model, get_config, get_main_window, get_server, get_context
 from utils.platform_utils import get_android_data_dir
 
 logger = logging.getLogger('server.routes')
+
+# --- 安全配置 ---
+# 认证 Token：通过环境变量 ISEPP_AUTH_TOKEN 或配置文件 [Server] auth_token 设置
+# 为空时表示不需要认证（仅限 localhost 场景）
+_AUTH_TOKEN = os.environ.get('ISEPP_AUTH_TOKEN', '').strip()
+
+# 允许的流代理 URL 协议
+_ALLOWED_STREAM_PROTOCOLS = {'http', 'https', 'rtsp', 'rtmp', 'rtp', 'udp', 'srt'}
+
+# 共享 aiohttp ClientSession（流代理用），延迟初始化
+_stream_session = None
+
+
+def _get_stream_session():
+    """获取共享的 aiohttp ClientSession，避免每个请求创建新连接池"""
+    global _stream_session
+    if _stream_session is None or _stream_session.closed:
+        import aiohttp
+        _stream_session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30),
+            connector=aiohttp.TCPConnector(limit=20, limit_per_host=5)
+        )
+    return _stream_session
+
+
+def _is_private_ip(host: str) -> bool:
+    """检查主机名是否为内网地址（用于 SSRF 防护）"""
+    if not host:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+    except ValueError:
+        # 非 IP 格式的主机名，保守视为私有
+        if host in ('localhost', '0', ):
+            return True
+        return False
+
+
+def _is_safe_stream_url(url: str) -> tuple:
+    """检查流代理 URL 是否安全
+    返回 (是否安全, 拒绝原因)
+    """
+    if not url:
+        return False, 'URL为空'
+    try:
+        parsed = urlparse(url)
+        scheme = (parsed.scheme or '').lower()
+        if scheme not in _ALLOWED_STREAM_PROTOCOLS:
+            return False, f'不允许的协议: {scheme}'
+        host = parsed.hostname or ''
+        if not host:
+            return False, '无法解析主机名'
+        # 对 HTTP/HTTPS 协议进行 SSRF 防护
+        if scheme in ('http', 'https') and _is_private_ip(host):
+            return False, f'内网地址不允许代理: {host}'
+        return True, ''
+    except Exception as e:
+        return False, f'URL解析失败: {e}'
+
+
+# 空上下文管理器，用于 getattr(ctx, '_channels_lock', _noop_lock) 时 ctx 无锁的兜底
+@contextlib.contextmanager
+def _noop_lock():
+    yield
+
+
+def _parse_xmltv_time(time_str: str):
+    """解析 XMLTV 时间字符串，支持多种格式：
+    - ISO 8601: 2024-01-01T12:00:00+08:00
+    - XMLTV:   20240101120000 +0800
+    - XMLTV:   20240101120000Z
+    """
+    if not time_str:
+        return None
+    s = time_str.strip()
+    try:
+        # 尝试 ISO 8601 格式
+        return datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        pass
+    # 尝试 XMLTV 格式: YYYYMMDDHHmmss [+-]ZZZZ
+    import re
+    m = re.match(r'^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?$', s)
+    if m:
+        year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
+        tz_str = m.group(7)
+        if tz_str:
+            tz_sign = 1 if tz_str[0] == '+' else -1
+            tz_hours = int(tz_str[1:3])
+            tz_minutes = int(tz_str[3:5])
+            tz = timezone(tz_sign * timedelta(hours=tz_hours, minutes=tz_minutes))
+        else:
+            tz = None
+        try:
+            return datetime(year, month, day, hour, minute, second, tzinfo=tz)
+        except ValueError:
+            return None
+    return None
+
 
 _MIME_TYPES = {
     '.html': 'text/html',
@@ -35,7 +139,11 @@ def _register_admin_routes(app):
         rel_path = request.match_info.get('path', 'index.html')
         if not rel_path or rel_path.endswith('/'):
             rel_path += 'index.html'
-        file_path = os.path.join(admin_dir, rel_path)
+        # 安全：防止路径穿越（../../../etc/passwd 等）
+        file_path = os.path.realpath(os.path.join(admin_dir, rel_path))
+        admin_real = os.path.realpath(admin_dir)
+        if not file_path.startswith(admin_real + os.sep):
+            return web.Response(text='403: Forbidden', status=403)
         if not os.path.isfile(file_path):
             return web.Response(text='404: Not Found', status=404)
         ext = os.path.splitext(rel_path)[1].lower()
@@ -154,7 +262,7 @@ def _t(lang, key, default=''):
 
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[error_middleware, cors_middleware])
+    app = web.Application(middlewares=[auth_middleware, error_middleware, cors_middleware])
     app.router.add_get('/', handle_index)
     app.router.add_get('/api/status', handle_status)
     app.router.add_get('/api/m3u', handle_m3u)
@@ -201,16 +309,73 @@ def create_app() -> web.Application:
     return app
 
 
+# 允许通过认证的路由前缀（非 /api/ 的只读路由不需要认证）
+_AUTH_EXEMPT_PREFIXES = ('/', '/mobile', '/admin', '/stream/')
+
+
+def _is_auth_required(request):
+    """判断请求是否需要认证"""
+    path = request.path
+    # 非 API 路由免认证
+    if not path.startswith('/api/'):
+        return False
+    # 如果未配置 Token，免认证（仅限 localhost 场景）
+    if not _AUTH_TOKEN:
+        return False
+    return True
+
+
+@web.middleware
+async def auth_middleware(request, handler):
+    """API 认证中间件
+    通过环境变量 ISEPP_AUTH_TOKEN 或配置设置认证 Token。
+    客户端需在请求头中携带 Authorization: Bearer <token> 或查询参数 ?token=<token>。
+    未配置 Token 时免认证（适用于 localhost 场景）。
+    """
+    if not _is_auth_required(request):
+        return await handler(request)
+    # 从 Authorization 头或查询参数获取 token
+    auth_header = request.headers.get('Authorization', '')
+    token = ''
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:].strip()
+    if not token:
+        token = request.rel_url.query.get('token', '').strip()
+    if token != _AUTH_TOKEN:
+        return web.json_response(
+            {'success': False, 'error': '未授权访问'}, status=401
+        )
+    return await handler(request)
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     if request.method == 'OPTIONS':
         resp = web.Response(status=204)
     else:
         resp = await handler(request)
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    # CORS 限制：仅允许 localhost 和同源请求
+    origin = request.headers.get('Origin', '')
+    if _is_localhost_origin(origin):
+        resp.headers['Access-Control-Allow-Origin'] = origin
+    else:
+        resp.headers['Access-Control-Allow-Origin'] = 'null'
     resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    resp.headers['Access-Control-Allow-Credentials'] = 'true'
     return resp
+
+
+def _is_localhost_origin(origin: str) -> bool:
+    """检查 Origin 是否为 localhost 或 127.0.0.1"""
+    if not origin:
+        return False
+    try:
+        parsed = urlparse(origin)
+        host = parsed.hostname or ''
+        return host in ('localhost', '127.0.0.1', '::1') or _is_private_ip(host)
+    except Exception:
+        return False
 
 
 @web.middleware
@@ -574,6 +739,21 @@ async def handle_channel_get(request):
     return _json_success(channel={**ch, '_index': idx} if ch else None)
 
 
+# 频道更新允许的字段白名单，防止注入内部字段
+_CHANNEL_UPDATABLE_FIELDS = {
+    'name', 'url', 'logo', 'group', '_groups', 'tvg_id', 'tvg_name',
+    'tvg_chno', 'tvg_shift', 'catchup', 'catchup_days', 'catchup_source',
+    'catchup_correction', 'fcc', 'resolution', 'status', 'valid',
+}
+
+
+def _filter_channel_fields(data: dict) -> dict:
+    """过滤频道字段，仅保留白名单中的字段"""
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if k in _CHANNEL_UPDATABLE_FIELDS}
+
+
 async def handle_channel_update(request):
     ctx = get_context()
     model = get_channel_model() if ctx else None
@@ -582,11 +762,17 @@ async def handle_channel_update(request):
     except ValueError:
         return _json_error('无效的频道ID')
     data = await request.json()
+    # 字段白名单过滤，防止注入 id/source/_raw_extinf 等内部字段
+    data = _filter_channel_fields(data)
+    if not data:
+        return _json_error('没有可更新的字段')
     if model and 0 <= idx < model.rowCount():
         model.update_channel(idx, data)
     elif ctx and hasattr(ctx, '_channels') and 0 <= idx < len(ctx._channels):
         # standalone 模式（Android）：直接更新内存中的频道并持久化
-        ctx._channels[idx].update(data)
+        with getattr(ctx, '_channels_lock', _noop_lock):
+            if 0 <= idx < len(ctx._channels):
+                ctx._channels[idx].update(data)
         ctx._save_channels_to_cache()
     else:
         mw = get_main_window()
@@ -662,16 +848,18 @@ async def handle_channels_import(request):
         # 标记为手动导入（source=''），在 Android 端 LOCAL tab 显示
         # 同时补全 id 字段（与 android_bridge.py import_channels 对齐）
         ctx = get_context()
-        base_id = len(ctx._channels) if ctx and hasattr(ctx, '_channels') else 0
+        if not ctx or not hasattr(ctx, '_channels'):
+            return _json_error('上下文未初始化', 503)
+        base_id = len(ctx._channels)
         for i, c in enumerate(channels):
             c['source'] = ''
             c.setdefault('id', base_id + i + 1)
-        if ctx and hasattr(ctx, '_channels'):
+        with getattr(ctx, '_channels_lock', _noop_lock):
             ctx._channels.extend(channels)
-            # 持久化到缓存，重启后不丢失
-            ctx._save_channels_to_cache()
-            all_groups = list(dict.fromkeys([c.get('group', '未分组') for c in ctx._channels]))
-            ctx._channels_list = all_groups if hasattr(ctx, '_channels_list') else None
+        # 持久化到缓存，重启后不丢失
+        ctx._save_channels_to_cache()
+        all_groups = list(dict.fromkeys([c.get('group', '未分组') for c in ctx._channels]))
+        ctx._channels_list = all_groups if hasattr(ctx, '_channels_list') else None
         return _json_success(imported=len(channels))
     except Exception as e:
         return _json_error(f'解析失败: {e}', 500)
@@ -887,8 +1075,8 @@ async def handle_scan_start(request):
             return _json_error('请提供扫描URL', 400)
         if scanner.is_scanning():
             return _json_error('扫描已在进行中', 409)
-        timeout = int(data.get('timeout', 10))
-        threads = int(data.get('threads', 4))
+        timeout = max(1, min(int(data.get('timeout', 10)), 60))
+        threads = max(1, min(int(data.get('threads', 4)), 32))
         if scanner.start_range_scan(url, timeout, threads):
             return _json_success(message='URL 范围扫描已开始')
         return _json_error('启动扫描失败', 500)
@@ -1151,14 +1339,17 @@ async def handle_epg(request):
                 for p in programmes:
                     if 'start_ts' not in p:
                         try:
-                            from datetime import datetime
                             start_str = p.get('start', '')
                             stop_str = p.get('stop', p.get('end', ''))
                             if start_str:
-                                p['start_ts'] = int(datetime.fromisoformat(start_str).timestamp())
+                                dt = _parse_xmltv_time(start_str)
+                                if dt:
+                                    p['start_ts'] = int(dt.timestamp())
                             if stop_str:
-                                p['stop_ts'] = int(datetime.fromisoformat(stop_str).timestamp())
-                        except Exception:
+                                dt = _parse_xmltv_time(stop_str)
+                                if dt:
+                                    p['stop_ts'] = int(dt.timestamp())
+                        except (ValueError, TypeError):
                             pass
                 return _json_success(programmes=programmes)
             if hasattr(epg_parser, 'get_epg_data_copy'):
@@ -1178,14 +1369,17 @@ async def handle_epg(request):
                 for p in programmes:
                     if 'start_ts' not in p:
                         try:
-                            from datetime import datetime
                             start_str = p.get('start', '')
                             stop_str = p.get('stop', p.get('end', ''))
                             if start_str:
-                                p['start_ts'] = int(datetime.fromisoformat(start_str).timestamp())
+                                dt = _parse_xmltv_time(start_str)
+                                if dt:
+                                    p['start_ts'] = int(dt.timestamp())
                             if stop_str:
-                                p['stop_ts'] = int(datetime.fromisoformat(stop_str).timestamp())
-                        except Exception:
+                                dt = _parse_xmltv_time(stop_str)
+                                if dt:
+                                    p['stop_ts'] = int(dt.timestamp())
+                        except (ValueError, TypeError):
                             pass
                 return _json_success(programmes=programmes)
         if hasattr(epg_parser, 'get_all_channels'):
@@ -1216,22 +1410,29 @@ async def handle_stream_proxy(request):
     if not ch or not ch.get('url'):
         return _json_error('频道URL为空', 404)
     stream_url = ch['url']
-    import aiohttp
+    # SSRF 防护：使用统一的 URL 安全检查
+    is_safe, reject_reason = _is_safe_stream_url(stream_url)
+    if not is_safe:
+        logger.warning(f'Stream proxy blocked: {stream_url} - {reject_reason}')
+        return _json_error(f'不允许的流地址: {reject_reason}', 403)
+    session = _get_stream_session()
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(stream_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                content_type = resp.headers.get('Content-Type', 'video/mp2t')
-                response = web_response.StreamResponse(
-                    status=resp.status,
-                    headers={'Content-Type': content_type, 'Access-Control-Allow-Origin': '*'}
-                )
-                await response.prepare(request)
-                async for chunk in resp.content.iter_chunked(8192):
-                    await response.write(chunk)
-                await response.write_eof()
-                return response
+        async with session.get(stream_url) as resp:
+            content_type = resp.headers.get('Content-Type', 'video/mp2t')
+            response = web_response.StreamResponse(
+                status=resp.status,
+                headers={'Content-Type': content_type}
+            )
+            await response.prepare(request)
+            async for chunk in resp.content.iter_chunked(8192):
+                await response.write(chunk)
+            await response.write_eof()
+            return response
     except asyncio.CancelledError:
         raise
+    except ConnectionResetError:
+        # 客户端断开连接，正常终止
+        return web.Response(status=499)
     except Exception as e:
         logger.error(f"流代理失败: {stream_url} - {e}")
         return _json_error(f'流代理失败: {e}', 502)
@@ -1416,6 +1617,17 @@ async def handle_share_file(request):
     path = (body or {}).get('path', '').strip()
     if not path or not os.path.exists(path):
         return _json_error('文件不存在', 404)
+    # 安全：防止路径穿越——确保路径在允许的目录内
+    # 允许的根目录：IPTV_DATA_DIR / cache 目录 / 应用文件目录
+    allowed_roots = []
+    android_data = get_android_data_dir()
+    if android_data:
+        allowed_roots.append(os.path.realpath(android_data))
+    _cache_base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cache')
+    allowed_roots.append(os.path.realpath(_cache_base))
+    real_path = os.path.realpath(path)
+    if not any(real_path.startswith(root + os.sep) or real_path == root for root in allowed_roots):
+        return _json_error('文件路径不在允许范围内', 403)
     try:
         import sys
         if sys.platform == 'win32':

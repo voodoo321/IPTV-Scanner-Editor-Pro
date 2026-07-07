@@ -97,8 +97,8 @@ class MPVView @JvmOverloads constructor(
         MPVLib.setOptionString("source-timeout", "10")
         MPVLib.setOptionString("stream-open-timeout", "30")
 
-        MPVLib.setOptionString("stream-lavf-o", "verify=0")
-        MPVLib.setOptionString("tls-verify", "no")
+        MPVLib.setOptionString("stream-lavf-o", "verify=1")
+        MPVLib.setOptionString("tls-verify", "yes")
 
         val cpuCount = Runtime.getRuntime().availableProcessors()
         val threads = maxOf(2, cpuCount / 2)

@@ -1,3 +1,4 @@
+import copy
 import threading
 from typing import List, Dict, Any
 from utils.singleton import Singleton
@@ -27,7 +28,7 @@ class ApplicationState(Singleton):
     @property
     def channels(self) -> List[Dict[str, Any]]:
         with self._channels_lock:
-            return self._channels.copy()
+            return copy.deepcopy(self._channels)
 
     @channels.setter
     def channels(self, value: List[Dict[str, Any]]):
@@ -39,10 +40,10 @@ class ApplicationState(Singleton):
             self._channels = list(new_channels)
 
     def get_channel_by_index(self, idx: int) -> Dict[str, Any] | None:
-        """获取频道（浅拷贝）。修改返回值中的嵌套结构会影响原始数据，如需完全隔离请自行deepcopy"""
+        """获取频道的深拷贝，修改返回值不会影响原始数据"""
         with self._channels_lock:
             if 0 <= idx < len(self._channels):
-                return dict(self._channels[idx])
+                return copy.deepcopy(self._channels[idx])
             return None
 
     @property
@@ -63,7 +64,7 @@ class ApplicationState(Singleton):
     @property
     def epg_data(self) -> Dict[str, Any]:
         with self._epg_lock:
-            return self._epg_data.copy()
+            return copy.deepcopy(self._epg_data)
 
     @epg_data.setter
     def epg_data(self, value: Dict[str, Any]):

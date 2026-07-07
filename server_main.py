@@ -60,7 +60,7 @@ def create_standalone_app():
     return app
 
 
-async def main(host='0.0.0.0', port=8080):
+async def main(host='127.0.0.1', port=8080):
     if _is_android():
         host = '127.0.0.1'
 
@@ -97,7 +97,8 @@ if __name__ == '__main__':
 
     import argparse
     parser = argparse.ArgumentParser(description='IPTV Scanner Editor Pro - Web Server')
-    parser.add_argument('--host', default='0.0.0.0', help='监听地址 (默认: 0.0.0.0)')
+    parser.add_argument('--host', default='127.0.0.1',
+                        help='监听地址 (默认: 127.0.0.1，局域网访问请用 0.0.0.0)')
     parser.add_argument('--port', type=int, default=8080, help='监听端口 (默认: 8080)')
     args = parser.parse_args()
 

@@ -221,8 +221,21 @@ class ConfigManager(Singleton):
                     os.makedirs(config_dir)
                     logger.info(f"配置管理-创建配置目录: {config_dir}")
                 
-                with open(self.config_file, 'w', encoding='utf-8') as f:
-                    self.config.write(f)
+                # 原子写入：先写入临时文件，再 rename 覆盖目标文件
+                import tempfile
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=config_dir, suffix='.tmp', prefix='cfg_'
+                )
+                try:
+                    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                        self.config.write(f)
+                    os.replace(tmp_path, self.config_file)
+                except Exception:
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+                    raise
                 logger.debug(f"配置管理-成功保存配置文件: {self.config_file}")
                 return True
             except IOError as e:
@@ -827,9 +840,20 @@ class ConfigManager(Singleton):
         """保存断点缓存到 JSON 文件"""
         try:
             import json
+            import tempfile
             cache = self._resume_cache or {}
-            with open(self._resume_file, 'w', encoding='utf-8') as f:
-                json.dump(cache, f, ensure_ascii=False, indent=2)
+            config_dir = os.path.dirname(self._resume_file)
+            fd, tmp_path = tempfile.mkstemp(dir=config_dir, suffix='.tmp', prefix='resume_')
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(cache, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, self._resume_file)
+            except Exception:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
         except Exception as e:
             logger.error(f"保存断点缓存失败: {e}")
 
@@ -931,9 +955,20 @@ class ConfigManager(Singleton):
         """保存书签缓存到 JSON 文件"""
         try:
             import json
+            import tempfile
             cache = self._bookmark_cache or {}
-            with open(self._bookmark_file, 'w', encoding='utf-8') as f:
-                json.dump(cache, f, ensure_ascii=False, indent=2)
+            config_dir = os.path.dirname(self._bookmark_file)
+            fd, tmp_path = tempfile.mkstemp(dir=config_dir, suffix='.tmp', prefix='bm_')
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(cache, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, self._bookmark_file)
+            except Exception:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
         except Exception as e:
             logger.error(f"保存书签缓存失败: {e}")
 

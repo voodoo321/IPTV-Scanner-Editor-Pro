@@ -210,8 +210,15 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                 MultiViewOverlay(
                     state = multiViewState,
                     primaryContent = { primaryPlayer() },
-                    getSubPlayer = { _ -> null },  // 副画面不可用（MPV 单例）
-                    onViewportClick = { idx -> viewModel.setFocusedViewport(idx) },
+                    getSubPlayer = { idx -> viewModel.getSubPlayer(idx) },
+                    onViewportClick = { idx ->
+                        viewModel.setFocusedViewport(idx)
+                        // 点击空画面时自动打开频道列表，方便快速添加频道
+                        val viewport = multiViewState.viewports.getOrNull(idx)
+                        if (viewport != null && viewport.isEmpty) {
+                            viewModel.showChannelsPanel()
+                        }
+                    },
                     onViewportClose = { idx -> viewModel.removeFromMultiView(idx) },
                     onToggleMute = { idx -> viewModel.toggleMultiViewMute(idx) }
                 )

@@ -1533,6 +1533,10 @@ class MpvPlayerController(QObject):
             self.logger.error(f"停止播放失败: {str(e)}")
 
     def terminate(self):
+        # 防止重入：如果已在终止过程中，直接返回
+        if getattr(self, '_terminated', False):
+            self.logger.debug("terminate() 已在执行中，跳过重复调用")
+            return
         try:
             self._terminated = True
             self.logger.info("正在终止MPV播放器...")
@@ -1566,7 +1570,9 @@ class MpvPlayerController(QObject):
                 elapsed.start()
                 while elapsed.elapsed() < 150:
                     from PySide6.QtWidgets import QApplication
-                    QApplication.processEvents()
+                    QApplication.processEvents(
+                        QApplication.ProcessEventsFlag.ExcludeUserInputEvents
+                    )
                     with self._lock:
                         if self.mpv_handle is None:
                             break
@@ -1642,9 +1648,23 @@ class MpvPlayerController(QObject):
             if saved_position > 0:
                 from PySide6.QtCore import QTimer
                 pos = saved_position
+                seek_retries = [0]
                 def _do_seek():
-                    if not self._terminated and self.mpv_handle and self.is_playing:
+                    if self._terminated or not self.mpv_handle or not self.is_playing:
+                        return
+                    # 等待 file-loaded 事件后再 seek，确保播放器就绪
+                    file_loaded = False
+                    try:
+                        file_loaded = self._get_mpv_property_double('time-pos') is not None
+                    except Exception:
+                        pass
+                    if file_loaded:
                         self.send_command(['seek', str(pos), 'absolute'])
+                    elif seek_retries[0] < 5:
+                        seek_retries[0] += 1
+                        QTimer.singleShot(500, _do_seek)
+                    else:
+                        self.logger.warning(f"HDR切换后恢复播放位置失败（重试 {seek_retries[0]} 次后放弃）")
                 QTimer.singleShot(1500, _do_seek)
         self.logger.info(f"HDR模式已切换为: {new_hdr_mode}")
 

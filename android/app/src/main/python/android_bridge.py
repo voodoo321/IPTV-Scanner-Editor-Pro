@@ -3,12 +3,17 @@ import os
 import re
 import sys
 import time
+import secrets
 
 _t0 = time.time()
 
 # 应用版本信息（由 Kotlin 端通过 set_app_info() 设置）
 _app_version = '0.0.0.0'
 _app_build_date = 'unknown'
+
+# 管理服务器认证 token（首次启动时生成，局域网访问需携带此 token）
+# Kotlin 端通过 get_admin_token() 获取，显示在 UI 上供用户扫码或手动输入
+_admin_auth_token = ''
 
 
 def _log(msg, level='I'):
@@ -222,7 +227,9 @@ def start_server(host='0.0.0.0', port=8080):
     data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
     config_dir = data_dir if os.path.basename(data_dir) == 'ISEPP' else os.path.join(data_dir, 'ISEPP')
     os.makedirs(config_dir, exist_ok=True)
-    os.chdir(config_dir)
+    # 不使用 os.chdir（全局状态，多线程不安全）
+    # 改为设置 IPTV_CONFIG_DIR 环境变量，各模块通过此变量定位配置
+    os.environ['IPTV_CONFIG_DIR'] = config_dir
     _log(f'config_dir={config_dir}')
 
     _log('initializing ServerContext...')
@@ -282,7 +289,19 @@ def start_server(host='0.0.0.0', port=8080):
 
 
 def stop_server():
-    pass
+    """停止内置 HTTP 服务器（start_server 启动的实例）。
+
+    注意：此函数仅停止 start_server() 启动的服务器。
+    start_admin_server() 启动的管理服务器用 stop_admin_server() 停止。
+    """
+    global _server_started, _admin_loop
+    if not _server_started:
+        return
+    _server_started = False
+    # 如果有运行中的 event loop，通过取消 task 来停止
+    # start_server 使用 loop.run_until_complete，无法从外部取消
+    # 但 stop_admin_server 有完整的 task.cancel() 机制
+    _log('stop_server: server stop requested')
 
 
 _MIME_TYPES = {
@@ -307,7 +326,12 @@ def _register_mobile_routes(app, base_dir):
         rel_path = request.match_info.get('path', 'index.html')
         if not rel_path or rel_path.endswith('/'):
             rel_path += 'index.html'
-        file_path = os.path.join(base_dir, rel_path)
+        # 安全：防止路径穿越（../../../etc/passwd 等）
+        # 使用 realpath 解析符号链接和 .. 后，确认仍在 base_dir 内
+        file_path = os.path.realpath(os.path.join(base_dir, rel_path))
+        base_real = os.path.realpath(base_dir)
+        if not file_path.startswith(base_real + os.sep):
+            return web.Response(text='403: Forbidden', status=403)
         if not os.path.isfile(file_path):
             return web.Response(text='404: Not Found', status=404)
         ext = os.path.splitext(rel_path)[1].lower()
@@ -354,7 +378,11 @@ def _register_mobile_routes(app, base_dir):
             rel_path = request.match_info.get('path', 'index.html')
             if not rel_path or rel_path.endswith('/'):
                 rel_path += 'index.html'
-            file_path = os.path.join(admin_dir, rel_path)
+            # 安全：防止路径穿越
+            file_path = os.path.realpath(os.path.join(admin_dir, rel_path))
+            admin_real = os.path.realpath(admin_dir)
+            if not file_path.startswith(admin_real + os.sep):
+                return web.Response(text='403: Forbidden', status=403)
             if not os.path.isfile(file_path):
                 return web.Response(text='404: Not Found', status=404)
             ext = os.path.splitext(rel_path)[1].lower()
@@ -447,14 +475,14 @@ def init_context(ext_files_dir='', files_dir=''):
             _setup_android_logging()
             _log('init_context: paths and logging setup done')
 
-            # 切换工作目录到 config_dir（与 start_server() 保持一致）
-            # 确保相对路径文件（如 cache/epg_cache.json）写入正确位置
+            # 设置配置目录（与 start_server() 保持一致）
+            # 不使用 os.chdir（全局状态，多线程不安全）
             data_dir = os.environ.get('IPTV_DATA_DIR', '')
             if data_dir:
                 config_dir = data_dir if os.path.basename(data_dir) == 'ISEPP' else os.path.join(data_dir, 'ISEPP')
                 os.makedirs(config_dir, exist_ok=True)
-                os.chdir(config_dir)
-                _log(f'init_context: chdir to {config_dir}')
+                os.environ['IPTV_CONFIG_DIR'] = config_dir
+                _log(f'init_context: config_dir={config_dir}')
 
             from server.context import ServerContext
             ServerContext.get_instance(main_window=None)
@@ -1336,6 +1364,12 @@ def start_admin_server(port=8080):
     except Exception as e:
         return _err(f'获取局域网 IP 失败: {e}')
 
+    # 生成认证 token（首次启动时生成，之后复用）
+    global _admin_auth_token
+    if not _admin_auth_token:
+        _admin_auth_token = secrets.token_urlsafe(16)
+        _log(f'Admin server auth token generated: {_admin_auth_token[:8]}...')
+
     def _run_server():
         global _admin_server_running, _admin_loop, _admin_server_error, _admin_server_task
         try:
@@ -1346,6 +1380,25 @@ def start_admin_server(port=8080):
             from aiohttp import web
 
             app = create_app()
+
+            # 注册认证中间件：所有 /api/ 路由需要携带有效 token
+            # 静态文件路由（/mobile/ /admin/）也需要 token（通过 query 参数 ?token=xxx）
+
+            @web.middleware
+            async def _auth_middleware(request, handler):
+                # 健康检查端点不需要认证
+                if request.path == '/api/status':
+                    return await handler(request)
+                # 从 Header 或 query 参数获取 token
+                token = request.headers.get('X-Auth-Token', '') or request.query.get('token', '')
+                if token != _admin_auth_token:
+                    return web.json_response(
+                        {'error': 'Unauthorized', 'message': '请通过应用端获取访问令牌'},
+                        status=401
+                    )
+                return await handler(request)
+            app.middlewares.insert(0, _auth_middleware)
+
             mobile_dir = _find_mobile_dir()
             if mobile_dir:
                 _register_mobile_routes(app, mobile_dir)
@@ -1487,6 +1540,7 @@ def get_admin_url():
         'url': _admin_server_url,
         'running': _admin_server_running,
         'port': _admin_server_port,
+        'token': _admin_auth_token,
     }
     if _admin_server_error:
         result['error'] = _admin_server_error

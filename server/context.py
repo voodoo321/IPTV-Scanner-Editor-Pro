@@ -396,7 +396,9 @@ class ServerContext:
         self._main_window = main_window
         self._config: Optional[ConfigManager] = None
         self._channels: List[Dict] = []
+        self._channels_lock = _threading.Lock()
         self._sources: List[Dict] = []
+        self._sources_lock = _threading.Lock()
         self._epg_data: Dict = {}
         self._standalone = main_window is None
         self._last_load_time = 0.0
@@ -440,7 +442,8 @@ class ServerContext:
                     data = json.load(f)
                 channels = data.get('channels', [])
                 if channels:
-                    self._channels = channels
+                    with self._channels_lock:
+                        self._channels = channels
                     # 设置 _last_load_time 防止 reload_if_needed 立即触发同步 HTTP 重载
                     # （后台 _load_channels_from_file 线程会异步更新频道和网络拉取完成后刷新此时间戳）
                     self._last_load_time = time.time()
@@ -454,7 +457,9 @@ class ServerContext:
             return
         try:
             cache_path = self._get_channels_cache_path()
-            data = {'channels': self._channels, 'saved_at': time.time()}
+            with self._channels_lock:
+                channels_snapshot = list(self._channels)
+            data = {'channels': channels_snapshot, 'saved_at': time.time()}
             with open(cache_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
         except Exception as e:
@@ -493,23 +498,26 @@ class ServerContext:
                 # 根因：之前 self._channels = all_channels 完全覆盖，导致手动添加的本地频道丢失
                 # （与 _reload_sources_worker 的合并逻辑对齐）
                 existing_urls = {c.get('url', '') for c in all_channels if c.get('url', '')}
-                extra_channels = [
-                    c for c in self._channels
-                    if c.get('url', '') and c.get('url', '') not in existing_urls
-                ]
-                if extra_channels:
-                    self._channels = all_channels + extra_channels
-                    logger.info(f"独立模式加载了 {len(all_channels)} 个频道，保留 {len(extra_channels)} 个本地频道")
-                else:
-                    self._channels = all_channels
-                    logger.info(f"独立模式加载了 {len(all_channels)} 个频道")
+                with self._channels_lock:
+                    extra_channels = [
+                        c for c in self._channels
+                        if c.get('url', '') and c.get('url', '') not in existing_urls
+                    ]
+                    if extra_channels:
+                        self._channels = all_channels + extra_channels
+                        logger.info(f"独立模式加载了 {len(all_channels)} 个频道，保留 {len(extra_channels)} 个本地频道")
+                    else:
+                        self._channels = all_channels
+                        logger.info(f"独立模式加载了 {len(all_channels)} 个频道")
                 self._save_channels_to_cache()
             else:
-                existing = len(self._channels)
+                with self._channels_lock:
+                    existing = len(self._channels)
                 if existing > 0:
                     logger.info(f"网络加载为空，保留现有 {existing} 个频道")
                 else:
-                    self._channels = all_channels
+                    with self._channels_lock:
+                        self._channels = all_channels
                     logger.info("独立模式加载了 0 个频道（无缓存可保留）")
             self._last_load_time = time.time()
         except Exception as e:
@@ -611,27 +619,30 @@ class ServerContext:
                 # 合并而非覆盖：保留不在订阅源中的扫描/导入频道（按 URL 去重）
                 # 根因：之前 self._channels = all_channels 完全覆盖，导致扫描/导入的频道丢失
                 existing_urls = {c.get('url', '') for c in all_channels if c.get('url', '')}
-                extra_channels = [
-                    c for c in self._channels
-                    if c.get('url', '') and c.get('url', '') not in existing_urls
-                ]
-                if extra_channels:
-                    self._channels = all_channels + extra_channels
-                    logger.info(f"订阅源 {len(all_channels)} 个 + 本地保留 {len(extra_channels)} 个（扫描/导入）")
-                else:
-                    self._channels = all_channels
+                with self._channels_lock:
+                    extra_channels = [
+                        c for c in self._channels
+                        if c.get('url', '') and c.get('url', '') not in existing_urls
+                    ]
+                    if extra_channels:
+                        self._channels = all_channels + extra_channels
+                        logger.info(f"订阅源 {len(all_channels)} 个 + 本地保留 {len(extra_channels)} 个（扫描/导入）")
+                    else:
+                        self._channels = all_channels
+                    ch_count = len(self._channels)
                 self._save_channels_to_cache()
                 self._last_load_time = time.time()
                 with self._source_load_lock:
                     self._source_loading = False
                     self._source_load_status = {
                         'loading': False, 'total': len(sources),
-                        'loaded': len(sources), 'channels': len(self._channels),
-                        'message': f'完成：{len(self._channels)} 个频道'}
-                logger.info(f"订阅源加载完成，共 {len(self._channels)} 个频道")
+                        'loaded': len(sources), 'channels': ch_count,
+                        'message': f'完成：{ch_count} 个频道'}
+                logger.info(f"订阅源加载完成，共 {ch_count} 个频道")
             else:
                 # 加载到空列表时不覆盖已有频道，提示当前频道数和失败原因
-                existing = len(self._channels)
+                with self._channels_lock:
+                    existing = len(self._channels)
                 if existing > 0:
                     msg = f'本次未加载到新频道（现有 {existing} 个）'
                 elif errors:
@@ -683,7 +694,8 @@ class ServerContext:
                             channels.append(ch)
             return channels
         self.reload_if_needed()
-        return self._channels
+        with self._channels_lock:
+            return list(self._channels)
 
     def get_channel_model(self):
         if self._main_window and hasattr(self._main_window, 'channel_model'):

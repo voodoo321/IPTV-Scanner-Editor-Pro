@@ -1,5 +1,6 @@
 """用户友好的错误处理系统"""
 
+import functools
 from PySide6 import QtWidgets
 from typing import Optional, Callable, Any, Dict
 from core.log_manager import global_logger as logger
@@ -352,6 +353,7 @@ def handle_exceptions(
                 return f.read()
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
@@ -389,11 +391,6 @@ def handle_exceptions(
                 )
                 return default_return
 
-        # 复制原始函数的元数据
-        wrapper.__name__ = func.__name__
-        wrapper.__doc__ = func.__doc__
-        wrapper.__module__ = func.__module__
-
         return wrapper
     return decorator
 
@@ -422,6 +419,7 @@ def retry_on_exception(
             return requests.get(url).content
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             import time
 
@@ -460,11 +458,6 @@ def retry_on_exception(
             # 理论上不会执行到这里
             raise RuntimeError(f"函数 {func.__name__} 重试 {max_retries} 次后仍然失败")
 
-        # 复制原始函数的元数据
-        wrapper.__name__ = func.__name__
-        wrapper.__doc__ = func.__doc__
-        wrapper.__module__ = func.__module__
-
         return wrapper
     return decorator
 
@@ -480,6 +473,7 @@ def log_execution_time(func):
             time.sleep(2)
             return processed_data
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         import time
         from core.log_manager import global_logger
@@ -494,10 +488,5 @@ def log_execution_time(func):
             elapsed_time = time.time() - start_time
             global_logger.error(f"函数 {func.__name__} 执行失败，耗时: {elapsed_time:.3f} 秒")
             raise
-
-    # 复制原始函数的元数据
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
-    wrapper.__module__ = func.__module__
 
     return wrapper

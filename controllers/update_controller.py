@@ -172,6 +172,7 @@ class UpdateDownloadThread(QThread):
     async def _download(self):
         """异步下载更新文件"""
         import aiohttp
+        import hashlib
 
         asset_name = _get_platform_asset_name() or "isepp_update_file"
         filepath = os.path.join(tempfile.gettempdir(), asset_name)
@@ -179,6 +180,26 @@ class UpdateDownloadThread(QThread):
         self.progress.emit(0, "正在连接服务器...")
 
         async with aiohttp.ClientSession() as session:
+            # 优先从 Release 下载 SHA256 校验文件
+            expected_sha256 = None
+            try:
+                sha256_url = self._url + '.sha256'
+                async with session.get(
+                    sha256_url,
+                    headers={'User-Agent': 'IPTV-Scanner-Editor-Pro'},
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as sha_resp:
+                    if sha_resp.status == 200:
+                        sha_text = (await sha_resp.text()).strip()
+                        # SHA256 文件格式: <hash>  <filename> 或纯 hash
+                        expected_sha256 = sha_text.split()[0] if sha_text else None
+                        if expected_sha256 and len(expected_sha256) == 64:
+                            self.progress.emit(0, "已获取 SHA256 校验值")
+                        else:
+                            expected_sha256 = None
+            except Exception:
+                pass
+
             async with session.get(
                 self._url,
                 headers={'User-Agent': 'IPTV-Scanner-Editor-Pro'},
@@ -190,6 +211,7 @@ class UpdateDownloadThread(QThread):
 
                 total = int(response.headers.get('Content-Length', 0))
                 downloaded = 0
+                sha256_hash = hashlib.sha256()
 
                 with open(filepath, 'wb') as f:
                     async for chunk in response.content.iter_chunked(65536):
@@ -197,10 +219,11 @@ class UpdateDownloadThread(QThread):
                             f.close()
                             try:
                                 os.remove(filepath)
-                            except Exception:
+                            except OSError:
                                 pass
                             return
                         f.write(chunk)
+                        sha256_hash.update(chunk)
                         downloaded += len(chunk)
                         if total > 0:
                             percent = int(downloaded * 100 / total)
@@ -209,6 +232,22 @@ class UpdateDownloadThread(QThread):
                         else:
                             msg = f"已下载 {downloaded // 1048576}MB"
                             self.progress.emit(-1, msg)
+
+                # SHA256 完整性校验
+                if expected_sha256:
+                    actual_sha256 = sha256_hash.hexdigest()
+                    if actual_sha256.lower() != expected_sha256.lower():
+                        try:
+                            os.remove(filepath)
+                        except OSError:
+                            pass
+                        self.download_error.emit(
+                            f"文件校验失败: SHA256 不匹配\n"
+                            f"期望: {expected_sha256[:16]}...\n"
+                            f"实际: {actual_sha256[:16]}..."
+                        )
+                        return
+                    self.progress.emit(100, "文件校验通过")
 
                 self.download_complete.emit(filepath)
 
@@ -388,11 +427,16 @@ class UpdateController:
         app_dir = os.path.dirname(current_exe)
         target_exe = os.path.join(app_dir, "IPTV Scanner Editor Pro.exe")
 
+        # 安全：对路径中的特殊字符进行转义，防止批处理注入
+        # 将路径中的 % 替换为 %%（批处理转义），" 已由引号包裹
+        safe_filepath = filepath.replace('%', '%%')
+        safe_target = target_exe.replace('%', '%%')
+
         bat_content = (
             "@echo off\r\n"
             "timeout /t 2 /nobreak >nul\r\n"
-            f'move /y "{filepath}" "{target_exe}"\r\n'
-            f'start "" "{target_exe}"\r\n'
+            f'move /y "{safe_filepath}" "{safe_target}"\r\n'
+            f'start "" "{safe_target}"\r\n'
             'del "%~f0"\r\n'
         )
         bat_path = os.path.join(tempfile.gettempdir(), "isepp_update.bat")
@@ -410,6 +454,8 @@ class UpdateController:
 
     def _install_macos(self, filepath):
         """macOS: 解压 zip 并替换 .app bundle"""
+        import shlex
+
         # 解压到临时目录
         subprocess.run(
             ['unzip', '-o', filepath, '-d', tempfile.gettempdir()],
@@ -421,12 +467,16 @@ class UpdateController:
         # sys.executable: /path/to/App.app/Contents/MacOS/App
         app_path = os.path.dirname(os.path.dirname(os.path.dirname(sys.executable)))
 
+        # 安全：使用 shlex.quote 转义路径，防止 shell 注入
+        safe_app_path = shlex.quote(app_path)
+        safe_new_app = shlex.quote(new_app)
+
         script = (
             "#!/bin/bash\n"
             "sleep 2\n"
-            f'rm -rf "{app_path}"\n'
-            f'mv "{new_app}" "{app_path}"\n'
-            f'open "{app_path}"\n'
+            f'rm -rf {safe_app_path}\n'
+            f'mv {safe_new_app} {safe_app_path}\n'
+            f'open {safe_app_path}\n'
             'rm "$0"\n'
         )
         script_path = os.path.join(tempfile.gettempdir(), "isepp_update.sh")
@@ -442,6 +492,8 @@ class UpdateController:
 
     def _install_linux(self, filepath):
         """Linux: 解压 tar.gz 并替换可执行文件"""
+        import shlex
+
         extract_dir = tempfile.mkdtemp()
         subprocess.run(
             ['tar', 'xzf', filepath, '-C', extract_dir],
@@ -450,12 +502,16 @@ class UpdateController:
         new_exe = os.path.join(extract_dir, "IPTV Scanner Editor Pro")
         current_exe = sys.executable
 
+        # 安全：使用 shlex.quote 转义路径，防止 shell 注入
+        safe_new_exe = shlex.quote(new_exe)
+        safe_current_exe = shlex.quote(current_exe)
+
         script = (
             "#!/bin/bash\n"
             "sleep 2\n"
-            f'mv -f "{new_exe}" "{current_exe}"\n'
-            f'chmod +x "{current_exe}"\n'
-            f'nohup "{current_exe}" > /dev/null 2>&1 &\n'
+            f'mv -f {safe_new_exe} {safe_current_exe}\n'
+            f'chmod +x {safe_current_exe}\n'
+            f'nohup {safe_current_exe} > /dev/null 2>&1 &\n'
             'rm "$0"\n'
         )
         script_path = os.path.join(tempfile.gettempdir(), "isepp_update.sh")

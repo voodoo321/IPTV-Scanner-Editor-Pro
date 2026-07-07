@@ -23,8 +23,9 @@ class _CallbackRelay(QObject):
     def _invoke(self, callback):
         try:
             callback()
-        except Exception:
-            pass
+        except Exception as e:
+            from core.log_manager import global_logger
+            global_logger.error(f"跨线程回调执行失败: {e}", exc_info=True)
 
 
 _relay_instances = weakref.WeakKeyDictionary()

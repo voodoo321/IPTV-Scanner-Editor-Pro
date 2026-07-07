@@ -218,6 +218,7 @@ data class BookmarkItem(
 // null 字段表示使用全局默认值。
 // -----------------------------------------------------------------
 
+@Serializable
 data class ChannelPlayerSettings(
 /** 播放器内核名称（仅 MPV），null=全局默认 */
 val playerType: String? = null,

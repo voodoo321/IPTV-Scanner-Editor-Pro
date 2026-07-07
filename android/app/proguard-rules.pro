@@ -44,3 +44,7 @@
 # Google ZXing（反射加载解码器）
 -keep class com.google.zxing.** { *; }
 -dontwarn com.google.zxing.**
+
+# Media3 / ExoPlayer（多画面副画面播放器）
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**

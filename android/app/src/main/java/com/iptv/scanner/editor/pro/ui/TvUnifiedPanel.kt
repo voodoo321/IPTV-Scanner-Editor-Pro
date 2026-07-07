@@ -928,7 +928,7 @@ private fun MenuColumn(
             add(TvMenuItem("网络增强", "Referer / Proxy / Headers", Icons.Default.Public, onNetwork))
             add(TvMenuItem("工具", "搜索 / 时间线 / 提醒 / 扫描", Icons.Default.Tune, onTools))
             add(TvMenuItem("视图", "视频比例 / OSD", Icons.Default.ViewInAr, onView))
-            // 多画面分组（主画面 MPV，副画面当前不可用）
+            // 多画面分组（主画面 MPV，副画面 ExoPlayer）
             if (multiViewActive && currentMultiViewLayout != null) {
                 // 已激活：在 DUAL → QUAD → NINE → DUAL 之间循环切换
                 val otherLayout = when (currentMultiViewLayout) {
@@ -945,9 +945,9 @@ private fun MenuColumn(
                 ))
                 add(TvMenuItem("退出多画面", "退出多画面模式", Icons.AutoMirrored.Filled.ExitToApp, onExitMultiView, highlight = true))
             } else {
-                add(TvMenuItem("双画面", "左右分屏（副画面暂不可用）", Icons.Default.ViewModule, { onEnterMultiView(MultiViewLayout.DUAL) }))
-                add(TvMenuItem("四画面", "2x2 网格（副画面暂不可用）", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.QUAD) }))
-                add(TvMenuItem("九画面", "3x3 网格（副画面暂不可用）", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.NINE) }))
+                add(TvMenuItem("双画面", "左右分屏", Icons.Default.ViewModule, { onEnterMultiView(MultiViewLayout.DUAL) }))
+                add(TvMenuItem("四画面", "2x2 网格", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.QUAD) }))
+                add(TvMenuItem("九画面", "3x3 网格", Icons.Default.GridView, { onEnterMultiView(MultiViewLayout.NINE) }))
             }
             // 系统分组
             add(TvMenuItem("设置", "VO / HWDEC / HDR", Icons.Default.Settings, onSettings))

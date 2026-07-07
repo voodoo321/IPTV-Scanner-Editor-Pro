@@ -15,10 +15,12 @@ import org.json.JSONObject
  * - "favorites"：Set<Int>，收藏的频道 idx 列表
  * - "history"：List<Int>，最近播放的频道 idx（按时间倒序，最多 100）
  * - "queue"：List<Int>，播放队列
+ * - "favorites_urls"：Set<String>，收藏的频道 URL 列表（URL 比 idx 更稳健）
+ * - "history_urls"：List<String>，最近播放的频道 URL（按时间倒序，最多 100）
+ * - "queue_urls"：List<String>，播放队列 URL
  *
- * 注意：频道 idx 是 channels 数组的下标，与 PC 端 mobile/index.html state.currentIdx 一致。
- * 当订阅源重载导致 channels 顺序变化时，idx 可能失效——这种情况下 UI 应优雅降级
- * （idx 越界时跳过）。
+ * 注意：频道 idx 在订阅源重载后可能失效。新增 URL 版本的存储作为补充，
+ * idx 和 URL 双写，读取时优先用 URL 匹配，idx 作为快速路径。
  */
 class UserPrefs private constructor() {
 
@@ -627,8 +629,98 @@ class UserPrefs private constructor() {
     }
 
     // -----------------------------------------------------------------
+    // 收藏（URL 版本，更稳健）
+    // -----------------------------------------------------------------
+
+    fun getFavoriteUrls(): Set<String> {
+        val arr = prefs.getString(KEY_FAVORITES_URLS, "[]") ?: "[]"
+        return parseStringArray(arr).toSet()
+    }
+
+    fun isFavoriteUrl(url: String): Boolean = getFavoriteUrls().contains(url)
+
+    fun toggleFavoriteUrl(url: String): Boolean {
+        val cur = getFavoriteUrls().toMutableSet()
+        val added = if (cur.contains(url)) {
+            cur.remove(url)
+            false
+        } else {
+            cur.add(url)
+            true
+        }
+        prefs.edit().putString(KEY_FAVORITES_URLS, JSONArray(cur.toList()).toString()).apply()
+        return added
+    }
+
+    fun setFavoriteUrls(urls: Set<String>) {
+        prefs.edit().putString(KEY_FAVORITES_URLS, JSONArray(urls.toList()).toString()).apply()
+    }
+
+    // -----------------------------------------------------------------
+    // 历史（URL 版本，更稳健）
+    // -----------------------------------------------------------------
+
+    fun getHistoryUrls(): List<String> {
+        val arr = prefs.getString(KEY_HISTORY_URLS, "[]") ?: "[]"
+        return parseStringArray(arr)
+    }
+
+    fun addToHistoryUrl(url: String) {
+        val cur = getHistoryUrls().toMutableList()
+        cur.remove(url)
+        cur.add(0, url)
+        if (cur.size > MAX_HISTORY) {
+            cur.subList(MAX_HISTORY, cur.size).clear()
+        }
+        prefs.edit().putString(KEY_HISTORY_URLS, JSONArray(cur).toString()).apply()
+    }
+
+    fun setHistoryUrls(urls: List<String>) {
+        prefs.edit().putString(KEY_HISTORY_URLS, JSONArray(urls).toString()).apply()
+    }
+
+    // -----------------------------------------------------------------
+    // 队列（URL 版本）
+    // -----------------------------------------------------------------
+
+    fun getQueueUrls(): List<String> {
+        val arr = prefs.getString(KEY_QUEUE_URLS, "[]") ?: "[]"
+        return parseStringArray(arr)
+    }
+
+    fun addToQueueUrl(url: String) {
+        val cur = getQueueUrls().toMutableList()
+        if (!cur.contains(url)) {
+            cur.add(url)
+            prefs.edit().putString(KEY_QUEUE_URLS, JSONArray(cur).toString()).apply()
+        }
+    }
+
+    fun removeFromQueueUrl(url: String) {
+        val cur = getQueueUrls().toMutableList()
+        cur.remove(url)
+        prefs.edit().putString(KEY_QUEUE_URLS, JSONArray(cur).toString()).apply()
+    }
+
+    fun setQueueUrls(urls: List<String>) {
+        prefs.edit().putString(KEY_QUEUE_URLS, JSONArray(urls).toString()).apply()
+    }
+
+    // -----------------------------------------------------------------
     // 工具
     // -----------------------------------------------------------------
+
+    private fun parseStringArray(json: String): List<String> {
+        if (json.isEmpty()) return emptyList()
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).mapNotNull { idx ->
+                arr.optString(idx, "").takeIf { it.isNotEmpty() }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
     private fun parseIntArray(json: String): List<Int> {
         if (json.isEmpty()) return emptyList()
@@ -647,6 +739,10 @@ class UserPrefs private constructor() {
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_HISTORY = "history"
         private const val KEY_QUEUE = "queue"
+        // URL 版本的存储（比 idx 更稳健，订阅源重载后不会失效）
+        private const val KEY_FAVORITES_URLS = "favorites_urls"
+        private const val KEY_HISTORY_URLS = "history_urls"
+        private const val KEY_QUEUE_URLS = "queue_urls"
         private const val MAX_HISTORY = 100
         // 上次播放的频道 URL（启动时按 URL 查找频道恢复播放，URL 比 idx 更稳健）
         private const val KEY_LAST_CHANNEL_URL = "last_channel_url"
