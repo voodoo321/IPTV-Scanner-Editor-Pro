@@ -51,6 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -5308,20 +5309,15 @@ showOsd("播放器设置", "日志等级: $levelName")
         try {
             adminCountdownJob?.cancel()
             stopRemoteCommandPolling()
-            // 使用后台线程 + 超时，避免 runBlocking 阻塞线程
+            // 使用后台线程 + runBlocking + 超时，避免阻塞主线程
             Thread {
-                runCatching {
-                    val scope = kotlinx.coroutines.CoroutineScope(
-                        kotlinx.coroutines.SupervisorJob() +
-                            kotlinx.coroutines.Dispatchers.IO
-                    )
-                    kotlinx.coroutines.runCatching {
-                        kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                try {
+                    runBlocking {
+                        withTimeoutOrNull(3000L) {
                             repository.stopAdminServer()
                         }
                     }
-                    scope.cancel()
-                }
+                } catch (_: Throwable) {}
             }.start()
         } catch (_: Throwable) {}
     }
