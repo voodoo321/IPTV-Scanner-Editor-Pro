@@ -7,7 +7,6 @@
 
 一款功能全面的 IPTV 频道扫描、验证、播放和管理工具，跨平台支持 Windows / macOS / Linux 桌面端与 Android 移动端。集成 MPV 播放引擎与 FFprobe 流探测，支持 EPG 电子节目单、频道台标自动匹配、HDR 显示、在线字幕下载、音频可视化、断点续播、片段导出等高级功能，多主题界面、中英双语，从扫描到观看一站式完成。
 
-> **当前版本**：v48.1.3.5（构建日期 2026-07-04）
 
 ## 📸 程序截图
 
@@ -23,7 +22,7 @@
 
 | 功能类别 | 核心功能 |
 |---------|---------|
-| 播放器 | MPV 引擎驱动、FCC 快速换台、完整播放控制、倍速、画面比例、全屏、硬件解码、HDR 显示（5种模式）、WCG 广色域、画中画、多屏预览(4/9屏)、截图、连拍截图、音轨/字幕切换、3D/360°视频、视频旋转翻转、自动裁剪黑边、视频图像调整、流质量检测 |
+| 播放器 | MPV 引擎驱动、FCC 快速换台（秒开优化）、完整播放控制、倍速、画面比例、全屏、硬件解码、HDR 显示（5种模式）、WCG 广色域、画中画、多屏预览(4/9屏)、截图、连拍截图、音轨/字幕切换、3D/360°视频、视频旋转翻转、自动裁剪黑边、视频图像调整、流质量检测 |
 | 字幕系统 | 字幕样式调整、在线字幕下载（OpenSubtitles/SubHD/SubtitleCat 三源聚合）、IMDB 中转中文搜索、字幕自动同步、字幕延迟/缩放/位置调整 |
 | 音频 | 10段均衡器、声道布局、音调补偿、音频延迟、A/V 同步监控（实时波形图）、音频可视化（7种3D样式）、歌词显示 |
 | 播放增强 | 断点续播、每文件播放设置持久化、跳过片头/片尾、播放队列（循环/AB循环/逐帧）、书签管理、切片导出/GIF制作、网络流增强（Referer/代理/Headers） |
@@ -35,14 +34,14 @@
 | 频道管理 | M3U 导入导出、拖拽排序、分组筛选、右键操作、智能映射、频道分类、名称清理、拼音排序、多格式导出(M3U/TXT/Excel)、收藏、历史、去重、评分、批量编辑、快速跳转、撤销/重做 |
 | 界面 | 21种主题组合、中英双语、三栏布局、悬浮面板、系统托盘、文件关联、拖放打开、丰富快捷键 |
 | 订阅 | 多源管理、独立缓存、智能更新(增量)、编辑功能、缓存回退、过期策略 |
-| Web 服务器 | 内置 aiohttp 服务器、频道列表和播放接口 |
-| Android 端 | Kotlin Compose 原生 UI、MPV Native 渲染、Chaquopy Python 后端、TV/手机双模式、遥控器适配（焦点高亮+台标显示+自动隐藏）、画中画（PiP 增强）、HDR 模式切换（设备能力检测+target-colorspace-hint）、WCG 广色域、PQ/HLG 差异化处理、3D/360°视频、多画面预览（DUAL/QUAD）、随机播放、书签管理、EPG 时间轴/日期切换、全局搜索、流质量检测、字幕样式、连拍截图、LAN 管理后台（虚拟遥控器+自动关闭开关）、多内核软硬解切换、数据持久化（覆盖安装不丢失）、版本检查更新（GitHub API + 自动提示新版本） |
+| Web 服务器 | 内置 aiohttp 服务器、频道列表和播放接口、频道管理后台（来源区分、订阅只读、本地持久化） |
+| Android 端 | Kotlin Compose 原生 UI、MPV Native 渲染、Chaquopy Python 后端、TV/手机双模式、遥控器适配（焦点高亮+台标显示+自动隐藏）、画中画（PiP 增强）、HDR 模式切换（设备能力检测+target-colorspace-hint）、WCG 广色域、PQ/HLG 差异化处理、3D/360°视频、随机播放、书签管理、EPG 时间轴/日期切换、全局搜索、流质量检测、字幕样式、连拍截图、LAN 管理后台（虚拟遥控器+自动关闭开关）、MPV 软硬解切换、FCC 秒开换台（probesize/analyzeduration 对齐 PC 端）、数据持久化（覆盖安装不丢失）、版本检查更新（GitHub API + 自动提示新版本） |
 
 ## ✨ 核心功能
 
 ### 🎬 集成播放器
 - **MPV 引擎驱动**：基于 libmpv 的高性能流媒体播放
-- **FCC 快速换台**：支持 IPTV 组播 FCC（Fast Channel Change）代理，换台时自动向 FCC 代理发送 LEAVE/JOIN 通知，消除 IGMP 加入延迟
+- **FCC 快速换台**：支持 IPTV 组播 FCC（Fast Channel Change）代理，换台时自动向 FCC 代理发送 LEAVE/JOIN 通知，消除 IGMP 加入延迟；对齐 PC 端 MPV 配置（`probesize`/`analyzeduration`/`demuxer-cache-wait`/`cache-pause-initial=no`），实现 UDP 流秒开换台，消除切台黑屏
 - **完整播放控制**：播放（▶）、暂停（▮▮）、停止（■）、音量调节、静音切换
 - **倍速播放**：循环切换多种播放速度
 - **画面比例**：支持原始/16:9/4:3/填充等多种比例模式
@@ -242,10 +241,11 @@
 - **远程控制**：通过浏览器访问频道列表和控制播放
 - **流代理**：`/stream/{id}` 路由提供频道流代理，支持直连播放
 - **管理后台**：`/admin/` 提供 8 个 Tab 的完整 Web 管理界面（PC/Linux/macOS/Android 通用）
-  - 订阅源管理（启用/禁用切换、最后更新时间）、EPG 源管理、频道管理（列表/搜索/分页/分组筛选/CRUD/导入 M3U）
+  - 订阅源管理（启用/禁用切换、最后更新时间）、EPG 源管理、频道管理（列表/搜索/分页/分组筛选/**来源过滤（全部/订阅/本地）**/CRUD/导入 M3U）
+  - **频道来源区分**：订阅频道标记为只读（不可编辑/删除），本地频道可完整 CRUD 操作；导入 M3U 文件自动写入本地频道列表并持久化
   - URL 范围扫描（实时状态轮询/结果列表）、频道映射管理（添加/删除/刷新远程）
   - 节目单 EPG 浏览（自动加载频道列表+节目详情，当前节目高亮）、缓存管理（清空缩略图/截图/字幕/全部）
-  - **虚拟遥控器**：通过浏览器远程控制 TV 端（方向键/确定/频道切换/播放控制/音量/菜单/返回/OSD），100ms 轮询命令队列，2s 轮询显示当前播放状态（频道名/播放状态/内核/硬解软解/分辨率/编码/帧率/HDR/音量）
+  - **虚拟遥控器**：通过浏览器远程控制 TV 端（方向键/确定/频道切换/播放控制/音量/菜单/返回/OSD），100ms 轮询命令队列，2s 轮询显示当前播放状态（频道名/播放状态/硬解软解/分辨率/编码/帧率/HDR/音量）
 - **PWA 支持**：移动端 UI 支持 PWA 安装，Service Worker 采用 network-first 缓存策略
 
 ### 📱 Android 移动端
@@ -258,14 +258,14 @@ Android 端采用 **Kotlin Compose + Chaquopy Python 两层架构**，与 PC 端
 | 业务层 | Python（Chaquopy 3.11） | 复用 PC 端 core/services 模块处理订阅/扫描/EPG/映射；按需启动 LAN admin 服务器 |
 
 #### 核心功能
-- **视频播放**：MPV Native 渲染，支持播放/暂停/停止、音量、倍速、画面比例、音轨/字幕切换、hwdec 切换、**FCC 快速换台**（组播场景自动向 FCC 代理发送 LEAVE/JOIN 通知）
+- **视频播放**：MPV Native 渲染（唯一播放内核，与 PC 端架构统一），支持播放/暂停/停止、音量、倍速、画面比例、音轨/字幕切换、hwdec 软硬解切换、**FCC 秒开换台**（组播场景自动向 FCC 代理发送 LEAVE/JOIN 通知 + `probesize`/`analyzeduration` 优化，消除切台黑屏）
 - **HDR 模式切换**：禁用/自动/色调映射/直通 4 种模式，文件加载时自动检测 HDR（gamma=pq/hlg 或 sig-peak>1.0）并应用
   - `PASSTHROUGH`：清空 target-prim/target-trc + 启用 `target-colorspace-hint=yes`，让 Android 系统自动切换 HDR 显示模式；PQ 视频设置 `target-peak=10000` + `tone-mapping=clip`，HLG 视频使用自动 target-peak + `hdr-compute-peak=yes` 避免阴阳脸
   - `TONEMAP`：保留 `target-prim=bt.2020` 广色域 + `target-trc=bt.1886` SDR 伽马，`tone-mapping=auto`（HDR10+→st2094-40，HDR10/HLG→bt.2390）
   - `AUTO`：通过 `Display.getHdrCapabilities()` 检测设备 HDR 能力，支持则走直通，否则走色调映射
   - **PQ/HLG 差异化处理**：PQ 视频启用 `hdr10-opt=yes` 传递 HDR10+ 动态元数据；HLG 视频禁用 `hdr10-opt=no` 避免处理不存在的元数据导致偏色
   - **WCG 广色域**：检测 BT.2020 色域 + SDR 亮度的视频时，设置 `target-prim=bt.2020` + `gamut-mapping-mode=relative` 正确显示广色域
-- **多画面预览**：DUAL（左右分屏）与 QUAD（2×2 网格）多画面同时预览，主画面复用现有播放器，副画面使用 ExoPlayer 渲染
+- **多画面预览**：DUAL（左右分屏）与 QUAD（2×2 网格）多画面同时预览，主画面复用现有 MPV 播放器，副画面使用独立 MPV 实例渲染
 - **3D / 360° 视频**：5 种 3D 立体模式（mono/sbs/sbs2/ab/ab2）+ 360° 视角控制（panorama 滤镜，flat/equirect/cubemap 投影 + yaw/pitch/roll）
 - **控制面板**：3 行布局对齐 PC 端——媒体信息徽章、节目信息行、控制行（上一/下一频道、播放/暂停/停止、进度条、音量、倍速、画面比例、音轨、字幕）
 - **频道列表**：5 个 Tab（订阅 / 本地 / 收藏 / 历史 / 队列），搜索框、分组筛选
@@ -292,11 +292,7 @@ Android 端采用 **Kotlin Compose + Chaquopy Python 两层架构**，与 PC 端
   - **控制面板自动隐藏**：4 秒无操作后自动隐藏控制面板，切换频道时自动显示
   - **EPG 跟随焦点**：频道列表中切换焦点时，EPG 节目单跟随显示焦点频道的节目信息
 - **本地文件打开**：SAF（Storage Access Framework）支持打开本地播放列表和视频
-- **多播放器内核**：MPV（默认）/ ExoPlayer / VLC / IJK（可切换），每个内核均支持**硬件解码/软件解码运行时切换**
-  - MPV：通过 `hwdec` 属性切换（auto-copy 硬解 / no 软解）
-  - VLC：通过 `media.setHWDecoderEnabled` + 重新播放切换
-  - IJK：通过 `mediacodec` option（1 硬解 / 0 软解）+ 重新播放切换
-  - ExoPlayer：通过重建 ExoPlayer + `DefaultRenderersFactory.setExtensionRendererMode` 切换（软解需 FFmpeg 扩展，未安装时自动回退硬解）
+- **MPV 统一内核**：仅使用 MPV 内核（与 PC 端架构统一），通过 `hwdec` 属性运行时切换硬解码/软解码（auto-copy 硬解 / no 软解）
 - **版本检查更新**：与 PC 端 `UpdateController` 对齐，通过 GitHub API 检查最新 release
   - 启动后自动延迟检查（初始化完成 5 秒后，避免影响启动性能）
   - 发现新版本时自动弹出对话框 + OSD 提示，提供「前往下载」按钮跳转浏览器
@@ -310,21 +306,26 @@ Android 端采用 **Kotlin Compose + Chaquopy Python 两层架构**，与 PC 端
 - Kotlin 2.0.21 / JVM 21
 - ABI：arm64-v8a、armeabi-v7a、x86_64、x86（4 种通用架构）
 - 依赖原生库：libmpv.so、libplayer.so、FFmpeg 系列（libavcodec/libavformat/libavfilter/libavutil/libswscale/libswresample）
+- 签名：Release 构建使用 `release.keystore` 签名（同 CI 工作流）
 
 #### 构建与安装
 ```bash
 cd android
-./gradlew.bat assembleDebug          # 构建 Debug APK
-adb install -g app/build/outputs/apk/debug/app-debug.apk
+./gradlew.bat assembleRelease        # 构建 Release APK（需配置 release.keystore）
+adb install -g app/build/outputs/apk/release/app-release.apk
+
+# 按架构构建
+./gradlew.bat assembleRelease -PtargetAbi=armeabi-v7a   # 32位 ARM（电视盒）
+./gradlew.bat assembleRelease -PtargetAbi=arm64-v8a     # 64位 ARM（手机）
 ```
 
-> **MPV 原生库来源**：仓库 `android/` 目录下附带的 `mpv-arm64.apk`、`mpv-x86_64.apk` 用于提取 libmpv.so 等原生库到 `app/src/main/jniLibs/`（仅覆盖 arm64-v8a 和 x86_64 两种 ABI；armeabi-v7a 和 x86 设备无 libmpv.so，MPV 内核不可用，可切换至 ExoPlayer / VLC / IJK 内核）。
+> **MPV 原生库来源**：仓库 `android/` 目录下附带的 `mpv-arm64.apk`、`mpv-x86_64.apk` 用于提取 libmpv.so 等原生库到 `app/src/main/jniLibs/`。armeabi-v7a 和 x86 架构的 libmpv.so 由 `build-tmp/cavs-android/jniLibs/` 目录提供。
 
-> **各 ABI 播放器可用性**：
-> - **arm64-v8a**（推荐）：MPV / ExoPlayer / VLC / IJK 全部可用
-> - **x86_64**：MPV / ExoPlayer / VLC 可用（IJK 无 x86_64 native 库）
-> - **armeabi-v7a**：ExoPlayer / VLC / IJK 可用（MPV 无 armeabi-v7a 库）
-> - **x86**（主要为模拟器）：ExoPlayer / VLC 可用（MPV / IJK 均无 x86 库，IJK 加载失败时自动降级提示）
+> **各 ABI MPV 可用性**：
+> - **arm64-v8a**（推荐）：MPV 可用
+> - **armeabi-v7a**（电视盒）：MPV 可用（从 cavs-android 提取）
+> - **x86_64**：MPV 可用
+> - **x86**（主要为模拟器）：MPV 可用（从 cavs-android 提取）
 
 > **PC 端 Python 模块打包**：Chaquopy 构建时会将项目根目录的 `core/`、`services/`、`server/` 等 Python 包打包进 APK（通过 `extractPackages "server"` 指令解压 server 包，其余以 .zip 形式加载）。`android/app/src/main/python/android_bridge.py` 是 Android 端唯一的 Python 入口文件，运行时通过 `import server` / `import core` 等动态导入 PC 端模块。
 
@@ -540,6 +541,8 @@ IPTV-Scanner-Editor-Pro/
 │   ├── app.py                 # Web 应用入口
 │   ├── context.py             # 服务器上下文/单例
 │   ├── routes.py              # 路由定义
+│   ├── admin/                 # 管理后台 UI（PC/Android 通用）
+│   │   └── index.html         # 管理后台单页应用（8 Tab：订阅源/EPG源/频道管理/扫描/映射/EPG浏览/缓存/遥控器）
 │   └── mobile/                # 移动端 UI（PWA）
 │       ├── index.html         # 移动端单页应用
 │       ├── manifest.json      # PWA 清单
@@ -619,17 +622,12 @@ IPTV-Scanner-Editor-Pro/
     │   │   │   ├── mpv/                    # MPV 渲染层（Kotlin）
     │   │   │   │   ├── MPVView.kt          # SurfaceView + mpv 渲染
     │   │   │   │   └── MpvController.kt    # Compose 友好的 mpv 控制器（StateFlow + 命令）
-    │   │   │   ├── player/                 # 多播放器内核抽象（Player 接口 + 各实现）
+    │   │   │   ├── player/                 # MPV 播放内核层
     │   │   │   │   ├── Player.kt           # 统一播放器接口（含软硬解切换接口）
-    │   │   │   │   ├── ExoPlayerController.kt # ExoPlayer 控制器（软硬解切换+重建实例）
-    │   │   │   │   ├── ExoPlayerView.kt    # ExoPlayer 视图（AndroidView + PlayerView）
-    │   │   │   │   ├── VlcController.kt    # VLC 控制器（软硬解切换+重新播放）
-    │   │   │   │   ├── VlcVideoView.kt     # VLC 视图
-    │   │   │   │   ├── IjkController.kt    # IJK 控制器（mediacodec 软硬解切换）
-    │   │   │   │   ├── IjkVideoView.kt     # IJK 视图
+    │   │   │   │   ├── MpvPlayerController.kt # MPV 控制器（hwdec 软硬解切换，MPV 统一内核）
     │   │   │   │   ├── PlaybackState.kt    # 播放状态枚举
     │   │   │   │   ├── CatchupHelper.kt    # 回看/时移辅助
-    │   │   │   │   ├── FccHelper.kt       # FCC 快速换台辅助（UDP 通知 FCC 代理，对齐 PC 端 fcc_service.py）
+    │   │   │   │   ├── FccHelper.kt       # FCC 秒开换台辅助（UDP 通知 FCC 代理 + probesize/analyzeduration 优化，对齐 PC 端 fcc_service.py）
     │   │   │   │   └── ProgressHelper.kt   # 进度条逻辑（对齐 PC 端）
     │   │   │   └── ui/                     # Compose UI 层
     │   │   │       ├── AppViewModel.kt     # 核心 ViewModel（所有功能入口）
@@ -643,7 +641,7 @@ IPTV-Scanner-Editor-Pro/
     │   │   │       ├── StreamQualityPanel.kt # 流质量检测
     │   │   │       ├── SourceManagerPanel.kt # 订阅源管理 + LAN 管理（自动关闭开关）
     │   │   │       ├── MainMenuPanel.kt    # 主菜单
-    │   │   │       ├── PlayerSettingsPanel.kt # 播放器设置（内核切换/VO/HWDEC/HDR/软硬解切换）
+    │   │   │       ├── PlayerSettingsPanel.kt # 播放器设置（VO/HWDEC 软硬解切换/HDR 模式）
     │   │   │       ├── MorePanels.kt       # 视频/音频/字幕/播放/截图/关于面板集合
     │   │   │       ├── MultiViewOverlay.kt # 多画面网格容器（DUAL 左右分屏 / QUAD 2×2 网格）
     │   │   │       ├── MultiViewModels.kt  # 多画面视图模型（状态/布局切换）
@@ -659,6 +657,7 @@ IPTV-Scanner-Editor-Pro/
     │   └── build.gradle               # 应用级构建脚本
     ├── mpv-arm64.apk                  # 预打包 mpv 库 APK（arm64-v8a，提取 libmpv.so）
     ├── mpv-x86_64.apk                 # 预打包 mpv 库 APK（x86_64，提取 libmpv.so）
+    ├── build-tmp/cavs-android/jniLibs/ # 32位 MPV 原生库（armeabi-v7a / x86，cavs-android 提取）
     └── gradlew / gradlew.bat          # Gradle 包装器
 ```
 
