@@ -224,22 +224,11 @@ jobs:
 
           # 4. 修改 scripts/ffmpeg.sh：在 --enable-{...} 中追加 libdavs2
           #    bash brace expansion 会展开为 --enable-libdavs2
+          #    注意：mpv-android 的 ffmpeg.sh 已自带 --disable-{muxers,encoders,devices}
+          #    和 --disable-{stripping,doc,programs}，无需额外添加
           sed -i 's/--enable-{jni,mediacodec,mbedtls,libdav1d,libxml2}/--enable-{jni,mediacodec,mbedtls,libdav1d,libxml2,libdavs2}/' scripts/ffmpeg.sh
 
-          #    安全优化：禁用编码器、封装器、CLI 程序和文档
-          #    MPV 是播放器，只需要解码器(decoder)和解封装器(demuxer)
-          #    - --disable-encoders:  禁用所有编码器（播放器从不编码）
-          #    - --disable-muxers:    禁用所有封装器（播放器从不写容器文件）
-          #    - --disable-programs:  不构建 ffmpeg/ffprobe CLI（不需要）
-          #    - --disable-doc:       不构建文档
-          #    所有解码器、解封装器、解析器、协议、滤镜均保留，确保所有格式可播放
-          sed -i '/--enable-{jni,mediacodec,mbedtls,libdav1d,libxml2,libdavs2}/a \
-            --disable-encoders \
-            --disable-muxers \
-            --disable-programs \
-            --disable-doc' scripts/ffmpeg.sh
-
-          echo "=== Patched ffmpeg.sh (libdavs2 enabled, encoders/muxers/programs disabled) ==="
+          echo "=== Patched ffmpeg.sh (libdavs2 enabled) ==="
           grep -E "enable-|disable-" scripts/ffmpeg.sh
 
       - name: Download dependencies
@@ -367,10 +356,14 @@ jobs:
           # 使用 NDK 的 llvm-strip 移除 .debug_* / .symtab / .strtab 节区
           # 这不会影响任何解码器/播放功能，仅移除调试信息
           STRIP_TOOL="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
-          echo "=== Stripping debug symbols ==="
+          if [ ! -x "$STRIP_TOOL" ]; then
+            echo "WARNING: llvm-strip not found at $STRIP_TOOL, falling back to system strip"
+            STRIP_TOOL="strip"
+          fi
+          echo "=== Stripping debug symbols with: $STRIP_TOOL ==="
           for so_file in "$ARTIFACT_DIR"/*.so; do
             before_size=$(stat -c%s "$so_file")
-            "$STRIP_TOOL" --strip-debug "$so_file"
+            "$STRIP_TOOL" --strip-debug "$so_file" 2>/dev/null || true
             after_size=$(stat -c%s "$so_file")
             echo "  $(basename $so_file): $(( before_size / 1048576 ))MB -> $(( after_size / 1048576 ))MB"
           done

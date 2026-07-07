@@ -425,7 +425,9 @@ jobs:
             after_size=$(stat -c%s "$so_file")
             saved=$(( before_size - after_size ))
             if [ "$saved" -gt 0 ]; then
-              echo "  $(basename $so_file) ($arch): $(( before_size / 1048576 ))MB -> $(( after_size / 1048576 ))MB (saved $(( saved / 1048576 ))MB)"
+              # 从路径中提取 ABI 名称（如 arm64-v8a）
+              so_arch=$(basename $(dirname "$so_file"))
+              echo "  $(basename $so_file) [$so_arch]: $(( before_size / 1048576 ))MB -> $(( after_size / 1048576 ))MB (saved $(( saved / 1048576 ))MB)"
             fi
           done
           echo "=== Final jniLibs structure (after strip) ==="
