@@ -1717,7 +1717,7 @@ function renderChannelList(filter=''){
   let showGroupMeta = true;  /* 是否在频道项右侧显示分组小字 */
   if(state.chTab==='fav'){ list = state.channels.map((c,i)=>({c,i})).filter(x=>state.favorites.has(x.i)); }
   else if(state.chTab==='hist'){ list = state.playHistory.map(idx=>({c:state.channels[idx], i:idx})).filter(x=>x.c); }
-  else if(state.chTab==='local'){ list = state.channels.map((c,i)=>({c,i})).filter(x=>!x.c.url||!x.c.url.startsWith('http')); }
+  else if(state.chTab==='local'){ list = state.channels.map((c,i)=>({c,i})).filter(x=>!x.c.source || (x.c.url && !/^(https?|rtp|udp|rtsp):\/\//i.test(x.c.url))); }
   else if(state.chTab==='queue'){ list = state.queue.map(idx=>({c:state.channels[idx], i:idx})).filter(x=>x.c); }
   else { list = state.channels.map((c,i)=>({c,i})); }
   /* 分组筛选（仅订阅/本地 tab 生效，与 PC 端 on_sub_group_changed 行为一致） */

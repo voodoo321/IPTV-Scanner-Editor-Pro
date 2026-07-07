@@ -622,12 +622,27 @@ async def handle_channel_add(request):
     data.setdefault('group', '未分类')
     data.setdefault('valid', None)
     data.setdefault('source', '')  # 空源 = 手动添加/本地频道
+    # 补全所有字段（与 android_bridge.py add_channel 对齐，
+    # 确保 Kotlin IptvChannel 反序列化时字段完整一致）
+    data.setdefault('logo', '')
+    data.setdefault('tvg_id', '')
+    data.setdefault('tvg_name', '')
+    data.setdefault('tvg_chno', '')
+    data.setdefault('tvg_shift', '')
+    data.setdefault('catchup', '')
+    data.setdefault('catchup_days', '')
+    data.setdefault('catchup_source', '')
+    data.setdefault('catchup_correction', '')
+    data.setdefault('fcc', '')
+    data.setdefault('resolution', '')
+    data.setdefault('status', '待检测')
     ctx = get_context()
     model = get_channel_model() if ctx else None
     if model:
         model.add_channel(data)
     elif ctx and hasattr(ctx, '_channels'):
         # standalone 模式（Android）：直接追加到内存列表并持久化
+        data['id'] = len(ctx._channels) + 1
         ctx._channels.append(data)
         ctx._save_channels_to_cache()
     return _json_success()
@@ -645,9 +660,12 @@ async def handle_channels_import(request):
         from services.m3u_parser import parse_m3u_content
         channels, _ = parse_m3u_content(content)
         # 标记为手动导入（source=''），在 Android 端 LOCAL tab 显示
-        for c in channels:
-            c['source'] = ''
+        # 同时补全 id 字段（与 android_bridge.py import_channels 对齐）
         ctx = get_context()
+        base_id = len(ctx._channels) if ctx and hasattr(ctx, '_channels') else 0
+        for i, c in enumerate(channels):
+            c['source'] = ''
+            c.setdefault('id', base_id + i + 1)
         if ctx and hasattr(ctx, '_channels'):
             ctx._channels.extend(channels)
             # 持久化到缓存，重启后不丢失

@@ -489,9 +489,21 @@ class ServerContext:
                     logger.warning(f"加载源 {url} 失败: {e}")
             # 网络加载到频道时更新内存+缓存；加载为空时保留已有频道（不覆盖）
             if all_channels:
-                self._channels = all_channels
+                # 合并而非覆盖：保留不在订阅源中的手动添加/本地频道（按 URL 去重）
+                # 根因：之前 self._channels = all_channels 完全覆盖，导致手动添加的本地频道丢失
+                # （与 _reload_sources_worker 的合并逻辑对齐）
+                existing_urls = {c.get('url', '') for c in all_channels if c.get('url', '')}
+                extra_channels = [
+                    c for c in self._channels
+                    if c.get('url', '') and c.get('url', '') not in existing_urls
+                ]
+                if extra_channels:
+                    self._channels = all_channels + extra_channels
+                    logger.info(f"独立模式加载了 {len(all_channels)} 个频道，保留 {len(extra_channels)} 个本地频道")
+                else:
+                    self._channels = all_channels
+                    logger.info(f"独立模式加载了 {len(all_channels)} 个频道")
                 self._save_channels_to_cache()
-                logger.info(f"独立模式加载了 {len(all_channels)} 个频道")
             else:
                 existing = len(self._channels)
                 if existing > 0:
