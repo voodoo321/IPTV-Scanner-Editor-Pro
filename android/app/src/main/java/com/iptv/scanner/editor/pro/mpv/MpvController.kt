@@ -192,7 +192,7 @@ class MpvController : MPVLib.EventObserver, Player {
      * - 重新加载当前文件触发新 vo 渲染
      * - 如果切换不生效，用户需重启 APP（MPVView.initialize 用新 vo 创建）
      *
-     * @param vo "gpu" 或 "mediacodec_embed"
+     * @param vo "gpu" / "gpu-next" / "mediacodec_embed"
      * @param hwdec "auto-copy" / "mediacodec" / "no"
      * @return 非空字符串表示有文件在播放（已重新加载），null 表示无文件（重启后生效）
      */
@@ -213,11 +213,11 @@ class MpvController : MPVLib.EventObserver, Player {
                     MPVLib.setPropertyBoolean("pause", false)
                 }
                 // 重置 voFallbackTriggered：
-                // - 切换到 gpu：重新启用黑屏检测，清除持久化的 fallback 标记
-                //   （用户主动切回 gpu，说明设备 GPU 正常，不应再被持久化锁定）
+                // - 切换到 gpu / gpu-next：重新启用黑屏检测，清除持久化的 fallback 标记
+                //   （用户主动切回 gpu/gpu-next，说明设备 GPU 正常，不应再被持久化锁定）
                 // - 切换到 mediacodec_embed：标记已 fallback（不需要再检测）
-                voFallbackTriggered = (vo != "gpu")
-                if (vo == "gpu") {
+                voFallbackTriggered = (vo == "mediacodec_embed")
+                if (vo == "gpu" || vo == "gpu-next") {
                     UserPrefs.getInstance().setVoFallbackConfirmed(false)
                 }
                 Log.i(TAG, "setVoAndHwdec: vo=$vo, hwdec=$hwdec, voFallbackTriggered=$voFallbackTriggered, hasFile=$hasFile")
@@ -231,7 +231,7 @@ class MpvController : MPVLib.EventObserver, Player {
     /**
      * 切换硬件/软件解码（实现 Player.setHardwareDecode）。
      *
-     * - vo=gpu：硬解 hwdec=auto-copy 或 auto（保留用户选择），软解 hwdec=no
+     * - vo=gpu / gpu-next：硬解 hwdec=auto-copy 或 auto（保留用户选择），软解 hwdec=no
      * - vo=mediacodec_embed：固定硬解（mediacodec），不支持软解，返回 false
      *
      * 切换后自动重新加载当前文件以应用新 hwdec。

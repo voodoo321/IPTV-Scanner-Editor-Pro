@@ -4227,7 +4227,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     }
 
     /**
-     * 切换 video output（gpu / mediacodec_embed）。
+     * 切换 video output（gpu / gpu-next / mediacodec_embed）。
      * - 持久化到 UserPrefs（下次启动生效）
      * - 动态切换 mpv vo（立即生效，重新加载当前文件）
      * - 更新 voFallbackTriggered 状态
@@ -4242,8 +4242,8 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             _currentHwdec.value = hwdec
             // 标记已 fallback（不需要再黑屏检测）
             userPrefs.setVoFallbackConfirmed(true)
-        } else if (vo == "gpu") {
-            // 切换回 gpu 时，清除 fallback 标记，重新启用黑屏检测
+        } else if (vo == "gpu" || vo == "gpu-next") {
+            // 切换到 gpu / gpu-next 时，清除 fallback 标记，重新启用黑屏检测
             userPrefs.setVoFallbackConfirmed(false)
         }
         // vo 切换只在 MPV 模式下有意义（其他播放器无 vo 概念）
@@ -4257,7 +4257,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     /**
      * 切换 hwdec（auto-copy / auto / mediacodec / no）。
      * 注意：hwdec 必须与 vo 匹配：
-     * - vo=gpu → hwdec=auto-copy（拷贝，兼容好）/ auto（直接输出，4K HDR 流畅）/ no（软解）
+     * - vo=gpu / gpu-next → hwdec=auto-copy（拷贝，兼容好）/ auto（直接输出，4K HDR 流畅）/ no（软解）
      * - vo=mediacodec_embed → hwdec=mediacodec
      */
     fun setPlayerHwdec(hwdec: String) {

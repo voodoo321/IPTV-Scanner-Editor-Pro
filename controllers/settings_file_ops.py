@@ -264,15 +264,6 @@ class SettingsFileOperations:
         group = QGroupBox(tr("protocol_settings", "Protocol Settings"))
         layout = QFormLayout()
 
-        protocol_combo = QComboBox()
-        protocol_combo.addItems(["HTTP", "HTTPS", "RTSP", "RTMP", "HLS"])
-        if self.window.config:
-            protocol = self.window.config.get_value('Player', 'protocol', 'HTTP')
-            idx = protocol_combo.findText(protocol)
-            if idx >= 0:
-                protocol_combo.setCurrentIndex(idx)
-        layout.addRow(tr("protocol_type_colon", "Protocol Type:"), protocol_combo)
-
         rtsp_transport_combo = QComboBox()
         rtsp_transport_combo.setObjectName("rtsp_transport_combo")
         for display, value in [("TCP", "tcp"), ("UDP", "udp"), ("LAVF", "lavf")]:

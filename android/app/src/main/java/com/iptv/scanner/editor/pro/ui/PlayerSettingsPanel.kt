@@ -44,14 +44,14 @@ import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
  * 播放器设置面板（全屏覆盖）。
  *
  * 仅 MPV 内核设置（与 PC 端统一）：
- * 1. 视频输出（vo）：gpu / mediacodec_embed
+ * 1. 视频输出（vo）：gpu / gpu-next / mediacodec_embed
  * 2. 硬件解码（hwdec）：必须与 vo 匹配
  * 3. 反交错、HDR 模式、RTSP 传输协议、日志等级
  *
  * 兜底方案：当黑屏检测不可靠时（如 estimated-vfps 仍有值但渲染黑屏），
- * 用户可手动切换 vo（gpu / mediacodec_embed），立即生效并持久化。
+ * 用户可手动切换 vo（gpu / gpu-next / mediacodec_embed），立即生效并持久化。
  *
- * - vo：video output，gpu（EGL 渲染）或 mediacodec_embed（MediaCodec 直接渲染）
+ * - vo：video output，gpu / gpu-next（EGL 渲染）或 mediacodec_embed（MediaCodec 直接渲染）
  * - hwdec：硬件解码，auto-copy / mediacodec / no（必须与 vo 匹配）
  * - 重置：恢复默认值（vo=gpu + hwdec=auto-copy）
  */
@@ -120,7 +120,13 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                 FilterChip(
                     selected = currentVo == "gpu",
                     onClick = { viewModel.setPlayerVo("gpu") },
-                    label = { Text("GPU（EGL 渲染）") },
+                    label = { Text("GPU（EGL）") },
+                    modifier = Modifier.tvFocusBorder()
+                )
+                FilterChip(
+                    selected = currentVo == "gpu-next",
+                    onClick = { viewModel.setPlayerVo("gpu-next") },
+                    label = { Text("GPU-Next（EGL）") },
                     modifier = Modifier.tvFocusBorder()
                 )
                 FilterChip(
@@ -135,8 +141,10 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
 
             // 当前 vo 说明
             val voDesc = when (currentVo) {
-                "gpu" -> "GPU 渲染：基于 EGL，支持 HDR/OSD/shader，兼容大多数 GPU。" +
+                "gpu" -> "GPU 渲染：经典 EGL 后端，支持 HDR/OSD/shader，兼容大多数 GPU。" +
                     "部分 GPU（如 Mali-G76）可能黑屏"
+                "gpu-next" -> "GPU-Next 渲染：新一代 EGL 后端（render API），渲染路径与 GPU 不同。" +
+                    "支持 HDR/OSD/shader，GPU 黑屏时可尝试此选项"
                 "mediacodec_embed" -> "MediaCodec 直接渲染到 Surface，绕过 EGL。" +
                     "GPU EGL 兼容性问题时的 fallback，不支持 OSD/HDR"
                 else -> "未知 vo: $currentVo"
@@ -161,8 +169,8 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (currentVo) {
-                    "gpu" -> {
-                        // vo=gpu 时：auto-copy（兼容好）/ auto（4K HDR 优化）/ no（软解）
+                    "gpu", "gpu-next" -> {
+                        // vo=gpu / gpu-next 时：auto-copy（兼容好）/ auto（4K HDR 优化）/ no（软解）
                         FilterChip(
                             selected = currentHwdec == "auto-copy",
                             onClick = { viewModel.setPlayerHwdec("auto-copy") },
