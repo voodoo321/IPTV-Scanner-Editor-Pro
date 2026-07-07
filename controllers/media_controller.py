@@ -823,7 +823,8 @@ class MediaController:
                         info.get('colormatrix', ''),
                         info.get('gamma', ''),
                         info.get('sig_peak', 0),
-                        info.get('video_format', '')
+                        info.get('video_format', ''),
+                        info.get('color_primaries', '')
                     )
             except Exception:
                 current_hdr_type = ''
@@ -831,6 +832,11 @@ class MediaController:
             label_action = hdr_menu.addAction(
                 f"{tr('hdr_current_video', 'Current')}: {current_hdr_type}")
             label_action.setEnabled(False)
+            # DV 基础层警告：libmpv 无法解码 DV RPU 增强层，只能播放 HDR10 基础层
+            if current_hdr_type == 'DV':
+                dv_warn = hdr_menu.addAction(
+                    f"  ⚠ {tr('dv_base_layer_warning', 'Dolby Vision: playing HDR10 base layer only')}")
+                dv_warn.setEnabled(False)
             hdr_menu.addSeparator()
 
         # 当前模式

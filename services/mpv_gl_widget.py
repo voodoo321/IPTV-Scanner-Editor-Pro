@@ -47,6 +47,17 @@ class MpvGLWidget(QOpenGLWidget):
         fmt.setDepthBufferSize(0)
         fmt.setStencilBufferSize(0)
         fmt.setSwapInterval(0)
+        # HDR 支持：使用 16-bit 浮点格式（rgba16hf）。
+        # macOS 上 mpv render API 需要高色深 FBO 才能正确输出 HDR 信号，
+        # 8-bit rgba8 会将 HDR 内容截断为 SDR 导致色彩信息丢失。
+        # 设置 RedBufferSize=16 让 Qt 创建 R16F 格式的 framebuffer（需 OpenGL 3.2+ Core Profile）。
+        try:
+            fmt.setRedBufferSize(16)
+            fmt.setGreenBufferSize(16)
+            fmt.setBlueBufferSize(16)
+            fmt.setAlphaBufferSize(8)
+        except Exception:
+            pass
         self.setFormat(fmt)
 
         self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)

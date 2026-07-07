@@ -79,7 +79,12 @@ class MPVView @JvmOverloads constructor(
         MPVLib.setOptionString("keep-open", "yes")
         MPVLib.setOptionString("keepaspect", "yes")
         MPVLib.setOptionString("keepaspect-window", "no")
-        MPVLib.setOptionString("fbo-format", "rgba8")
+        // HDR 支持：使用 16-bit 浮点 FBO 格式，允许 HDR 内容以高色深渲染
+        // 8-bit rgba8 会截断 HDR 信号为 SDR 导致色彩信息丢失
+        MPVLib.setOptionString("fbo-format", "rgba16hf")
+        // 启用 target-colorspace-hint 让 Android 系统自动切换 HDR 显示模式
+        // mpv 通过 SurfaceView 传递 HDR 元数据给系统，系统自动切换到 HDR 显示
+        MPVLib.setOptionString("target-colorspace-hint", "yes")
 
         MPVLib.setOptionString("framedrop", "all")
         MPVLib.setOptionString("video-sync", "audio")

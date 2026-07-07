@@ -3712,13 +3712,32 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
                 return
             }
 
-            // 检测视频是否 HDR
+            // 检测视频是否 HDR（与 PC 端统一逻辑）
             val gamma = (mpv.getPropertyString("video-params/gamma") ?: "").lowercase()
             val prim = (mpv.getPropertyString("video-params/primaries") ?: "").lowercase()
+            val cm = (mpv.getPropertyString("video-params/colormatrix") ?: "").lowercase()
             val peak = mpv.getPropertyDouble("video-params/sig-peak") ?: 0.0
-            val isHdr = gamma.contains("pq") || gamma.contains("smpte2084") ||
-                    gamma.contains("hlg") || gamma.contains("arib-std-b67") || peak > 100.0
-            Log.i(TAG, "HDR 检测：gamma=$gamma, primaries=$prim, sig_peak=$peak, isHdr=$isHdr")
+            val vf = (mpv.getPropertyString("video-format") ?: "").lowercase()
+
+            val isPq = gamma.contains("pq") || gamma.contains("smpte2084")
+            val isHlg = gamma.contains("hlg") || gamma.contains("arib-std-b67")
+            val hasDovi = vf.contains("dovi") || vf.contains("dolbyvision") ||
+                vf.contains("dvhe") || vf.contains("dvh1") || vf.contains("dav1")
+            val isBt2020 = cm.contains("bt.2020") || cm.contains("bt2020") ||
+                cm.contains("bt.2100") || prim.contains("bt.2020") ||
+                prim.contains("bt2020") || prim.contains("bt.2100")
+            val isHdr = isPq || isHlg || hasDovi
+            val isWcg = !isHdr && isBt2020
+
+            Log.i(TAG, "HDR 检测：gamma=$gamma, primaries=$prim, sig_peak=$peak, " +
+                "isHdr=$isHdr, isWcg=$isWcg, isPq=$isPq, isHlg=$isHlg, hasDovi=$hasDovi")
+
+            if (isWcg) {
+                // WCG 视频（宽色域 SDR）：保持 bt.2020 色域（与 PC 端 _apply_wcg_config 对齐）
+                applyWcgConfig(mpv)
+                Log.i(TAG, "HDR 配置：WCG 视频 → 保持 bt.2020 色域")
+                return
+            }
 
             if (!isHdr) {
                 // 非 HDR 视频也重置 SDR 参数（避免残留上次 HDR 配置）
@@ -3728,15 +3747,15 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             }
 
             when (mode) {
-                HdrMode.TONEMAP -> applyTonemapConfig(mpv)
-                HdrMode.PASSTHROUGH -> applyPassthroughConfig(mpv)
+                HdrMode.TONEMAP -> applyTonemapConfig(mpv, isPq)
+                HdrMode.PASSTHROUGH -> applyPassthroughConfig(mpv, isPq)
                 HdrMode.AUTO -> {
                     // AUTO 模式：检测设备 HDR 能力
                     if (isDeviceHdrSupported()) {
-                        applyPassthroughConfig(mpv)
+                        applyPassthroughConfig(mpv, isPq)
                         Log.i(TAG, "HDR 配置：AUTO → 设备支持 HDR，使用直通")
                     } else {
-                        applyTonemapConfig(mpv)
+                        applyTonemapConfig(mpv, isPq)
                         Log.i(TAG, "HDR 配置：AUTO → 设备不支持 HDR，使用色调映射")
                     }
                 }
@@ -3798,12 +3817,31 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
      * - hdr-compute-peak=no 信任 HDR10+ 动态元数据，不自行计算峰值
      * - gamut-mapping-mode=perceptual 感知映射，减少色域裁剪损失
      */
-    private fun applyTonemapConfig(mpv: Player) {
+    private fun applyWcgConfig(mpv: Player) {
+        // WCG 视频（宽色域 SDR）：保持 bt.2020 色域，SDR 亮度（与 PC 端 _apply_wcg_config 对齐）
+        mpv.setPropertyString("tone-mapping", "")
+        mpv.setPropertyString("tone-mapping-mode", "")
+        mpv.setPropertyString("tone-mapping-desat", "")
+        mpv.setPropertyString("hdr-compute-peak", "")
+        mpv.setPropertyString("hdr10-opt", "no")
+        mpv.setPropertyString("target-prim", "bt.2020")
+        mpv.setPropertyString("target-trc", "bt.1886")
+        mpv.setPropertyString("target-colorspace-hint", "no")
+        mpv.setPropertyString("target-peak", "100")
+        mpv.setPropertyString("gamut-mapping-mode", "relative")
+    }
+
+    private fun applyTonemapConfig(mpv: Player, isPq: Boolean) {
+        // HDR→SDR 色调映射（与 PC 端 _apply_tonemap_config 统一）
+        // target-prim=bt.2020 保留广色域（WCG），在支持广色域的设备上显示更丰富色彩
+        // target-trc=bt.1886 SDR 伽马，确保 SDR 显示正确
+        // hdr10-opt=yes(仅PQ) 传递 HDR10+ 动态元数据
+        // gamut-mapping-mode=perceptual 感知映射，减少色域裁剪损失
         mpv.setPropertyString("tone-mapping", "auto")
         mpv.setPropertyString("tone-mapping-mode", "auto")
         mpv.setPropertyString("tone-mapping-desat", "0.5")
         mpv.setPropertyString("hdr-compute-peak", "no")
-        mpv.setPropertyString("hdr10-opt", "yes")
+        mpv.setPropertyString("hdr10-opt", if (isPq) "yes" else "no")
         mpv.setPropertyString("target-prim", "bt.2020")
         mpv.setPropertyString("target-trc", "bt.1886")
         mpv.setPropertyString("target-colorspace-hint", "no")
@@ -3812,22 +3850,18 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
 
     /**
      * HDR 直通配置（与 PC 端 _apply_passthrough_config 对齐）。
-     * 关键改进：
      * - 清空 target-prim/target-trc，让 mpv 直通视频原生色彩空间（不转换）
      * - 启用 target-colorspace-hint=yes，让 Android 系统自动切换 HDR 显示模式
-     * - tone-mapping=clip 避免不必要的色调映射
-     * - hdr10-opt=yes 保留 HDR10+ 动态元数据
-     *
-     * 注意：之前设置 target-trc=pq 会导致 mpv 把输出强制转换为 PQ EOTF，
-     * 但 Android SurfaceView 默认使用 sRGB 显示，PQ 输出会导致颜色错误（过暗/过亮）。
-     * 正确做法是清空 target 参数，让系统根据 target-colorspace-hint 自动切换。
+     * - PQ: tone-mapping=clip + hdr-compute-peak=no（直接直通）
+     * - HLG: tone-mapping=auto + hdr-compute-peak=yes（让 mpv 平滑处理 HLG→PQ）
+     * - hdr10-opt=yes(仅PQ) 保留 HDR10+ 动态元数据
      */
-    private fun applyPassthroughConfig(mpv: Player) {
-        mpv.setPropertyString("tone-mapping", "clip")
+    private fun applyPassthroughConfig(mpv: Player, isPq: Boolean) {
+        mpv.setPropertyString("tone-mapping", if (isPq) "clip" else "auto")
         mpv.setPropertyString("tone-mapping-mode", "")
         mpv.setPropertyString("tone-mapping-desat", "0")
-        mpv.setPropertyString("hdr-compute-peak", "no")
-        mpv.setPropertyString("hdr10-opt", "yes")
+        mpv.setPropertyString("hdr-compute-peak", if (isPq) "no" else "yes")
+        mpv.setPropertyString("hdr10-opt", if (isPq) "yes" else "no")
         // 清空 target 参数，让 mpv 直通视频原生色彩空间（PQ/HLG 不转换）
         mpv.setPropertyString("target-prim", "")
         mpv.setPropertyString("target-trc", "")
@@ -4815,14 +4849,24 @@ showOsd("播放器设置", "日志等级: $levelName")
         val state = _playbackState.value
         val prog = getCurrentProgram()
         val mediaInfo = mpv.getMediaInfo()
-        // HDR 信息：综合 video-params/signature 和 gamma/primaries 判断
-        val hdrSig = (mpv.getPropertyString("video-params/signature") ?: "").lowercase()
+        // HDR 信息：与 PC/Web 端 detect_hdr_type 逻辑统一对齐
         val hdrGamma = (mpv.getPropertyString("video-params/gamma") ?: "").lowercase()
         val hdrPrim = (mpv.getPropertyString("video-params/primaries") ?: "").lowercase()
+        val hdrCm = (mpv.getPropertyString("video-params/colormatrix") ?: "").lowercase()
+        val hdrVf = (mpv.getPropertyString("video-format") ?: "").lowercase()
+        val hdrPeak = mpv.getPropertyDouble("video-params/sig-peak") ?: 0.0
+        val hasDovi = hdrVf.contains("dovi") || hdrVf.contains("dolbyvision") ||
+            hdrVf.contains("dvhe") || hdrVf.contains("dvh1") || hdrVf.contains("dav1")
+        val isPq = hdrGamma.contains("pq") || hdrGamma.contains("smpte2084")
+        val isHlg = hdrGamma.contains("hlg") || hdrGamma.contains("arib-std-b67")
+        val isBt2020 = hdrCm.contains("bt.2020") || hdrCm.contains("bt2020") || hdrCm.contains("bt.2100") ||
+            hdrPrim.contains("bt.2020") || hdrPrim.contains("bt2020") || hdrPrim.contains("bt.2100")
         val hdrInfo = when {
-            hdrSig.contains("pq") || hdrGamma.contains("pq") -> "HDR10"
-            hdrSig.contains("hlg") || hdrGamma.contains("hlg") -> "HLG"
-            hdrPrim.contains("2020") && (hdrGamma.contains("pq") || hdrGamma.contains("hlg")) -> "HDR"
+            hasDovi -> "DV (基础层)"
+            isPq -> "HDR10"
+            isHlg -> "HLG"
+            isBt2020 && hdrPeak <= 1.0 -> "WCG"
+            isBt2020 && hdrPeak > 1.0 -> "HLG"
             else -> ""
         }
         // 帧率：优先 estimated-vfps，为空或 0 时尝试 container-fps

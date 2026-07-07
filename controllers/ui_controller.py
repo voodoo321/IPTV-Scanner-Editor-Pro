@@ -148,7 +148,10 @@ class UIController:
         sig_peak = info.get('sig_peak', 0) or 0
         try:
             from services.mpv_player_service import MpvPlayerController
-            hdr_type = MpvPlayerController.detect_hdr_type(colormatrix, gamma, sig_peak, info.get('video_format', ''))
+            hdr_type = MpvPlayerController.detect_hdr_type(
+                colormatrix, gamma, sig_peak,
+                info.get('video_format', ''), info.get('color_primaries', '')
+            )
         except Exception:
             hdr_type = ''
         if hdr_type:
@@ -376,7 +379,8 @@ class UIController:
             info.get('colormatrix', ''),
             info.get('gamma', ''),
             info.get('sig_peak', 0),
-            info.get('video_format', '')
+            info.get('video_format', ''),
+            info.get('color_primaries', '')
         )
 
 

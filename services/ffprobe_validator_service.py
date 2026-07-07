@@ -58,7 +58,8 @@ class FfprobeStreamValidator:
             'service_name': None,
             'resolution': None,
             'codec': None,
-            'bitrate': None
+            'bitrate': None,
+            'hdr_type': None,
         }
 
         ffprobe_path = self._get_ffprobe_path()
@@ -175,6 +176,10 @@ class FfprobeStreamValidator:
                         codec_name = video_stream.get('codec_name')
                         if codec_name:
                             result['codec'] = codec_name
+                        # HDR 元数据提取（与 detect_hdr_type 统一逻辑）
+                        result['hdr_type'] = self._extract_hdr_type(
+                            video_stream, probe_data.get('frames', [])
+                        )
 
                     format_info = probe_data.get('format', {})
                     bitrate = format_info.get('bit_rate')
@@ -237,6 +242,8 @@ class FfprobeStreamValidator:
             '-print_format', 'json',
             '-show_format',
             '-show_streams',
+            '-show_frames',
+            '-select_streams', 'v:0',
             '-analyzeduration', str(timeout * 1000000),
             '-probesize', '5242880',
             '-timeout', str(timeout * 1000000),
@@ -296,6 +303,60 @@ class FfprobeStreamValidator:
 
         cmd.append(url)
         return cmd
+
+    @staticmethod
+    def _extract_hdr_type(video_stream: dict, frames: list) -> str:
+        """从 ffprobe 输出提取 HDR 类型（与 detect_hdr_type 逻辑统一）。
+
+        ffprobe 提供更丰富的元数据，可以准确检测 HDR10+（ST.2094-40 side_data）。
+        检测优先级：DV → HDR10+ → HDR10 → HLG → WCG → SDR
+
+        Args:
+            video_stream: ffprobe 视频流字典
+            frames: ffprobe -show_frames 输出的帧列表
+        """
+        codec_name = (video_stream.get('codec_name') or '').lower()
+        color_transfer = (video_stream.get('color_transfer') or '').lower()
+        color_space = (video_stream.get('color_space') or '').lower()
+        color_primaries = (video_stream.get('color_primaries') or '').lower()
+
+        # 杜比视界检测：编解码器标记
+        has_dovi = ('dovi' in codec_name or 'dolbyvision' in codec_name or
+                    'dvhe' in codec_name or 'dvh1' in codec_name or
+                    'dav1' in codec_name or 'dvc' in codec_name)
+
+        # PQ 传输特性 (SMPTE ST 2084)
+        is_pq = 'smpte2084' in color_transfer or 'pq' in color_transfer
+        # HLG 传输特性 (ARIB STD-B67)
+        is_hlg = 'arib-std-b67' in color_transfer or 'hlg' in color_transfer
+        # BT.2020 色域
+        is_bt2020 = ('bt2020' in color_space or 'bt.2020' in color_space or
+                     'bt2100' in color_space or 'bt.2100' in color_space or
+                     'bt2020' in color_primaries or 'bt.2020' in color_primaries or
+                     'bt2100' in color_primaries or 'bt.2100' in color_primaries)
+
+        # HDR10+ 检测：检查 side_data 中是否有 ST.2094-40 动态元数据
+        has_hdr10plus = False
+        for frame in frames:
+            side_data_list = frame.get('side_data_list', [])
+            for sd in side_data_list:
+                sd_type = (sd.get('side_data_type') or '').lower()
+                if 'hdr dynamic metadata smpte st 2094-40' in sd_type:
+                    has_hdr10plus = True
+                    break
+            if has_hdr10plus:
+                break
+
+        # 检测优先级：DV → HDR10+ → HDR10 → HLG → WCG → SDR
+        if has_dovi:
+            return 'DV'
+        if is_pq:
+            return 'HDR10+' if has_hdr10plus else 'HDR10'
+        if is_hlg:
+            return 'HLG'
+        if is_bt2020:
+            return 'WCG'
+        return 'SDR'
 
     @staticmethod
     def _parse_probe_output(stdout_bytes: bytes) -> dict | None:

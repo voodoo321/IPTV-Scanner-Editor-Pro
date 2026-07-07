@@ -108,6 +108,29 @@ def _try_get_resolution_and_codec(handle, retries=3, interval=0.3):
     return resolution, codec
 
 
+def _try_get_hdr_type(handle, retries=3, interval=0.3):
+    """从 mpv 属性提取 HDR 类型（与 detect_hdr_type 统一逻辑）。
+
+    mpv 运行时无法检测 HDR10+（ST.2094-40 不暴露为属性），
+    统一返回 HDR10。HDR10+ 仅在 ffprobe 扫描阶段通过 side_data 检测。
+    """
+    for _ in range(retries):
+        gamma = _mpv_get_property_string(handle, 'video-params/gamma') or ''
+        if gamma:
+            break
+        time.sleep(interval)
+    cm = _mpv_get_property_string(handle, 'video-params/colormatrix') or ''
+    prim = _mpv_get_property_string(handle, 'video-params/primaries') or ''
+    vf = _mpv_get_property_string(handle, 'video-format') or ''
+    try:
+        sig_peak = float(_mpv_get_property_string(handle, 'video-params/sig-peak') or '0')
+    except (ValueError, TypeError):
+        sig_peak = 0.0
+    # 复用统一的 detect_hdr_type 逻辑
+    from services.mpv_player_service import MpvPlayerController
+    return MpvPlayerController.detect_hdr_type(cm, gamma, sig_peak, vf, prim)
+
+
 class MpvStreamValidator:
     _semaphore: threading.Semaphore = threading.Semaphore(get_optimal_thread_count())
     _user_agent: str | None = None
@@ -136,7 +159,8 @@ class MpvStreamValidator:
             'service_name': None,
             'resolution': None,
             'codec': None,
-            'bitrate': None
+            'bitrate': None,
+            'hdr_type': None,
         }
 
         if not _is_mpv_available():
@@ -249,6 +273,7 @@ class MpvStreamValidator:
                     result['resolution'] = res
                 if codec:
                     result['codec'] = codec
+                result['hdr_type'] = _try_get_hdr_type(handle)
                 try:
                     from models.channel_mappings import extract_channel_name_from_url
                     result['service_name'] = extract_channel_name_from_url(url)
@@ -269,6 +294,7 @@ class MpvStreamValidator:
                     result['resolution'] = res
                 if codec:
                     result['codec'] = codec
+                result['hdr_type'] = _try_get_hdr_type(handle)
 
                 try:
                     from models.channel_mappings import extract_channel_name_from_url

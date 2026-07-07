@@ -25,24 +25,109 @@ def clear_hdr_cache():
 
 
 def is_android_hdr_enabled():
+    """检测 Android 设备是否支持 HDR 显示。
+
+    通过 Android Display.getHdrCapabilities() 检测（Android 7.0+）。
+    优先使用 pyjnius（chaquopy 环境），回退到 PySide6 Qt 检测。
+    """
     global _hdr_cache, _hdr_cache_time
     import time
     now = time.monotonic()
     if _hdr_cache is not None and (now - _hdr_cache_time) < _HDR_CACHE_TTL:
         return _hdr_cache
+    result = False
+    # 方案1：通过 pyjnius 调用 Android Display.getHdrCapabilities()
     try:
-        from PySide6.QtCore import QGuiApplication
-        if QGuiApplication.instance():
-            screen = QGuiApplication.primaryScreen()
-            if screen:
-                _hdr_cache = False
-                _hdr_cache_time = now
-                return False
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        activity = PythonActivity.mActivity
+        window_manager = activity.getSystemService('window')
+        display = window_manager.getDefaultDisplay()
+        if hasattr(display, 'getHdrCapabilities'):
+            caps = display.getHdrCapabilities()
+            types = caps.getSupportedHdrTypes()
+            result = len(types) > 0
+            logger.info(f"Android HDR检测(pyjnius): supportedTypes={types}, result={result}")
+    except ImportError:
+        pass
     except Exception as e:
-        logger.debug(f"Android HDR检测失败: {e}")
-    _hdr_cache = False
+        logger.debug(f"Android HDR检测(pyjnius)失败: {e}")
+
+    # 方案2：通过 PySide6 Qt 检测（如果 pyjnius 不可用）
+    if not result:
+        try:
+            from PySide6.QtGui import QGuiApplication, QWindow
+            if QGuiApplication.instance():
+                if hasattr(QWindow, 'isHDR'):
+                    window = QWindow()
+                    screen = QGuiApplication.primaryScreen()
+                    if screen:
+                        window.setScreen(screen)
+                        try:
+                            result = window.isHDR()
+                            logger.info(f"Android HDR检测(Qt): isHDR()={result}")
+                        finally:
+                            window.deleteLater()
+        except Exception as e:
+            logger.debug(f"Android HDR检测(Qt)失败: {e}")
+
+    _hdr_cache = result
     _hdr_cache_time = now
-    return False
+    return result
+
+
+def is_linux_hdr_enabled():
+    """检测 Linux 系统是否启用了 HDR。
+
+    支持的检测方式：
+    - Wayland: 检查 COLORHDR_OUTPUT 环境变量或 wlr-randr 输出
+    - X11: 检查 xrandr --props 中的 HDR_OUTPUT_METADATA 属性
+    """
+    global _hdr_cache, _hdr_cache_time
+    import time
+    now = time.monotonic()
+    if _hdr_cache is not None and (now - _hdr_cache_time) < _HDR_CACHE_TTL:
+        return _hdr_cache
+
+    result = False
+
+    # Wayland: 检查环境变量
+    if os.environ.get('COLORHDR_OUTPUT'):
+        result = True
+        logger.info("Linux HDR检测(Wayland): COLORHDR_OUTPUT 环境变量已设置")
+    else:
+        # X11: 检查 xrandr --props 输出中是否包含 HDR_OUTPUT_METADATA
+        try:
+            result_x = subprocess.run(
+                ['xrandr', '--prop'],
+                capture_output=True, text=True, timeout=10,
+            )
+            if 'HDR_OUTPUT_METADATA' in result_x.stdout:
+                result = True
+                logger.info("Linux HDR检测(X11): xrandr 检测到 HDR_OUTPUT_METADATA")
+        except FileNotFoundError:
+            logger.debug("Linux HDR检测: xrandr 未安装")
+        except Exception as e:
+            logger.debug(f"Linux HDR检测(X11)失败: {e}")
+
+        # Wayland: 尝试 wlr-randr（wlroots 合成器）
+        if not result:
+            try:
+                result_w = subprocess.run(
+                    ['wlr-randr'],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if 'HDR' in result_w.stdout:
+                    result = True
+                    logger.info("Linux HDR检测(Wayland): wlr-randr 检测到 HDR")
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                logger.debug(f"Linux HDR检测(Wayland/wlr-randr)失败: {e}")
+
+    _hdr_cache = result
+    _hdr_cache_time = now
+    return result
 
 
 def is_macos_hdr_enabled():

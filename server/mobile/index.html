@@ -1494,11 +1494,24 @@ function updateMediaBadges(){
     if(fps>0) vp.push('帧率: '+Math.round(fps)+'fps');
     if(vBr>0) vp.push('视频码率: '+formatBitrate(vBr));
     vEl.textContent = vp.length ? vp.join(' | ') : '直播流';
-    /* HDR 徽章：与 PC 端 detect_hdr_type 对齐（综合 gamma 判断） */
-    const gamma=Mpv.getStr('video-params/gamma');
+    /* HDR 徽章：与 PC/Android 端 detect_hdr_type 逻辑统一对齐
+       检测优先级：DV → PQ(HDR10) → HLG → WCG → SDR
+       注意：运行时无法区分 HDR10/HDR10+，统一显示 HDR10 */
+    const gamma=(Mpv.getStr('video-params/gamma')||'').toLowerCase();
+    const vf=(Mpv.getStr('video-format')||'').toLowerCase();
+    const cm=(Mpv.getStr('video-params/colormatrix')||'').toLowerCase();
+    const prim=(Mpv.getStr('video-params/primaries')||'').toLowerCase();
+    const sigPeak=Mpv.getDbl('video-params/sig-peak')||0;
+    const hasDovi=vf.includes('dovi')||vf.includes('dolbyvision')||vf.includes('dvhe')||vf.includes('dvh1')||vf.includes('dav1');
+    const isPq=gamma.includes('pq')||gamma.includes('smpte2084');
+    const isHlg=gamma.includes('hlg')||gamma.includes('arib-std-b67');
+    const isBt2020=cm.includes('bt.2020')||cm.includes('bt2020')||cm.includes('bt.2100')||prim.includes('bt.2020')||prim.includes('bt2020')||prim.includes('bt.2100');
     let hdr='';
-    if(/pq/i.test(gamma)) hdr='HDR10';
-    else if(/hlg/i.test(gamma)) hdr='HLG';
+    if(hasDovi) hdr='DV (基础层)';
+    else if(isPq) hdr='HDR10';
+    else if(isHlg) hdr='HLG';
+    else if(isBt2020&&sigPeak<=1.0) hdr='WCG';
+    else if(isBt2020&&sigPeak>1.0) hdr='HLG';
     if(hdr){ hEl.textContent=hdr; hEl.style.display=''; }
     else { hEl.style.display='none'; }
     /* 音频徽章：音频: {codec} | 声道: {ch} | 采样率: {sr} | 码率: {br} */

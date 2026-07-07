@@ -230,6 +230,9 @@ class MpvPlayerController(QObject):
                 elif is_android():
                     from utils.hdr_detect import is_android_hdr_enabled
                     _system_hdr_enabled = is_android_hdr_enabled()
+                elif is_linux():
+                    from utils.hdr_detect import is_linux_hdr_enabled
+                    _system_hdr_enabled = is_linux_hdr_enabled()
                 else:
                     _system_hdr_enabled = False
             except Exception as e:
@@ -538,27 +541,28 @@ class MpvPlayerController(QObject):
         return 'bt.1886'
 
     def _apply_tonemap_config(self):
-        # HDR→SDR 色调映射：显式指定目标色域和 gamma，避免 mpv 自动推断失败
+        # HDR→SDR 色调映射（与 Android 端 applyTonemapConfig 统一策略）：
+        # 显式指定目标色域和 gamma，避免 mpv 自动推断失败
+        # 统一策略：target-prim=bt.2020 保留广色域（WCG），在支持广色域的显示器上显示更丰富色彩
+        # gamut-mapping-mode=perceptual 感知映射，减少色域裁剪损失
         # 注意：d3d11-output-csp 和 target-colorspace-hint 已在初始化时设置（option），
         # 运行时修改不会重建 swapchain，所以这里不再设置。
         # 重置 target-peak：passthrough/scrgb 模式设置了 10000，切换到 tonemap 时必须重置，
         # 否则 mpv 认为显示器能显示 10000 nits，不会做 HDR→SDR tone mapping，画面会过曝。
-        # 重置 gamut-mapping-mode：passthrough/scrgb 设置了 relative，tonemap 模式需要
-        # 色域压缩（BT.2020→BT.709），使用默认的 auto（perceptual）更合适。
         # 注意：hdr10-opt 由 _apply_hdr_on_file_loaded 根据视频类型统一设置，这里不再设置。
         sdr_trc = self._get_sdr_target_trc()
         self._set_mpv_string('tone-mapping', 'auto')
         self._set_mpv_string('tone-mapping-mode', 'auto')
         self._set_mpv_string('tone-mapping-desat', '0.5')
         self._set_mpv_string('hdr-compute-peak', 'no')
-        self._set_mpv_string('target-prim', 'bt.709')
+        self._set_mpv_string('target-prim', 'bt.2020')
         self._set_mpv_string('target-trc', sdr_trc)
         # target-peak=100：显式 SDR 电平，确保 swapchain 切换到 sRGB 色彩空间
         self._set_mpv_string('target-peak', '100')
-        self._set_mpv_string('gamut-mapping-mode', '')
-        self.logger.info(f"HDR配置: tonemap → SDR (bt.709/{sdr_trc}, target-peak=100)")
+        self._set_mpv_string('gamut-mapping-mode', 'perceptual')
+        self.logger.info(f"HDR配置: tonemap → SDR (bt.2020/{sdr_trc}, target-peak=100, gamut=perceptual)")
 
-    def _apply_passthrough_config(self, is_pq_video=True):
+    def _apply_passthrough_config(self, is_pq=True):
         # d3d11-output-csp=pq + target-colorspace-hint=yes 已在初始化时设置
         #
         # PQ 视频（HDR10/HDR10+）：
@@ -589,7 +593,7 @@ class MpvPlayerController(QObject):
         self._set_mpv_string('target-prim', 'bt.2020')
         self._set_mpv_string('target-trc', 'pq')
         self._set_mpv_string('gamut-mapping-mode', 'relative')
-        if is_pq_video:
+        if is_pq:
             self._set_mpv_string('tone-mapping', 'clip')
             self._set_mpv_string('hdr-compute-peak', 'no')
             self._set_mpv_string('target-peak', '10000')
@@ -605,15 +609,15 @@ class MpvPlayerController(QObject):
                 "(bt.2020/pq, target-peak=1000, compute-peak=yes, gamut=relative)"
             )
 
-    def _apply_scrgb_config(self, is_pq_video=True):
+    def _apply_scrgb_config(self, is_pq=True):
         # d3d11-output-csp=pq + target-colorspace-hint=yes 已在初始化时设置
         # scrgb 模式与 passthrough 模式的 HDR 处理逻辑相同，
         # 都是将 HDR 内容以 PQ 信号输出到 swapchain，由 Windows DWM 合成。
         # 区别在于 scrgb 模式主要用于 auto 模式回退，passthrough 用于显式直通。
         # 参数选择同 passthrough，根据视频类型（PQ/HLG）区分处理。
         # 注意：hdr10-opt 由 _apply_hdr_on_file_loaded 根据视频类型统一设置，这里不再设置。
-        self._apply_passthrough_config(is_pq_video)
-        self.logger.info(f"HDR配置: scrgb → {'PQ直通' if is_pq_video else 'HLG自动转换'} (复用 passthrough 配置)")
+        self._apply_passthrough_config(is_pq)
+        self.logger.info(f"HDR配置: scrgb → {'PQ直通' if is_pq else 'HLG自动转换'} (复用 passthrough 配置)")
 
     def _apply_wcg_config(self):
         """WCG 视频（宽色域 SDR）配置：保持 bt.2020 色域，SDR 亮度。
@@ -841,21 +845,28 @@ class MpvPlayerController(QObject):
             vp_prim = (self._get_mpv_property_string('video-params/primaries') or '').lower()
             vp_gamma = (self._get_mpv_property_string('video-params/gamma') or '').lower()
             vp_peak = self._get_mpv_property_double('video-params/sig-peak') or 0
+            vp_format = (self._get_mpv_property_string('video-format') or '').lower()
+            vp_cm = (self._get_mpv_property_string('video-params/colormatrix') or '').lower()
 
-            self.logger.info(f"视频HDR参数: primaries={vp_prim}, gamma={vp_gamma}, sig_peak={vp_peak}")
+            # DV 检测（libmpv 只能播放 HDR10 基础层）
+            has_dovi = ('dovi' in vp_format or 'dolbyvision' in vp_format or
+                        'dvhe' in vp_format or 'dvh1' in vp_format or 'dav1' in vp_format)
+            # 统一 HDR 检测（与 detect_hdr_type 对齐）
+            is_pq = 'pq' in vp_gamma or 'smpte2084' in vp_gamma
+            is_hlg = 'hlg' in vp_gamma or 'arib-std-b67' in vp_gamma
+            is_bt2020 = ('bt.2020' in vp_prim or 'bt2020' in vp_prim or
+                         'bt.2020' in vp_cm or 'bt2020' in vp_cm)
 
-            is_hdr_video = (
-                'pq' in vp_gamma or 'smpte2084' in vp_gamma or
-                'hlg' in vp_gamma or 'arib-std-b67' in vp_gamma or
-                vp_peak > 100
+            self.logger.info(
+                f"视频HDR参数: primaries={vp_prim}, gamma={vp_gamma}, "
+                f"sig_peak={vp_peak}, format={vp_format}, dovi={has_dovi}"
             )
+
+            is_hdr_video = is_pq or is_hlg or has_dovi
 
             # WCG 视频（宽色域 SDR）：BT.2020 色域但 SDR 亮度（gamma=srgb/bt.1886）
             # 这类视频需要保持 bt.2020 色域，避免被压缩到 bt.709 导致偏色
-            is_wcg_video = (
-                not is_hdr_video and
-                ('bt.2020' in vp_prim or 'bt2020' in vp_prim)
-            )
+            is_wcg_video = (not is_hdr_video and is_bt2020)
 
             if is_wcg_video:
                 self.logger.info("WCG视频（宽色域SDR），保持bt.2020色域")
@@ -868,14 +879,11 @@ class MpvPlayerController(QObject):
                 return
 
             # 根据 HDR 视频类型动态设置 hdr10-opt（HDR10+ 动态元数据传递）：
-            # - PQ 视频（HDR10/HDR10+）：启用 hdr10-opt=yes，传递 HDR10+ 动态元数据到显示器，
-            #   显示器可使用动态元数据进行更准确的 tone mapping。
-            # - HLG 视频：禁用 hdr10-opt=no，HLG 与 HDR10+ 是不同标准，
-            #   启用可能让 libplacebo 尝试处理不存在的 HDR10+ 元数据，干扰 HLG→PQ 转换。
-            # 修复问题：HDR10+ 视频移除 hdr10-opt 后亮度暗（动态元数据未传递到显示器）；
-            # HLG 视频启用 hdr10-opt 后偏色（处理不存在的 HDR10+ 元数据）。
-            is_pq_video = ('pq' in vp_gamma or 'smpte2084' in vp_gamma)
-            if is_pq_video:
+            # - PQ 视频（HDR10/HDR10+）/ DV 基础层（PQ）：启用 hdr10-opt=yes
+            # - HLG 视频：禁用 hdr10-opt=no
+            if has_dovi:
+                self.logger.info("DV视频（基础层），按HDR10基础层处理")
+            if is_pq:
                 self._set_mpv_string('hdr10-opt', 'yes')
                 self.logger.info("PQ视频，启用hdr10-opt传递HDR10+动态元数据")
             else:
@@ -894,6 +902,9 @@ class MpvPlayerController(QObject):
                     elif is_android():
                         from utils.hdr_detect import is_android_hdr_enabled
                         return is_android_hdr_enabled()
+                    elif is_linux():
+                        from utils.hdr_detect import is_linux_hdr_enabled
+                        return is_linux_hdr_enabled()
                 except Exception:
                     pass
                 return False
@@ -910,7 +921,7 @@ class MpvPlayerController(QObject):
                         self.logger.warning("运行时检测系统未启用HDR，passthrough模式回退到tonemap")
                     self._apply_tonemap_config()
                 else:
-                    self._apply_passthrough_config(is_pq_video)
+                    self._apply_passthrough_config(is_pq)
                 return
 
             if hdr_mode == 'scrgb':
@@ -921,13 +932,13 @@ class MpvPlayerController(QObject):
                         self.logger.warning("运行时检测系统未启用HDR，scrgb模式回退到tonemap")
                     self._apply_tonemap_config()
                 else:
-                    self._apply_scrgb_config(is_pq_video)
+                    self._apply_scrgb_config(is_pq)
                 return
 
             if hdr_mode == 'auto':
                 system_hdr_enabled = _check_system_hdr()
                 if system_hdr_enabled:
-                    self._apply_scrgb_config(is_pq_video)
+                    self._apply_scrgb_config(is_pq)
                 else:
                     self._apply_tonemap_config()
                 return
@@ -982,8 +993,11 @@ class MpvPlayerController(QObject):
             is_hdr = False
             try:
                 gamma = (self._get_mpv_property_string('video-params/gamma') or '').lower()
-                sig_peak = self._get_mpv_property_double('video-params/sig-peak') or 0
-                is_hdr = 'pq' in gamma or 'hlg' in gamma or sig_peak > 100
+                vf = (self._get_mpv_property_string('video-format') or '').lower()
+                # 统一 HDR 检测（与 detect_hdr_type 对齐）
+                is_hdr = ('pq' in gamma or 'smpte2084' in gamma or
+                          'hlg' in gamma or 'arib-std-b67' in gamma or
+                          'dovi' in vf or 'dvhe' in vf or 'dvh1' in vf or 'dav1' in vf)
             except Exception:
                 pass
             is_large_file = file_size > 10 * 1024 * 1024 * 1024 or (duration > 3600 and is_4k)
@@ -3316,27 +3330,60 @@ class MpvPlayerController(QObject):
         self._apply_osd_colors()
 
     @staticmethod
-    def detect_hdr_type(colormatrix: str, gamma: str, sig_peak: float, video_format: str = '') -> str:
-        vf_lower = (video_format or '').lower()
-        has_dovi = ('dovi' in vf_lower or 'dolbyvision' in vf_lower or 'dolby_vision' in vf_lower)
-        # 注意：libmpv 无法解码 DV RPU 增强层，只能播放 HDR10/HDR10+ 基础层
-        # 对于 DV+HDR10+ 双层片源，应按 HDR10+ 处理（基础层是 PQ + 动态元数据）
-        # 先检查 PQ，再回退到纯 DV 标记
-        if gamma and ('pq' in gamma.lower() or 'smpte2084' in gamma.lower()):
-            if sig_peak > 1000:
-                return 'HDR10+'
-            return 'HDR10'
+    def detect_hdr_type(colormatrix: str, gamma: str, sig_peak: float,
+                        video_format: str = '', primaries: str = '') -> str:
+        """统一 HDR 类型检测逻辑（PC/Android/Web 三端共用此算法）。
+
+        检测优先级：DV → PQ(HDR10) → HLG → WCG → SDR
+
+        注意：
+        - mpv 运行时无法区分 HDR10 与 HDR10+（ST.2094-40 动态元数据不暴露为属性），
+          统一返回 'HDR10'。HDR10+ 的检测仅在 ffprobe 扫描阶段通过 side_data 完成。
+        - libmpv 无法解码 DV RPU 增强层，只能播放 HDR10 基础层。
+          检测到 DV 时返回 'DV'，由 UI 层标注 "(基础层)"。
+        - WCG（宽色域 SDR）：BT.2020 色域 + SDR 亮度，需要保持广色域避免压缩偏色。
+        - sig_peak 用于辅助判断（mpv 中 1.0≈SDR 白电平，HDR 内容通常 >1.0），
+          但不作为 HDR10/HDR10+ 的区分依据。
+
+        Args:
+            colormatrix: 色彩矩阵（如 bt.709/bt.2020），来自 video-params/colormatrix
+            gamma: 传输特性（如 pq/smpte2084/hlg/arib-std-b67/srgb/bt.1886）
+            sig_peak: 信号峰值（mpv video-params/sig-peak，1.0≈SDR白）
+            video_format: 视频格式/编解码器（如 hevc/dvhe/dav1）
+            primaries: 色彩原色（如 bt.709/bt.2020），来自 video-params/primaries
+        """
+        g = (gamma or '').lower()
+        vf = (video_format or '').lower()
+        cm = (colormatrix or '').lower()
+        prim = (primaries or '').lower()
+
+        # 杜比视界检测：编解码器标记 dvhe/dvh1/dav1/dovi/dolby_vision
+        has_dovi = ('dovi' in vf or 'dolbyvision' in vf or 'dolby_vision' in vf
+                    or 'dvhe' in vf or 'dvh1' in vf or 'dav1' in vf or 'dvc' in vf)
+
+        # PQ 视频（HDR10 / HDR10+）：SMPTE ST 2084 (PQ) EOTF
+        is_pq = 'pq' in g or 'smpte2084' in g
+        # HLG 视频：ARIB STD-B67 (HLG)
+        is_hlg = 'hlg' in g or 'arib-std-b67' in g
+        # BT.2020 色域检测（从 colormatrix 或 primaries 判断）
+        is_bt2020 = ('bt.2020' in cm or 'bt2020' in cm or 'bt.2100' in cm or
+                     'bt.2020' in prim or 'bt2020' in prim or 'bt.2100' in prim)
+
+        # DV 优先（DV 流通常也带 PQ 基础层，但标记为 DV 更准确）
         if has_dovi:
             return 'DV'
-        if gamma and ('hlg' in gamma.lower() or 'arib-std-b67' in gamma.lower()):
+        # PQ → HDR10（运行时无法区分 HDR10+，hdr10-opt=yes 会自动传递动态元数据）
+        if is_pq:
+            return 'HDR10'
+        # HLG
+        if is_hlg:
             return 'HLG'
-        if colormatrix:
-            cm_lower = colormatrix.lower()
-            if 'bt.2020' in cm_lower or 'bt.2100' in cm_lower:
-                if sig_peak > 100:
-                    return 'HLG'
-                else:
-                    return 'WCG'
+        # WCG：BT.2020 色域 + SDR 亮度（非 HDR），sig_peak 辅助排除极少数高亮度 SDR
+        if is_bt2020 and sig_peak <= 1.0:
+            return 'WCG'
+        # BT.2020 + 高 sig_peak 但 gamma 未标记 → 可能是未正确标记的 HLG
+        if is_bt2020 and sig_peak > 1.0:
+            return 'HLG'
         return 'SDR'
 
     def get_available_seek_range(self) -> dict:

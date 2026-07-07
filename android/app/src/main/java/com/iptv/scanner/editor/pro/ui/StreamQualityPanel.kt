@@ -264,10 +264,13 @@ private fun readStreamInfo(mpv: com.iptv.scanner.editor.pro.player.Player): Stre
         ?: gs("audio-params/bitrate").toIntOrNull()?.let { formatBitrate(it) }
         ?: "N/A"
 
-    // HDR 类型检测（与 PC 端 detect_hdr_type 逻辑对齐）
+    // HDR 类型检测（与 PC 端 detect_hdr_type 逻辑统一对齐）
     val gamma = gs("video-params/gamma")
     val sigPeak = mpv.getPropertyDouble("video-params/sig-peak") ?: 0.0
-    val hdrType = detectHdrType(gamma, sigPeak, gs("video-format"))
+    val hdrType = detectHdrType(
+        gamma, sigPeak, gs("video-format"),
+        gs("video-params/colormatrix"), gs("video-params/primaries")
+    )
 
     // 缓存速度
     val cacheSpeed = mpv.getPropertyDouble("cache-speed")?.let { formatBytesPerSecond(it.toLong()) } ?: "N/A"
@@ -314,14 +317,35 @@ private fun readStreamInfo(mpv: com.iptv.scanner.editor.pro.player.Player): Stre
     )
 }
 
-/** HDR 类型检测（与 PC 端 detect_hdr_type 逻辑对齐） */
-private fun detectHdrType(gamma: String, sigPeak: Double, videoFormat: String): String {
-    if (gamma.isEmpty()) return "SDR"
+/**
+ * HDR 类型检测（与 PC 端 detect_hdr_type 逻辑统一对齐）
+ *
+ * 检测优先级：DV → PQ(HDR10) → HLG → WCG → SDR
+ * 注意：mpv 运行时无法区分 HDR10 与 HDR10+（ST.2094-40 动态元数据不暴露为属性），
+ * 统一返回 HDR10。HDR10+ 仅在 ffprobe 扫描阶段通过 side_data 检测。
+ */
+private fun detectHdrType(
+    gamma: String, sigPeak: Double, videoFormat: String,
+    colormatrix: String = "", primaries: String = ""
+): String {
+    val g = gamma.lowercase()
+    val vf = videoFormat.lowercase()
+    val cm = colormatrix.lowercase()
+    val prim = primaries.lowercase()
+
+    val hasDovi = vf.contains("dovi") || vf.contains("dolbyvision") || vf.contains("dolby_vision") ||
+        vf.contains("dvhe") || vf.contains("dvh1") || vf.contains("dav1") || vf.contains("dvc")
+    val isPq = g.contains("pq") || g.contains("smpte2084")
+    val isHlg = g.contains("hlg") || g.contains("arib-std-b67")
+    val isBt2020 = cm.contains("bt.2020") || cm.contains("bt2020") || cm.contains("bt.2100") ||
+        prim.contains("bt.2020") || prim.contains("bt2020") || prim.contains("bt.2100")
+
     return when {
-        gamma.contains("pq", ignoreCase = true) -> {
-            if (sigPeak > 0 && sigPeak < 1.0) "HDR10+" else "HDR10"
-        }
-        gamma.contains("hlg", ignoreCase = true) -> "HLG"
+        hasDovi -> "DV"
+        isPq -> "HDR10"
+        isHlg -> "HLG"
+        isBt2020 && sigPeak <= 1.0 -> "WCG"
+        isBt2020 && sigPeak > 1.0 -> "HLG"
         else -> "SDR"
     }
 }

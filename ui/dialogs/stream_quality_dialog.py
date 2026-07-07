@@ -234,7 +234,8 @@ class StreamQualityDialog(FloatingDialog):
                 info.get('colormatrix', ''),
                 gamma,
                 info.get('sig_peak', 0) or 0,
-                info.get('video_format', '') or ''
+                info.get('video_format', '') or '',
+                info.get('color_primaries', '') or ''
             )
             self._set('hdr_type', hdr_type or 'SDR')
             v_depth = info.get('video_depth', 0) or 0
