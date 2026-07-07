@@ -16,17 +16,44 @@ from controllers.main_window_protocol import MainWindowProtocol
 
 
 def _get_platform_asset_name():
-    """返回当前平台对应的 Release asset 文件名"""
+    """返回当前平台对应的 Release asset 文件名
+
+    优先匹配新命名（ISEP-xxx），兼容旧命名（IPTV Scanner Editor Pro-xxx）。
+    """
     system = platform.system()
     if system == "Windows":
-        return "IPTV Scanner Editor Pro-Windows-x86_64.exe"
+        return "ISEP-Windows-x86_64.exe"
     elif system == "Darwin":
-        return "IPTV Scanner Editor Pro-macOS-ARM64.zip"
+        return "ISEP-macOS-ARM64.zip"
     elif system == "Linux":
         machine = platform.machine()
         if machine in ("aarch64", "arm64"):
-            return "IPTV Scanner Editor Pro-Linux-ARM64.tar.gz"
-        return "IPTV Scanner Editor Pro-Linux-x86_64.tar.gz"
+            return "ISEP-Linux-ARM64.tar.gz"
+        return "ISEP-Linux-x86_64.tar.gz"
+    return None
+
+
+# 旧版资产名（用于向后兼容，匹配 GitHub Release 中的旧版文件）
+_LEGACY_ASSET_NAMES = {
+    "Windows": "IPTV Scanner Editor Pro-Windows-x86_64.exe",
+    "Darwin": "IPTV Scanner Editor Pro-macOS-ARM64.zip",
+    "Linux-ARM64": "IPTV Scanner Editor Pro-Linux-ARM64.tar.gz",
+    "Linux-x86_64": "IPTV Scanner Editor Pro-Linux-x86_64.tar.gz",
+}
+
+
+def _get_legacy_asset_name():
+    """返回当前平台对应的旧版 Release asset 文件名（用于向后兼容）"""
+    system = platform.system()
+    if system == "Windows":
+        return _LEGACY_ASSET_NAMES["Windows"]
+    elif system == "Darwin":
+        return _LEGACY_ASSET_NAMES["Darwin"]
+    elif system == "Linux":
+        machine = platform.machine()
+        if machine in ("aarch64", "arm64"):
+            return _LEGACY_ASSET_NAMES["Linux-ARM64"]
+        return _LEGACY_ASSET_NAMES["Linux-x86_64"]
     return None
 
 
@@ -91,9 +118,11 @@ class UpdateCheckThread(QThread):
                         # 查找当前平台对应的下载链接
                         download_url = release_url
                         asset_name = _get_platform_asset_name()
+                        legacy_name = _get_legacy_asset_name()
                         if asset_name:
                             for asset in data.get('assets', []):
-                                if asset.get('name') == asset_name:
+                                name = asset.get('name', '')
+                                if name == asset_name or name == legacy_name:
                                     download_url = asset.get('browser_download_url', release_url)
                                     break
 
@@ -174,7 +203,7 @@ class UpdateDownloadThread(QThread):
         import aiohttp
         import hashlib
 
-        asset_name = _get_platform_asset_name() or "isepp_update_file"
+        asset_name = _get_platform_asset_name() or "isep_update_file"
         filepath = os.path.join(tempfile.gettempdir(), asset_name)
 
         self.progress.emit(0, "正在连接服务器...")
@@ -425,7 +454,7 @@ class UpdateController:
         """Windows: 用批处理脚本替换 exe 并重启"""
         current_exe = sys.executable
         app_dir = os.path.dirname(current_exe)
-        target_exe = os.path.join(app_dir, "IPTV Scanner Editor Pro.exe")
+        target_exe = os.path.join(app_dir, "ISEP.exe")
 
         # 安全：对路径中的特殊字符进行转义，防止批处理注入
         # 将路径中的 % 替换为 %%（批处理转义），" 已由引号包裹
@@ -439,7 +468,7 @@ class UpdateController:
             f'start "" "{safe_target}"\r\n'
             'del "%~f0"\r\n'
         )
-        bat_path = os.path.join(tempfile.gettempdir(), "isepp_update.bat")
+        bat_path = os.path.join(tempfile.gettempdir(), "isep_update.bat")
         with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
 
@@ -461,7 +490,7 @@ class UpdateController:
             ['unzip', '-o', filepath, '-d', tempfile.gettempdir()],
             check=True
         )
-        new_app = os.path.join(tempfile.gettempdir(), "IPTV Scanner Editor Pro.app")
+        new_app = os.path.join(tempfile.gettempdir(), "ISEP.app")
 
         # 获取当前 .app 路径
         # sys.executable: /path/to/App.app/Contents/MacOS/App
@@ -479,7 +508,7 @@ class UpdateController:
             f'open {safe_app_path}\n'
             'rm "$0"\n'
         )
-        script_path = os.path.join(tempfile.gettempdir(), "isepp_update.sh")
+        script_path = os.path.join(tempfile.gettempdir(), "isep_update.sh")
         with open(script_path, 'w') as f:
             f.write(script)
         os.chmod(script_path, 0o755)
@@ -499,7 +528,7 @@ class UpdateController:
             ['tar', 'xzf', filepath, '-C', extract_dir],
             check=True
         )
-        new_exe = os.path.join(extract_dir, "IPTV Scanner Editor Pro")
+        new_exe = os.path.join(extract_dir, "ISEP")
         current_exe = sys.executable
 
         # 安全：使用 shlex.quote 转义路径，防止 shell 注入
@@ -514,7 +543,7 @@ class UpdateController:
             f'nohup {safe_current_exe} > /dev/null 2>&1 &\n'
             'rm "$0"\n'
         )
-        script_path = os.path.join(tempfile.gettempdir(), "isepp_update.sh")
+        script_path = os.path.join(tempfile.gettempdir(), "isep_update.sh")
         with open(script_path, 'w') as f:
             f.write(script)
         os.chmod(script_path, 0o755)

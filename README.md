@@ -1,11 +1,11 @@
-# IPTV Scanner Editor Pro / IPTV 专业扫描编辑工具
+# ISEP — IPTV Scanner Editor Pro
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.4+-green.svg)](https://www.qt.io/qt-for-python)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-lightgrey.svg)](https://github.com/sumingyd/IPTV-Scanner-Editor-Pro)
 
-一款功能全面的 IPTV 频道扫描、验证、播放和管理工具，跨平台支持 Windows / macOS / Linux 桌面端与 Android 移动端。集成 MPV 播放引擎与 FFprobe 流探测，支持 EPG 电子节目单、频道台标自动匹配、HDR 显示、在线字幕下载、音频可视化、断点续播、片段导出等高级功能，多主题界面、中英双语，从扫描到观看一站式完成。
+**ISEP**（IPTV Scanner Editor Pro）是一款功能全面的 IPTV 频道扫描、验证、播放和管理工具，跨平台支持 Windows / macOS / Linux 桌面端与 Android 移动端。集成 MPV 播放引擎与 FFprobe 流探测，支持 EPG 电子节目单、频道台标自动匹配、HDR 显示、在线字幕下载、音频可视化、断点续播、片段导出等高级功能，多主题界面、中英双语，从扫描到观看一站式完成。
 
 
 ## 📸 程序截图
@@ -329,7 +329,7 @@ adb install -g app/build/outputs/apk/release/app-release.apk
 
 > **PC 端 Python 模块打包**：Chaquopy 构建时会将项目根目录的 `core/`、`services/`、`server/` 等 Python 包打包进 APK（通过 `extractPackages "server"` 指令解压 server 包，其余以 .zip 形式加载）。`android/app/src/main/python/android_bridge.py` 是 Android 端唯一的 Python 入口文件，运行时通过 `import server` / `import core` 等动态导入 PC 端模块。
 
-> **数据持久化**：覆盖安装 APK 后，订阅源、EPG 源、设置等数据自动保留。所有数据（config.ini、缓存、收藏等）统一存放在外部存储根目录的 `/sdcard/ISEPP/` 下（三级回退：`/sdcard/ISEPP/` → `getExternalFilesDir()/ISEPP/` → `getFilesDir()/ISEPP/`），与 Chaquopy 资产解压目录完全隔离，不受 APK 版本更新影响。首次启动时会自动从旧目录 `getFilesDir()/IPTV_Scanner_Editor_Pro/` 迁移历史数据。
+> **数据持久化**：覆盖安装 APK 后，订阅源、EPG 源、设置等数据自动保留。所有数据（config.ini、缓存、收藏等）统一存放在外部存储根目录的 `/sdcard/ISEP/` 下（三级回退：`/sdcard/ISEP/` → `getExternalFilesDir()/ISEP/` → `getFilesDir()/ISEP/`），与 Chaquopy 资产解压目录完全隔离，不受 APK 版本更新影响。首次启动时会自动从旧目录（`ISEPP` 或 `IPTV_Scanner_Editor_Pro`）迁移历史数据。
 
 ## 🚀 快速开始
 

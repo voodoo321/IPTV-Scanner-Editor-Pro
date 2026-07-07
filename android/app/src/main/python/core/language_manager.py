@@ -10,7 +10,7 @@ logger = LogManager()
 BUILTIN_TRANSLATIONS = {
     'zh': {
         'language_name': '中文',
-        'app_title': 'IPTV扫描编辑器专业版',
+        'app_title': 'ISEP',
         'video_playback': '视频播放',
         'play': '播放',
         'pause': '暂停',
@@ -68,7 +68,7 @@ BUILTIN_TRANSLATIONS = {
         'catchup_days': '回看天数',
         'catchup_source': '回看源',
         'catchup_correction': '回看时区修正',
-        'about_dialog_title': '关于 IPTV Scanner Editor Pro',
+        'about_dialog_title': '关于 ISEP',
         'current_version': '当前版本',
         'latest_version': '最新版本',
         'build_date': '编译日期',
@@ -140,13 +140,13 @@ BUILTIN_TRANSLATIONS = {
         'save_error': '保存文件失败: {error}',
         'no_content': '没有可保存的内容',
         'file_selection_error': '文件选择失败: {error}',
-        'app_name': 'IPTV Scanner Editor Pro',
+        'app_name': 'ISEP',
         'version': '版本 1.0.0',
         'description': 'IPTV 频道扫描和编辑工具',
         'usage_title': '使用说明',
         'usage_content': '## 基本操作\n\n### 1. 打开播放列表\n- 点击"文件"菜单 → "打开播放列表"（Ctrl+O）\n- 支持 M3U、M3U8、TXT 格式\n- 也可将文件直接拖放到主窗口打开\n\n### 2. 播放频道\n- 在频道列表中**双击**频道开始播放\n- 底部控制面板：▶ 播放 / ▮▮ 暂停 / ■ 停止\n- 音量滑块调节音量，点击图标静音/取消静音\n- 倍速按钮切换播放速度，比例按钮切换画面比例\n- 全屏按钮或 F11 进入全屏\n- **↑ ↓** 键切换频道，**← →** 键调整音量\n\n### 3. EPG 电子节目单\n- 左侧面板显示当前频道节目安排\n- 点击 ◀ / ▶ 切换日期查看节目\n- 进度条实时显示当前节目播放进度\n- 支持配置 EPG 数据源自动订阅更新\n- M3U 文件头中的 EPG 地址会自动加载\n\n### 4. 扫描整理\n- 工具菜单 → 扫描整理\n- 输入 IP 范围或流地址（如 `239.3.1.[1-100]:8000`）\n- 设置超时时间和线程数，支持追加扫描和重试\n- 扫描完成后可使用**批量操作**：\n  - **自动分类**：根据频道名称规则自动归类分组\n  - **清理名称**：去除多余括号、HD后缀等，规范化频道名\n  - **匹配台标**：批量匹配频道台标图片\n  - **分配字段**：批量设置分组、台标等属性\n  - **按组排序**：按频道分组自动排序\n\n### 5. 验证频道\n- 批量检测频道有效性，显示延迟、分辨率等参数\n- 支持智能重试失败的项\n\n### 6. 频道管理\n- **拖拽排序**：拖动调整频道顺序\n- **分组筛选**：下拉框按分组过滤频道\n- **右键菜单**：删除、复制、清理名称、匹配台标等操作\n- **频道分类**：基于正则规则自动归类到对应分组\n- **名称清理**：智能去除冗余信息，规范化显示\n- **导出保存**：另存为 M3U / TXT / Excel 格式\n\n## 高级功能\n\n### 订阅设置\n- 工具菜单 → 订阅设置\n- 配置多个播放列表源和 EPG 数据源，独立管理\n- 支持过期自动刷新和增量更新\n- RTSP 传输方式可选 TCP/UDP/LAVF\n\n### 频道映射\n- 工具菜单 → 频道映射管理器\n- 可视化编辑频道名称、LOGO、分组的映射规则\n\n### 文件关联\n- 工具菜单 → 文件关联\n- 勾选需要关联的格式（M3U/M3U8/TXT/视频格式）\n- 关联后可从资源管理器右键打开\n\n### 界面定制\n- **主题切换**：5 种主题即时切换\n- **语言切换**：中文 / English\n- **面板控制**：视图菜单或快捷键\n  - **E** — EPG 节目单面板\n  - **L** — 频道列表面板\n  - **M** — 播放控制面板\n  - **Y** — 隐藏/恢复所有悬浮面板\n  - **Tab** — 切换 OSD 信息遮罩\n- **F5** 刷新界面，**F11** 全屏，**Ctrl+Q** 退出\n\n### 时移/回看\n- 支持多种回看类型：default / append / shift / flussonic / xc\n- 时间变量替换支持自定义格式和时区偏移\n- M3U 文件头可定义全局回看参数',
         'about_title': '关于',
-        'about_content': 'IPTV Scanner Editor Pro\n版本 1.0.0\n\nIPTV 频道扫描和编辑工具\n\n© 2026 IPTV Scanner Editor Pro',
+        'about_content': 'ISEP\n版本 1.0.0\n\nIPTV 频道扫描和编辑工具\n\n© 2026 ISEP',
         'epg_title': '节目单',
         'playlist_title': '播放列表',
         'not_playing': '未播放',
@@ -945,7 +945,7 @@ BUILTIN_TRANSLATIONS = {
         'epg_source_label': 'EPG节目单来源',
         'app_description': 'IPTV 专业扫描编辑工具',
         'system_info': '系统信息',
-        'copyright_text': '© 2025 IPTV Scanner Editor Pro 版权所有',
+        'copyright_text': '© 2025 ISEP 版权所有',
         'github_repo': 'GitHub 仓库',
         'request_timeout_text': '(请求超时)',
         'fetch_failed_text': '(获取失败)',
@@ -1174,7 +1174,7 @@ BUILTIN_TRANSLATIONS = {
     },
     'en': {
         'language_name': 'English',
-        'app_title': 'IPTV Scanner Editor Pro',
+        'app_title': 'ISEP',
         'app_title_zh': 'IPTV Professional Scanner & Editor',
         'video_playback': 'Video Playback',
         'play': 'Play',
@@ -1233,7 +1233,7 @@ BUILTIN_TRANSLATIONS = {
         'catchup_days': 'Catchup Days',
         'catchup_source': 'Catchup Source',
         'catchup_correction': 'Catchup TZ Correction',
-        'about_dialog_title': 'About IPTV Scanner Editor Pro',
+        'about_dialog_title': 'About ISEP',
         'current_version': 'Current Version',
         'latest_version': 'Latest Version',
         'build_date': 'Build Date',
@@ -1305,13 +1305,13 @@ BUILTIN_TRANSLATIONS = {
         'save_error': 'Failed to save file: {error}',
         'no_content': 'No content to save',
         'file_selection_error': 'File selection failed: {error}',
-        'app_name': 'IPTV Scanner Editor Pro',
+        'app_name': 'ISEP',
         'version': 'Version 1.0.0',
         'description': 'IPTV channel scanning and editing tool',
         'usage_title': 'Usage Instructions',
         'usage_content': '## Basic Operations\n\n### 1. Open Playlist\n- File menu → Open Playlist (Ctrl+O)\n- Supports M3U, M3U8, TXT formats\n- Or drag and drop files onto the main window\n\n### 2. Play Channel\n- **Double-click** a channel in the list to start playing\n- Bottom control panel: ▶ Play / ▮▮ Pause / ■ Stop\n- Volume slider to adjust, click icon to mute/unmute\n- Speed button to change playback speed, aspect button for ratio\n- Fullscreen button or F11\n- **↑ ↓** keys to switch channels, **← →** keys to adjust volume\n\n### 3. EPG Program Guide\n- Left panel shows current channel program schedule\n- Click ◀ / ▶ to navigate dates\n- Progress bar shows current program playback position\n- Supports EPG data source auto-subscription updates\n- EPG URLs in M3U file headers are loaded automatically\n\n### 4. Scan & Organize\n- Tools menu → Scan & Organize\n- Enter IP range or stream URL (e.g. `239.3.1.[1-100]:8000`)\n- Set timeout and thread count, supports append scan and retry\n- After scanning, use **Batch Operations**:\n  - **Auto Classify**: Automatically group channels by name rules\n  - **Clean Names**: Remove brackets, HD suffixes, etc.\n  - **Match Logo**: Batch match channel logo images\n  - **Assign Fields**: Batch set group, logo and other attributes\n  - **Sort by Group**: Auto-sort channels by group\n\n### 5. Verify Channels\n- Batch check channel validity, show latency, resolution, etc.\n- Smart retry for failed items\n\n### 6. Channel Management\n- **Drag & Drop Sort**: Drag to reorder channels\n- **Group Filter**: Dropdown to filter by group\n- **Right-click Menu**: Delete, copy, clean names, match logos, etc.\n- **Channel Classification**: Auto-classify by regex rules\n- **Name Cleaning**: Smart removal of redundant info\n- **Export**: Save as M3U / TXT / Excel format\n\n## Advanced Features\n\n### Subscription Settings\n- Tools menu → Subscription Settings\n- Configure multiple playlist and EPG sources, managed independently\n- Auto-refresh on expiry and incremental updates\n- RTSP transport: TCP/UDP/LAVF selectable\n\n### Channel Mapping\n- Tools menu → Channel Mapping Manager\n- Visual editing of name, LOGO, group mapping rules\n\n### File Association\n- Tools menu → File Association\n- Check formats to associate (M3U/M3U8/TXT/Video formats)\n- Right-click files in Explorer to open with this program\n\n### Interface Customization\n- **Theme Switching**: 5 themes available\n- **Language Switching**: Chinese / English\n- **Panel Control**: View menu or shortcuts\n  - **E** — EPG panel\n  - **L** — Channel list panel\n  - **M** — Control panel\n  - **Y** — Hide/restore all floating panels\n  - **Tab** — Toggle OSD info overlay\n- **F5** Refresh, **F11** Fullscreen, **Ctrl+Q** Exit\n\n### Timeshift / Catchup\n- Multiple catchup types: default / append / shift / flussonic / xc\n- Time variable replacement with custom format and timezone offset\n- M3U file headers can define global catchup parameters',
         'about_title': 'About',
-        'about_content': 'IPTV Scanner Editor Pro\nVersion 1.0.0\n\nIPTV channel scanning and editing tool\n\n© 2026 IPTV Scanner Editor Pro',
+        'about_content': 'ISEP\nVersion 1.0.0\n\nIPTV channel scanning and editing tool\n\n© 2026 ISEP',
         'epg_title': 'Program Guide',
         'playlist_title': 'Playlist',
         'not_playing': 'Not playing',
@@ -2111,7 +2111,7 @@ BUILTIN_TRANSLATIONS = {
         'epg_source_label': 'EPG Source',
         'app_description': 'IPTV Professional Scanner & Editor',
         'system_info': 'System Info',
-        'copyright_text': '© 2025 IPTV Scanner Editor Pro',
+        'copyright_text': '© 2025 ISEP',
         'github_repo': 'GitHub Repository',
         'request_timeout_text': '(Request Timeout)',
         'fetch_failed_text': '(Fetch Failed)',
@@ -2423,7 +2423,7 @@ class LanguageManager(Singleton):
         try:
             from core.version import CURRENT_VERSION
             version = CURRENT_VERSION
-            new_title = f"{self.tr('app_title', 'IPTV Scanner Editor Pro')} v{version}"
+            new_title = f"{self.tr('app_title', 'ISEP')} v{version}"
             main_window.setWindowTitle(new_title)
             # 同步更新自定义标题栏标签（无边框窗口 setWindowTitle 不可见）
             if hasattr(main_window, '_title_label') and main_window._title_label:

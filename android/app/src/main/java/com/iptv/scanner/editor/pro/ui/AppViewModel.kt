@@ -2438,7 +2438,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         val updateDir = File(app.getExternalFilesDir(null), "update").apply {
             if (!exists()) mkdirs()
         }
-        val apkFile = File(updateDir, "isepp-update.apk")
+        val apkFile = File(updateDir, "isep-update.apk")
         // 删除旧文件避免 DownloadManager 报错 FILE_ALREADY_EXISTS
         if (apkFile.exists()) apkFile.delete()
 
@@ -2446,7 +2446,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
 
         // 构建下载请求
         val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("IPTV Scanner Editor Pro 更新")
+            setTitle("ISEP 更新")
             setDescription("正在下载最新版 APK...")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             setDestinationUri(Uri.fromFile(apkFile))
@@ -2508,7 +2508,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
      */
     fun installDownloadedApk() {
         val app = getApplication<Application>()
-        val apkFile = File(app.getExternalFilesDir(null), "update/isepp-update.apk")
+        val apkFile = File(app.getExternalFilesDir(null), "update/isep-update.apk")
         if (!apkFile.exists()) {
             _apkDownloadState.value = ApkDownloadState.Error("下载文件不存在")
             return
@@ -2635,11 +2635,11 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
      *
      * 当前构建规则（build.gradle + build.yml）：
      * - 按 ABI 分包构建，生成两个独立 APK：
-     *   - arm64-v8a → IPTV Scanner Editor Pro-Android-arm64.apk
-     *   - armeabi-v7a → IPTV Scanner Editor Pro-Android-arm32.apk
-     * - 不传 targetAbi 时生成通用包：IPTV Scanner Editor Pro-Android-universal.apk
+     *   - arm64-v8a → ISEP-Android-arm64.apk
+     *   - armeabi-v7a → ISEP-Android-arm32.apk
+     * - 不传 targetAbi 时生成通用包：ISEP-Android-universal.apk
      *
-     * 兼容性：同时匹配旧版命名规则（-arm64-v8a.apk / -armeabi-v7a.apk），
+     * 兼容性：同时匹配旧版命名规则（IPTV Scanner Editor Pro-Android-xxx.apk / -arm64-v8a.apk / -armeabi-v7a.apk），
      * 确保旧版本 Release 的用户也能正常更新。
      */
     private fun fetchLatestRelease(): Triple<String?, String?, String?> {
@@ -2671,6 +2671,8 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
 
                     // 优先匹配通用 APK（无 ABI 后缀或 -universal 后缀，含所有 ABI）
                     val universalApk = androidApks.firstOrNull { (name, _) ->
+                        name.equals("ISEP-Android.apk", ignoreCase = true) ||
+                        name.equals("ISEP-Android-universal.apk", ignoreCase = true) ||
                         name.equals("IPTV Scanner Editor Pro-Android.apk", ignoreCase = true) ||
                         name.equals("IPTV Scanner Editor Pro-Android-universal.apk", ignoreCase = true)
                     }

@@ -499,7 +499,7 @@ class IPTVPlayer(
 
         from core.version import CURRENT_VERSION
         current_version = CURRENT_VERSION
-        self._window_title = f"{self.language_manager.tr('app_title', 'IPTV Scanner Editor Pro')} v{current_version}"
+        self._window_title = f"{self.language_manager.tr('app_title', 'ISEP')} v{current_version}"
         self.setWindowTitle(self._window_title)
 
         from utils.general_utils import get_icon_path

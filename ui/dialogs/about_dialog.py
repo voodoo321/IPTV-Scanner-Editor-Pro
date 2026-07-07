@@ -34,7 +34,7 @@ class AboutDialog(FloatingDialog):
         from ui.styles import AppStyles
         tr = self.language_manager.tr
         c = self._colors
-        self.setWindowTitle(tr("about_dialog_title", "About IPTV Scanner Editor Pro"))
+        self.setWindowTitle(tr("about_dialog_title", "About ISEP"))
         self.setMinimumSize(420, 380)
 
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -142,7 +142,7 @@ class AboutDialog(FloatingDialog):
         bottom_layout = QtWidgets.QHBoxLayout()
         bottom_layout.setSpacing(12)
 
-        self.copyright_label = QtWidgets.QLabel(tr("copyright_text", "© 2025-2026 IPTV Scanner Editor Pro"))
+        self.copyright_label = QtWidgets.QLabel(tr("copyright_text", "© 2025-2026 ISEP"))
         self.copyright_label.setStyleSheet(
             f"font-size: 10px; color: {c['player_panel_secondary']};"
             f" background-color: transparent;"

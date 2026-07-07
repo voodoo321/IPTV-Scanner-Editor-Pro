@@ -301,7 +301,7 @@ def _ensure_prog_id(prog_id, app_name=None):
         return False
     try:
         if app_name is None:
-            app_name = "IPTV Scanner Editor Pro"
+            app_name = "ISEP"
         key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{prog_id}", 0, winreg.KEY_WRITE)
         winreg.SetValueEx(key, "", 0, winreg.REG_SZ, app_name)
         winreg.CloseKey(key)

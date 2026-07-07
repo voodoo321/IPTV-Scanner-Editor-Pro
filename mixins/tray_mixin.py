@@ -74,4 +74,4 @@ class TrayMixin:
         tray = self._system_tray
         if tray:
             tray.show()
-            tray.setToolTip(tr('app_title', 'IPTV Scanner Editor Pro'))
+            tray.setToolTip(tr('app_title', 'ISEP'))

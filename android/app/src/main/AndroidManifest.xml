@@ -16,9 +16,9 @@
          用于发现新版本后直接通过 DownloadManager 下载并调起安装 Intent，
          避免 TV 端跳转浏览器不便的问题 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- 所有文件访问权限（Android 11+ scoped storage 下写入 /sdcard/ISEPP/ 需要）：
-         TV 端用户需在 系统设置 > 应用 > ISEPP > 权限 > 所有文件访问权限 中手动授予。
-         未授予时数据回退到 getExternalFilesDir()/ISEPP/（覆盖安装不丢失，但文件管理器不可见）。
+    <!-- 所有文件访问权限（Android 11+ scoped storage 下写入 /sdcard/ISEP/ 需要）：
+         TV 端用户需在 系统设置 > 应用 > ISEP > 权限 > 所有文件访问权限 中手动授予。
+         未授予时数据回退到 getExternalFilesDir()/ISEP/（覆盖安装不丢失，但文件管理器不可见）。
          安全建议：仅在用户主动授予权限时使用，不主动弹出请求。数据目录优先使用
          app-specific storage（getExternalFilesDir），仅在用户明确需要跨应用文件共享时
          才使用 MANAGE_EXTERNAL_STORAGE。 -->

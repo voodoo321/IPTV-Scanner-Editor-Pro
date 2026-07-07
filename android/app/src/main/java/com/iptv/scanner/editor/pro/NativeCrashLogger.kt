@@ -133,7 +133,7 @@ object NativeCrashLogger {
 
             // 组装崩溃报告
             val report = buildString {
-                appendLine("=== ISEPP Native Crash Report ===")
+                appendLine("=== ISEP Native Crash Report ===")
                 appendLine("Time: ${Date()}")
                 appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
                 appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")

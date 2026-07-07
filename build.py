@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-IPTV Scanner Editor Pro 打包脚本
+ISEP 打包脚本
 使用 PyInstaller 将项目打包为可执行文件
 支持 Windows (.exe) 和 macOS (.app)
 """
@@ -45,7 +45,7 @@ IS_MACOS = sys.platform == 'darwin'
 IS_LINUX = sys.platform.startswith('linux') and not getattr(sys, 'platform', '') == 'android'
 IS_ANDROID = getattr(sys, 'platform', '') == 'android' or 'ANDROID_ARGUMENT' in os.environ
 
-APP_NAME = "IPTV Scanner Editor Pro"
+APP_NAME = "ISEP"
 BUNDLE_ID = "com.iptv-scanner-editor-pro.app"
 
 if IS_WINDOWS:
@@ -819,7 +819,7 @@ def run_build():
 
 
 if __name__ == "__main__":
-    print("=== IPTV Scanner Editor Pro 打包脚本 ===")
+    print("=== ISEP 打包脚本 ===")
     clean_build()
     run_build()
     print("=== 打包脚本执行完成 ===")

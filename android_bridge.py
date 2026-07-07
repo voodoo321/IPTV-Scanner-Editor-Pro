@@ -82,9 +82,9 @@ def start_server(host='127.0.0.1', port=8080):
     from aiohttp import web
 
     data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
-    # 使用统一辅助函数获取 ISEPP 目录（兜底处理）
+    # 使用统一辅助函数获取 ISEP 目录（兜底处理）
     from utils.platform_utils import get_android_data_dir
-    config_dir = get_android_data_dir() or os.path.join(data_dir, 'ISEPP')
+    config_dir = get_android_data_dir() or os.path.join(data_dir, 'ISEP')
     os.makedirs(config_dir, exist_ok=True)
 
     os.chdir(config_dir)

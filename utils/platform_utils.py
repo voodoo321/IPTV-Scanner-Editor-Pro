@@ -93,11 +93,11 @@ def get_platform_name():
 
 
 def get_android_data_dir():
-    """获取 Android 端数据存储目录路径（已包含 ISEPP）。
+    """获取 Android 端数据存储目录路径（已包含 ISEP）。
 
-    android_bridge._setup_android_paths() 会将 IPTV_DATA_DIR 设置为完整的 ISEPP 目录
-    （如 /sdcard/ISEPP 或 getExternalFilesDir()/ISEPP）。
-    其他设置途径（如 server_main.py 的 setdefault）可能指向父目录，此时补齐 ISEPP。
+    android_bridge._setup_android_paths() 会将 IPTV_DATA_DIR 设置为完整的 ISEP 目录
+    （如 /sdcard/ISEP 或 getExternalFilesDir()/ISEP）。
+    其他设置途径（如 server_main.py 的 setdefault）可能指向父目录，此时补齐 ISEP。
 
     Returns:
         str: 数据目录绝对路径。环境变量未设置时返回空字符串。
@@ -105,14 +105,14 @@ def get_android_data_dir():
     android_data = os.environ.get('IPTV_DATA_DIR', '')
     if not android_data:
         return ''
-    if os.path.basename(android_data) == 'ISEPP':
+    if os.path.basename(android_data) == 'ISEP':
         return android_data
-    return os.path.join(android_data, 'ISEPP')
+    return os.path.join(android_data, 'ISEP')
 
 
 def get_app_base_path():
     if is_android():
-        # 优先使用 IPTV_DATA_DIR（由 android_bridge._setup_android_paths 设置为 ISEPP 目录）
+        # 优先使用 IPTV_DATA_DIR（由 android_bridge._setup_android_paths 设置为 ISEP 目录）
         data_dir = get_android_data_dir()
         if data_dir:
             return data_dir
@@ -123,7 +123,7 @@ def get_app_base_path():
                 return app_data
         except Exception:
             pass
-        return os.path.join(os.path.expanduser('~'), 'ISEPP')
+        return os.path.join(os.path.expanduser('~'), 'ISEP')
     if getattr(sys, 'frozen', False):
         return getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     from models.channel_mappings import get_app_data_dir

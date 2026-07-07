@@ -21,7 +21,7 @@ class LogManager(Singleton):
         self._initialized = True
 
     def _get_log_path(self, log_file: str) -> str:
-        # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEPP 目录）
+        # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEP 目录）
         android_data = get_android_data_dir()
         if android_data:
             return os.path.join(android_data, log_file)

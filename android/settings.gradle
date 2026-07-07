@@ -14,5 +14,5 @@ dependencyResolutionManagement {
         maven { url "https://chaquo.com/maven" }
     }
 }
-rootProject.name = "IPTV Scanner Editor Pro"
+rootProject.name = "ISEP"
 include ':app'

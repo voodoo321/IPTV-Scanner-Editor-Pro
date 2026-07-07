@@ -20,7 +20,7 @@ from services.mpv_common import (
     _is_mpv_available,
 )
 
-# Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEPP 目录）下的 cache 目录
+# Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEP 目录）下的 cache 目录
 from utils.platform_utils import get_android_data_dir
 _android_data = get_android_data_dir()
 if _android_data:

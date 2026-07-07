@@ -13,9 +13,9 @@ from utils.platform_utils import get_android_data_dir
 logger = logging.getLogger('server.routes')
 
 # --- 安全配置 ---
-# 认证 Token：通过环境变量 ISEPP_AUTH_TOKEN 或配置文件 [Server] auth_token 设置
+# 认证 Token：通过环境变量 ISEP_AUTH_TOKEN 或配置文件 [Server] auth_token 设置
 # 为空时表示不需要认证（仅限 localhost 场景）
-_AUTH_TOKEN = os.environ.get('ISEPP_AUTH_TOKEN', '').strip()
+_AUTH_TOKEN = os.environ.get('ISEP_AUTH_TOKEN', '').strip()
 
 # 允许的流代理 URL 协议
 _ALLOWED_STREAM_PROTOCOLS = {'http', 'https', 'rtsp', 'rtmp', 'rtp', 'udp', 'srt'}
@@ -209,7 +209,7 @@ _I18N = {
         'no_data': '暂无频道数据',
     },
     'en': {
-        'title': 'IPTV Scanner Editor Pro',
+        'title': 'ISEP',
         'subtitle': 'Live Streaming Server & RESTful API',
         'status': 'Server Status',
         'running': 'Running',
@@ -222,7 +222,7 @@ _I18N = {
         'scan': 'Scan',
         'epg': 'EPG',
         'stream_proxy': 'Stream Proxy',
-        'footer': 'IPTV Scanner Editor Pro · Built-in HTTP Server · Powered by aiohttp',
+        'footer': 'ISEP · Built-in HTTP Server · Powered by aiohttp',
         'm3u_desc': 'M3U playlist (params: valid=1, search=, group=)',
         'm3u_group_desc': 'M3U playlist by group',
         'ch_list_desc': 'Channel list (params: valid=1/0, group=, search=, page=, size=)',
@@ -328,7 +328,7 @@ def _is_auth_required(request):
 @web.middleware
 async def auth_middleware(request, handler):
     """API 认证中间件
-    通过环境变量 ISEPP_AUTH_TOKEN 或配置设置认证 Token。
+    通过环境变量 ISEP_AUTH_TOKEN 或配置设置认证 Token。
     客户端需在请求头中携带 Authorization: Bearer <token> 或查询参数 ?token=<token>。
     未配置 Token 时免认证（适用于 localhost 场景）。
     """
@@ -1450,7 +1450,7 @@ def _get_player():
 
 def _get_cache_dir(sub: str) -> str:
     """获取缓存子目录绝对路径，不存在则创建"""
-    # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEPP 目录）
+    # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEP 目录）
     android_data = get_android_data_dir()
     if android_data:
         base = os.path.join(android_data, 'cache', sub)
@@ -1662,7 +1662,7 @@ async def handle_cache_clear(request):
         return _json_error(f'无效的缓存类型: {cache_type}')
     try:
         cache_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cache')
-        # Android Chaquopy 环境：使用 IPTV_DATA_DIR（已指向 ISEPP 目录）下的 cache 目录
+        # Android Chaquopy 环境：使用 IPTV_DATA_DIR（已指向 ISEP 目录）下的 cache 目录
         android_data = get_android_data_dir()
         if android_data:
             cache_root = os.path.join(android_data, 'cache')

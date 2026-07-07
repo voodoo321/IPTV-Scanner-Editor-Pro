@@ -26,12 +26,12 @@ def _setup_android_paths(ext_files_dir='', files_dir=''):
     """设置 Android 数据目录路径（IPTV_DATA_DIR 环境变量）。
 
     数据目录优先级（覆盖安装/卸载重装均不丢失）：
-    1. /sdcard/ISEPP/（需要存储权限，Android 9 或有 MANAGE_EXTERNAL_STORAGE）
-    2. getExternalFilesDir()/ISEPP/（无需权限，覆盖安装不丢失）
-    3. getFilesDir()/ISEPP/（最终兜底）
+    1. /sdcard/ISEP/（需要存储权限，Android 9 或有 MANAGE_EXTERNAL_STORAGE）
+    2. getExternalFilesDir()/ISEP/（无需权限，覆盖安装不丢失）
+    3. getFilesDir()/ISEP/（最终兜底）
 
     jnius 不可用时，使用 Kotlin 端传递的 ext_files_dir / files_dir 参数。
-    并自动从旧目录 getFilesDir()/IPTV_Scanner_Editor_Pro/ 迁移数据。
+    并自动从旧目录迁移数据（IPTV_Scanner_Editor_Pro 或旧版 ISEPP → ISEP）。
     """
     target_dir = None
 
@@ -52,10 +52,10 @@ def _setup_android_paths(ext_files_dir='', files_dir=''):
         if not ext_files_dir:
             ext_files_dir = app.getExternalFilesDir(None).getAbsolutePath()
 
-        # 1. 尝试 /sdcard/ISEPP/（需要存储权限）
+        # 1. 尝试 /sdcard/ISEP/（需要存储权限）
         try:
             ext_storage = Environment.getExternalStorageDirectory().getAbsolutePath()
-            candidate = os.path.join(ext_storage, 'ISEPP')
+            candidate = os.path.join(ext_storage, 'ISEP')
             os.makedirs(candidate, exist_ok=True)
             test_file = os.path.join(candidate, '.write_test')
             with open(test_file, 'w') as f:
@@ -64,25 +64,25 @@ def _setup_android_paths(ext_files_dir='', files_dir=''):
             target_dir = candidate
             _log(f'_setup_android_paths: using external storage {target_dir}')
         except Exception as e:
-            _log(f'_setup_android_paths: /sdcard/ISEPP not writable: {e}')
+            _log(f'_setup_android_paths: /sdcard/ISEP not writable: {e}')
 
     except Exception as e:
         _log(f'_setup_android_paths: jnius unavailable ({e}), using Kotlin-provided paths')
 
-    # 2. 回退到 getExternalFilesDir()/ISEPP/（使用 Kotlin 传递的路径）
+    # 2. 回退到 getExternalFilesDir()/ISEP/（使用 Kotlin 传递的路径）
     if not target_dir and ext_files_dir:
         try:
-            candidate = os.path.join(ext_files_dir, 'ISEPP')
+            candidate = os.path.join(ext_files_dir, 'ISEP')
             os.makedirs(candidate, exist_ok=True)
             target_dir = candidate
             _log(f'_setup_android_paths: using external files dir {target_dir}')
         except Exception as e:
             _log(f'_setup_android_paths: ext_files_dir failed: {e}')
 
-    # 3. 回退到 getFilesDir()/ISEPP/（使用 Kotlin 传递的路径）
+    # 3. 回退到 getFilesDir()/ISEP/（使用 Kotlin 传递的路径）
     if not target_dir and files_dir:
         try:
-            candidate = os.path.join(files_dir, 'ISEPP')
+            candidate = os.path.join(files_dir, 'ISEP')
             os.makedirs(candidate, exist_ok=True)
             target_dir = candidate
             _log(f'_setup_android_paths: using internal files dir {target_dir}')
@@ -92,7 +92,7 @@ def _setup_android_paths(ext_files_dir='', files_dir=''):
     # 4. 最终兜底：使用 expanduser
     if not target_dir:
         try:
-            candidate = os.path.join(os.path.expanduser('~'), 'ISEPP')
+            candidate = os.path.join(os.path.expanduser('~'), 'ISEP')
             os.makedirs(candidate, exist_ok=True)
             target_dir = candidate
             _log(f'_setup_android_paths: using home dir {target_dir}')
@@ -110,28 +110,48 @@ def _migrate_old_data(app, files_dir, new_dir):
     """从旧目录迁移数据到新目录（仅当新目录为空时）"""
     try:
         import shutil
-        old_dir = os.path.join(files_dir, 'IPTV_Scanner_Editor_Pro')
-        if not os.path.isdir(old_dir):
-            return
-        old_files = os.listdir(old_dir)
-        if not old_files:
-            return
-        # 新目录已有数据则不迁移（避免覆盖）
-        new_files = [f for f in os.listdir(new_dir) if not f.startswith('.')]
-        if new_files:
-            _log('_migrate_old_data: target dir not empty, skip migration')
-            return
-        for item in old_files:
-            src = os.path.join(old_dir, item)
-            dst = os.path.join(new_dir, item)
+
+        # 收集所有可能的旧数据目录
+        old_dirs = []
+
+        # 旧版目录名 IPTV_Scanner_Editor_Pro（最早期的命名）
+        old_dirs.append(os.path.join(files_dir, 'IPTV_Scanner_Editor_Pro'))
+
+        # 旧版目录名 ISEPP（简称从 ISEPP 改为 ISEP 时的迁移）
+        new_parent = os.path.dirname(new_dir)
+        old_dirs.append(os.path.join(new_parent, 'ISEPP'))
+        if files_dir and os.path.dirname(files_dir) != new_parent:
+            old_dirs.append(os.path.join(files_dir, 'ISEPP'))
+
+        for old_dir in old_dirs:
+            if not os.path.isdir(old_dir):
+                continue
+            old_files = os.listdir(old_dir)
+            if not old_files:
+                continue
+            # 新目录已有数据则不迁移（避免覆盖）
+            new_files = [f for f in os.listdir(new_dir) if not f.startswith('.')]
+            if new_files:
+                _log('_migrate_old_data: target dir not empty, skip migration')
+                return
+            for item in old_files:
+                src = os.path.join(old_dir, item)
+                dst = os.path.join(new_dir, item)
+                try:
+                    if os.path.isdir(src):
+                        shutil.copytree(src, dst, symlinks=True)
+                    else:
+                        shutil.copy2(src, dst)
+                except Exception as e:
+                    _log(f'_migrate_old_data: skip {item}: {e}')
+            _log(f'_migrate_old_data: migrated {len(old_files)} items from {old_dir}')
+            # 迁移成功后删除旧目录
             try:
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
+                shutil.rmtree(old_dir)
+                _log(f'_migrate_old_data: removed old dir {old_dir}')
             except Exception as e:
-                _log(f'_migrate_old_data: skip {item}: {e}')
-        _log(f'_migrate_old_data: migrated {len(old_files)} items from {old_dir}')
+                _log(f'_migrate_old_data: could not remove old dir {old_dir}: {e}')
+            return  # 仅从一个来源迁移
     except Exception as e:
         _log(f'_migrate_old_data failed: {e}', 'W')
 
@@ -225,7 +245,7 @@ def start_server(host='0.0.0.0', port=8080):
     _log('modules imported')
 
     data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
-    config_dir = data_dir if os.path.basename(data_dir) == 'ISEPP' else os.path.join(data_dir, 'ISEPP')
+    config_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
     os.makedirs(config_dir, exist_ok=True)
     # 不使用 os.chdir（全局状态，多线程不安全）
     # 改为设置 IPTV_CONFIG_DIR 环境变量，各模块通过此变量定位配置
@@ -479,7 +499,7 @@ def init_context(ext_files_dir='', files_dir=''):
             # 不使用 os.chdir（全局状态，多线程不安全）
             data_dir = os.environ.get('IPTV_DATA_DIR', '')
             if data_dir:
-                config_dir = data_dir if os.path.basename(data_dir) == 'ISEPP' else os.path.join(data_dir, 'ISEPP')
+                config_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
                 os.makedirs(config_dir, exist_ok=True)
                 os.environ['IPTV_CONFIG_DIR'] = config_dir
                 _log(f'init_context: config_dir={config_dir}')
@@ -1256,7 +1276,7 @@ def clear_cache(cache_type='all'):
         import os
         import shutil
         data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
-        app_dir = data_dir if os.path.basename(data_dir) == 'ISEPP' else os.path.join(data_dir, 'ISEPP')
+        app_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
         deleted = 0
 
         cache_dirs = {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-IPTV Scanner Editor Pro - 独立 Web 服务器模式
+ISEP - 独立 Web 服务器模式
 无需 GUI，直接启动 Web 服务器，提供 RESTful API 和移动端 Web UI
 支持 Windows/macOS/Linux 桌面端和 Android (Chaquopy) 环境
 """
@@ -27,9 +27,9 @@ def _setup_android_env():
         app = Python.getPlatform().getApplication()
         files_dir = app.getFilesDir().getAbsolutePath()
         os.environ.setdefault('IPTV_DATA_DIR', files_dir)
-        # 使用统一辅助函数获取 ISEPP 目录（兜底处理）
+        # 使用统一辅助函数获取 ISEP 目录（兜底处理）
         from utils.platform_utils import get_android_data_dir
-        config_dir = get_android_data_dir() or os.path.join(files_dir, 'ISEPP')
+        config_dir = get_android_data_dir() or os.path.join(files_dir, 'ISEP')
         os.makedirs(config_dir, exist_ok=True)
         os.chdir(config_dir)
     except Exception:
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     _setup_android_env()
 
     import argparse
-    parser = argparse.ArgumentParser(description='IPTV Scanner Editor Pro - Web Server')
+    parser = argparse.ArgumentParser(description='ISEP - Web Server')
     parser.add_argument('--host', default='127.0.0.1',
                         help='监听地址 (默认: 127.0.0.1，局域网访问请用 0.0.0.0)')
     parser.add_argument('--port', type=int, default=8080, help='监听端口 (默认: 8080)')

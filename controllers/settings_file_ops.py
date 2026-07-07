@@ -936,7 +936,7 @@ class SettingsFileOperations:
 
             current_version = CURRENT_VERSION
             tr = self.window.language_manager.tr
-            new_title = f"{tr('app_title', 'IPTV Scanner Editor Pro')} v{current_version}"
+            new_title = f"{tr('app_title', 'ISEP')} v{current_version}"
             self.window.setWindowTitle(new_title)
             if self.window._title_label:
                 self.window._title_label.setText(new_title)

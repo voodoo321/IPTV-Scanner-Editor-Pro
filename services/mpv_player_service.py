@@ -2131,7 +2131,7 @@ class MpvPlayerController(QObject):
             return
         try:
             import hashlib
-            # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEPP 目录）
+            # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEP 目录）
             _android_data = get_android_data_dir()
             if _android_data:
                 cache_dir = os.path.join(_android_data, 'cache', 'thumbnails')
@@ -2176,7 +2176,7 @@ class MpvPlayerController(QObject):
         if not url:
             return None
         import hashlib
-        # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEPP 目录）
+        # Android Chaquopy 环境：优先使用 IPTV_DATA_DIR（已指向 ISEP 目录）
         _android_data = get_android_data_dir()
         if _android_data:
             cache_dir = os.path.join(_android_data, 'cache', 'thumbnails')

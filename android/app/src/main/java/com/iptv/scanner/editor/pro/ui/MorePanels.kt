@@ -1369,7 +1369,7 @@ fun AboutPanel(viewModel: AppViewModel) {
 
     PanelScaffold(
         title = "关于",
-        subtitle = "IPTV Scanner Editor Pro",
+        subtitle = "ISEP",
         onClose = { viewModel.toggleAboutPanel() }
     ) {
         SectionLabel("版本信息")
@@ -1379,7 +1379,7 @@ fun AboutPanel(viewModel: AppViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                InfoRow("应用名称", "IPTV Scanner Editor Pro")
+                InfoRow("应用名称", "ISEP")
                 InfoRow("版本", currentVersion)
                 InfoRow("播放引擎", "mpv (libmpv)")
                 InfoRow("UI 框架", "Jetpack Compose")
