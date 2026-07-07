@@ -411,6 +411,40 @@ jobs:
               rm -rf /tmp/mpv-extract
             done
           fi
+
+          # 确保 libplayer.so 和 libc++_shared.so 存在
+          # CAVS 构建只包含 libmpv.so + FFmpeg 库，不包含 JNI 桥接库 (libplayer.so) 和 C++ 运行时 (libc++_shared.so)
+          # 这两个文件是 MPVLib.kt 通过 System.loadLibrary("mpv") / System.loadLibrary("player") 的必需依赖：
+          # - libc++_shared.so：libmpv.so 的 C++ 运行时依赖，缺失会导致 dlopen failed: library "libc++_shared.so" not found
+          # - libplayer.so：JNI 桥接库，提供 MPVLib.kt 中声明的 native 方法 (create/init/attachSurface/command 等)
+          # 如果使用了 CAVS release（上面的 if 分支），需要从官方 mpv-android APK 补充这两个文件
+          # 如果使用了官方 APK fallback（上面的 else 分支），这两个文件已包含在内
+          for arch in arm64-v8a armeabi-v7a; do
+            if [ ! -f "$JNILIBS_DIR/$arch/libplayer.so" ] || [ ! -f "$JNILIBS_DIR/$arch/libc++_shared.so" ]; then
+              echo "=== libplayer.so or libc++_shared.so missing for $arch, extracting from official mpv-android APK ==="
+              MPV_ANDROID_BASE_URL="https://github.com/mpv-android/mpv-android/releases/download/2026-04-25"
+              APK="app-default-${arch}-release.apk"
+              if curl -fsSL -o "/tmp/mpv-${arch}.apk" "${MPV_ANDROID_BASE_URL}/${APK}"; then
+                echo "Downloaded mpv-${arch}.apk for extracting libplayer.so + libc++_shared.so"
+                mkdir -p "$JNILIBS_DIR/$arch"
+                # 只提取 libplayer.so 和 libc++_shared.so，不覆盖 CAVS 版本的 libmpv.so 和 FFmpeg 库
+                unzip -o "/tmp/mpv-${arch}.apk" "lib/${arch}/libplayer.so" "lib/${arch}/libc++_shared.so" -d /tmp/mpv-extract 2>/dev/null || true
+                if [ -d "/tmp/mpv-extract/lib/${arch}" ]; then
+                  cp /tmp/mpv-extract/lib/${arch}/*.so "$JNILIBS_DIR/$arch/"
+                  echo "Extracted for $arch:"
+                  ls -la "$JNILIBS_DIR/$arch/libplayer.so" "$JNILIBS_DIR/$arch/libc++_shared.so" 2>/dev/null
+                else
+                  echo "WARNING: libplayer.so or libc++_shared.so not found in official APK for $arch"
+                fi
+                rm -rf /tmp/mpv-extract /tmp/mpv-${arch}.apk
+              else
+                echo "WARNING: Failed to download official mpv-android APK for $arch"
+              fi
+            else
+              echo "libplayer.so and libc++_shared.so already present for $arch"
+            fi
+          done
+
           echo "=== Final jniLibs structure (before strip) ==="
           find "$JNILIBS_DIR" -name "*.so" -ls
 
