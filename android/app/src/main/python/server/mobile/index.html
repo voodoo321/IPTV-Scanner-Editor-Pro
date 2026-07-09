@@ -743,15 +743,26 @@ function seekRel(sec){ if(USE_MPV) Mpv.seekRel(sec); }
 function seekAbs(sec){ if(USE_MPV) Mpv.seekAbs(sec); }
 function setVolume(v){
   v = clamp(parseInt(v)||0, 0, 150);
-  if(USE_MPV) Mpv.setVolume(v);
+  if(USE_MPV){
+    Mpv.setVolume(v);
+  } else {
+    /* 外部浏览器（无 AndroidMpv JS 桥接）：通过 HTTP API 发送 set_volume 命令 */
+    api.post('/api/player/volume', {volume: v});
+  }
   state.mpv.volume = v;
   $('#bbVolSlider').value = v;
   showVolumeOSD(v);
 }
 function adjustVolume(delta){ setVolume(state.mpv.volume + delta); }
 function toggleMute(){
-  if(USE_MPV) Mpv.toggleMute();
-  state.mpv.muted = !state.mpv.muted;
+  if(USE_MPV){
+    Mpv.toggleMute();
+    state.mpv.muted = !state.mpv.muted;
+  } else {
+    /* 外部浏览器：通过 HTTP API 切换静音 */
+    state.mpv.muted = !state.mpv.muted;
+    api.post('/api/player/mute', {muted: state.mpv.muted});
+  }
   updateMuteBtn();
 }
 function setSpeed(s){

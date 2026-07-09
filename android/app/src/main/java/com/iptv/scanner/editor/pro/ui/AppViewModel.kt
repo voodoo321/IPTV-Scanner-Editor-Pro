@@ -127,8 +127,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * 当前活跃的 Player 实例。
+     *
+     * 关键修复：根据持久化的 playerType 初始化正确的播放器实例。
+     * 之前硬编码为 mpvSingleton，导致启动时若上次保存的是 EXO/SYSTEM 模式，
+     * _player 仍指向 MpvController（无 View），所有 playFile 命令被跳过。
      */
-    private val _player = MutableStateFlow<Player>(mpvSingleton)
+    private val _player = MutableStateFlow<Player>(
+        when (_playerType.value) {
+            PlayerType.MPV -> mpvSingleton
+            PlayerType.EXO, PlayerType.SYSTEM -> {
+                ExoPlayerWrapper(getApplication(), _playerType.value).also {
+                    exoWrapper = it
+                }
+            }
+        }
+    )
 
     /** 当前播放器实例（Player 接口类型，UI 用 mpv.xxx 调用 Player 接口方法） */
     val mpv: Player get() = _player.value
@@ -156,6 +169,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val savedUrl = currentPlaybackUrl
         val savedIdx = _currentIdx.value
 
+        // 关键修复：取消超时换源和重连定时器，防止切换内核后旧定时器继续触发 nextChannel()。
+        // 问题场景：切到坏频道 → 超时换源定时器启动 → 用户手动切换内核 →
+        // 旧定时器仍在运行 → 5s 后触发 nextChannel() → 又启动新定时器 → 死循环。
+        // 即使用户切换到其他播放器内核，定时器也会继续触发，导致"换了内核还是一直自动换台"。
+        timeoutSwitchJob?.cancel()
+        timeoutSwitchJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
+        // 重置连续超时计数器，给新播放器一个干净的起点
+        consecutiveTimeoutCount = 0
+
         // 停止当前播放器
         _player.value.stop()
         _player.value.detach()
@@ -168,6 +192,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             PlayerType.EXO, PlayerType.SYSTEM -> {
                 exoWrapper ?: ExoPlayerWrapper(getApplication(), newType).also {
                     exoWrapper = it
+                    // 同步当前硬解设置到 ExoPlayerWrapper
+                    it.setHardwareDecode(_hardwareDecode.value)
                 }
             }
         }
@@ -296,6 +322,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 超时换源定时器：播放超时后自动切到下一个源 */
     private var timeoutSwitchJob: Job? = null
+
+    /**
+     * 连续超时换源计数器：防止所有频道都无法播放时无限循环换台。
+     * 每次成功加载（fileLoaded=true）时重置为 0。
+     * 超过阈值时停止自动换源，避免"换了内核也一直自动换台"的死循环。
+     */
+    private var consecutiveTimeoutCount = 0
 
     /** 超时换源档位（0-5），0=5s ... 5=30s */
     private val _timeoutSwitchSource = MutableStateFlow(userPrefs.getTimeoutSwitchSource())
@@ -454,6 +487,17 @@ val logLevel: StateFlow<String> = _logLevel.asStateFlow()
 
     /** 当前是否使用硬件解码（所有播放器内核通用，UI 通过 collectAsState 自动响应） */
     private val _hardwareDecode = MutableStateFlow(userPrefs.getHwdec() != "no")
+
+    init {
+        // 注册 MPV 黑屏 fallback 回调：当 vo=gpu 渲染黑屏自动 fallback 到 mediacodec_embed 时，
+        // 同步更新 UI 状态（_currentVo / _currentHwdec），使设置面板的选中项正确显示。
+        // 不持久化（仅本次会话），避免误判永久化。
+        mpvSingleton.onVoFallback = { vo, hwdec ->
+            _currentVo.value = vo
+            _currentHwdec.value = hwdec
+            Log.i(TAG, "onVoFallback: UI updated vo=$vo, hwdec=$hwdec (session only)")
+        }
+    }
     val hardwareDecode: StateFlow<Boolean> = _hardwareDecode.asStateFlow()
 
     // 局域网管理服务器
@@ -833,8 +877,9 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
                 val app = getApplication<Application>()
                 val extFilesDir = app.getExternalFilesDir(null)?.absolutePath ?: ""
                 val filesDir = app.filesDir.absolutePath
+                val logLevel = userPrefs.getLogLevel()
                 val initResult = withContext(Dispatchers.IO) {
-                    repository.initContext(extFilesDir, filesDir)
+                    repository.initContext(extFilesDir, filesDir, logLevel)
                 }
                 if (initResult.isFailure) {
                     val msg = initResult.exceptionOrNull()?.message ?: "初始化失败"
@@ -1154,7 +1199,36 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             delay(timeoutMs)
             // 超时后检查是否已加载
             if (!mpv.fileLoaded.value) {
-                Log.w(TAG, "Timeout switch source: idx=$idx not loaded in ${timeoutMs}ms")
+                consecutiveTimeoutCount++
+                Log.w(TAG, "Timeout switch source: idx=$idx not loaded in ${timeoutMs}ms (consecutive=$consecutiveTimeoutCount)")
+
+                // 关键修复：连续超时 >= 2 次时，stop 命令已无法清除卡死的 demuxer，
+                // 必须强制重建 mpv 核心才能恢复播放。
+                // 场景：坏流的 demuxer 线程卡在网络读取上，stop 命令虽然被接受，
+                // 但无法真正中断阻塞的 I/O 调用。后续 loadfile 命令在旧 demuxer
+                // 未释放时被发送，新流也无法加载——导致所有后续频道都无法播放。
+                // forceRecreate() 发送 quit 命令关闭整个 mpv 核心，下次 playFile()
+                // 时 ensureInstanceAlive() 会检测到 forceRecreatePending 标志并重建核心。
+                if (consecutiveTimeoutCount >= 2 && _playerType.value == PlayerType.MPV) {
+                    Log.w(TAG, "Timeout switch: forcing mpv core recreation (consecutive=$consecutiveTimeoutCount)")
+                    mpvSingleton.forceRecreate()
+                    // 等待 quit 命令生效，让 mpv 核心有时间关闭
+                    delay(500)
+                } else {
+                    mpv.stop()
+                }
+
+                // 连续超时保护：如果连续多次超时换源（超过频道总数的 1/3，最多 10 次），
+                // 说明可能是网络故障或播放器核心问题，停止自动换源避免死循环。
+                // 用户可以手动切台或切换播放器内核来恢复。
+                val maxConsecutive = minOf(10, maxOf(3, _channels.value.size / 3))
+                if (consecutiveTimeoutCount > maxConsecutive) {
+                    Log.w(TAG, "Timeout switch source: stopped after $consecutiveTimeoutCount consecutive timeouts")
+                    showOsd("自动换源已停止", "连续 ${consecutiveTimeoutCount} 次超时，请检查网络或切换播放器内核")
+                    consecutiveTimeoutCount = 0
+                    return@launch
+                }
+
                 showOsd("超时换源", "当前源加载超时，自动切换")
                 nextChannel()
             }
@@ -1863,6 +1937,8 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         // 停止重连定时器
         reconnectJob?.cancel()
         reconnectJob = null
+        // 重置连续超时计数器
+        consecutiveTimeoutCount = 0
         mpv.stop()
         _playbackState.value = PlaybackState(mode = PlayMode.IDLE)
         _currentIdx.value = -1
@@ -4631,12 +4707,14 @@ showOsd("播放器设置", "反交错: ${if (value == "auto") "自动" else "关
 
 /**
 * 设置日志等级（debug/info/warn/error）。
-* 与 PC 端 core/log_manager.py 对齐，通过 mpv 的 msg-level 属性控制日志输出量。
+* 与 PC 端 core/log_manager.py 对齐：
+* - mpv 的 msg-level 属性控制播放器日志输出量
+* - Python logging 等级控制 app.log 文件和 logcat 输出
 *
 * 运行时切换：mpv 的 msg-level 既是启动选项也是运行时属性，
 * 通过 MPVLib.setPropertyString("msg-level", ...) 可实时切换，无需重建 mpv 实例。
 * 首次创建 mpv 实例时由 MPVView.initialize 通过 setOptionString 设置初始值。
-* Android Log 输出不受影响（始终全量输出到 logcat）。
+* Python 日志等级通过 Chaquopy callAttr 调用 set_log_level 实时切换。
 */
 fun setLogLevel(level: String) {
 if (_logLevel.value == level) return
@@ -4644,6 +4722,12 @@ userPrefs.setLogLevel(level)
 _logLevel.value = level
 // 运行时切换 MPV 日志等级（立即生效，无需重启）
 mpvSingleton.setMpvLogLevel(level)
+// 同步切换 Python 日志等级（影响 app.log 文件和 logcat 输出）
+viewModelScope.launch {
+    withContext(Dispatchers.IO) {
+        repository.setLogLevel(level)
+    }
+}
 val levelName = when (level) {
 "debug" -> "调试"
 "info" -> "信息"
@@ -5164,6 +5248,8 @@ showOsd("播放器设置", "日志等级: $levelName")
             launch {
                 mpv.fileLoaded.collect { loaded ->
                     if (loaded) {
+                        // 频道成功加载，重置连续超时计数器
+                        consecutiveTimeoutCount = 0
                         delay(1500)  // 等 mpv 属性（fps/codec/hdr）稳定
                         try { reportPlayerStatus() } catch (e: Exception) {}
                     }
@@ -5319,7 +5405,23 @@ showOsd("播放器设置", "日志等级: $levelName")
                     }
                 }
             }
-            else -> Log.w(TAG, "未知遥控命令: $cmd")
+            // 音量绝对值设置（供 mobile WEB 页面音量滑块使用）
+            // 命令格式：set_volume:50
+            else -> if (cmd.startsWith("set_volume:")) {
+                val vol = cmd.removePrefix("set_volume:").toIntOrNull()
+                if (vol != null) {
+                    mpv.setVolume(vol)
+                    Log.i(TAG, "Remote set volume: $vol")
+                }
+            } else if (cmd.startsWith("set_mute:")) {
+                val mute = cmd.removePrefix("set_mute:").toBooleanStrictOrNull()
+                if (mute != null) {
+                    mpv.setMute(mute)
+                    Log.i(TAG, "Remote set mute: $mute")
+                }
+            } else {
+                Log.w(TAG, "未知遥控命令: $cmd")
+            }
         }
     }
 

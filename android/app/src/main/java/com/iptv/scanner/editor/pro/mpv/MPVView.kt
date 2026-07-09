@@ -34,6 +34,17 @@ class MPVView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : SurfaceView(context, attrs), SurfaceHolder.Callback {
 
+    // 保存初始化参数，用于 mpv 核心 shutdown 后重新创建实例
+    private var savedConfigDir: String? = null
+    private var savedCacheDir: String? = null
+    private var savedHwdec: String = DEFAULT_HWDEC
+
+    /**
+     * mpv 核心重建回调。当 ensureInstanceAlive() 重新创建 mpv 实例后调用，
+     * 让外部（MpvController）能重新注册 observeProperty 和同步状态。
+     */
+    var onInstanceRecreated: (() -> Unit)? = null
+
     @JvmOverloads
     fun initialize(
         configDir: String,
@@ -42,6 +53,9 @@ class MPVView @JvmOverloads constructor(
         hwdec: String = DEFAULT_HWDEC
     ) {
         voInUse = vo
+        savedConfigDir = configDir
+        savedCacheDir = cacheDir
+        savedHwdec = hwdec
         myGeneration = ++activeGeneration
         Log.i(TAG, "initialize: generation=$myGeneration, vo=$vo, hwdec=$hwdec")
 
@@ -65,7 +79,7 @@ class MPVView @JvmOverloads constructor(
             return
         }
 
-        // 首次创建：MPVLib.create + 完整初始化
+        // 首次创建或 shutdown 后重建：MPVLib.create + 完整初始化
         Log.i(TAG, "initialize: creating new native mpv instance")
         MPVLib.create(context)
 
@@ -105,9 +119,14 @@ class MPVView @JvmOverloads constructor(
         // 不等待缓存填满就开始播放，实现秒开（与 PC 端 cache-pause-initial=no 配合）
         MPVLib.setOptionString("demuxer-cache-wait", "no")
 
-        MPVLib.setOptionString("network-timeout", "30")
-        MPVLib.setOptionString("source-timeout", "10")
-        MPVLib.setOptionString("stream-open-timeout", "30")
+        // 网络超时：缩短到 8 秒（原来 30 秒太长）。
+        // 坏流场景：mpv demuxer 线程会卡在网络读取上，30s 超时期间所有
+        // 后续 loadfile 命令都无法执行，导致切到坏频道后所有频道都无法播放。
+        // 8s 足够覆盖合法流的连接时间，同时配合 startTimeoutSwitchSource
+        // 中的 stop 命令（5s 超时换源时先 stop 强制中断 demuxer）双重保障。
+        MPVLib.setOptionString("network-timeout", "8")
+        MPVLib.setOptionString("source-timeout", "8")
+        MPVLib.setOptionString("stream-open-timeout", "8")
 
         MPVLib.setOptionString("stream-lavf-o", "verify=1")
         MPVLib.setOptionString("tls-verify", "yes")
@@ -268,6 +287,11 @@ class MPVView @JvmOverloads constructor(
     }
 
     fun playFile(path: String) {
+        // 确保 mpv 核心存活：如果核心已 shutdown，先重新创建
+        if (!ensureInstanceAlive()) {
+            Log.e(TAG, "playFile: mpv instance not alive, cannot play")
+            return
+        }
         val s = holder.surface
         if (s != null && s.isValid) {
             MPVLib.command(arrayOf("loadfile", path))
@@ -277,8 +301,70 @@ class MPVView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * 标记 native mpv 实例已死亡（由 MPV_EVENT_SHUTDOWN 触发）。
+     *
+     * mpv 核心在某些坏流场景下会自动 shutdown（如加载无法解析的 m3u8），
+     * shutdown 后所有 MPVLib 命令都发到已死的实例上，静默失败。
+     * 此方法重置 nativeInstanceCreated 标志，使下次 initialize/ensureInstanceAlive
+     * 能重新创建 mpv 实例。
+     */
+    fun markInstanceDead() {
+        Log.w(TAG, "markInstanceDead: mpv core shutdown detected, marking instance as dead")
+        nativeInstanceCreated = false
+        nativeInstanceAlive = false
+    }
+
+    /**
+     * 确保 mpv 核心存活。如果核心已 shutdown，使用保存的参数重新创建。
+     *
+     * @return true 如果核心存活（原本就活着或成功重建），false 如果无法重建
+     */
+    private fun ensureInstanceAlive(): Boolean {
+        // 检查强制重建标志：连续超时后 forceRecreate() 设置此标志
+        if (forceRecreatePending) {
+            forceRecreatePending = false
+            Log.i(TAG, "ensureInstanceAlive: forceRecreatePending=true, forcing core recreation")
+            nativeInstanceCreated = false
+            nativeInstanceAlive = false
+            // 继续走到下面的重建逻辑
+        } else if (nativeInstanceCreated && nativeInstanceAlive) {
+            return true
+        } else if (nativeInstanceCreated) {
+            // nativeInstanceCreated=true 但 nativeInstanceAlive=false：
+            // 实例存在但未活跃（destroy() 后状态），surfaceCreated 会恢复
+            return true
+        }
+        // 核心 shutdown 后需要重建
+        val configDir = savedConfigDir ?: return false
+        val cacheDir = savedCacheDir ?: return false
+        Log.i(TAG, "ensureInstanceAlive: re-creating mpv instance after shutdown")
+        try {
+            initialize(configDir, cacheDir, vo = voInUse, hwdec = savedHwdec)
+            // 重新 attach surface（initialize 中已 addCallback，但 surface 可能已存在）
+            val s = holder.surface
+            if (s != null && s.isValid) {
+                MPVLib.attachSurface(s)
+                MPVLib.setPropertyString("force-window", "yes")
+                MPVLib.setPropertyString("vo", voInUse)
+                Log.i(TAG, "ensureInstanceAlive: surface re-attached")
+            }
+            // 通知外部（MpvController）核心已重建，重新注册 observeProperty
+            onInstanceRecreated?.invoke()
+            return true
+        } catch (e: Throwable) {
+            Log.e(TAG, "ensureInstanceAlive: re-create failed", e)
+            return false
+        }
+    }
+
     fun stop() {
-        MPVLib.command(arrayOf("stop"))
+        if (!nativeInstanceCreated || !nativeInstanceAlive) return
+        try {
+            MPVLib.command(arrayOf("stop"))
+        } catch (e: Throwable) {
+            Log.w(TAG, "stop failed: ${e.message}")
+        }
     }
 
     // ---- SurfaceHolder.Callback ----
@@ -352,5 +438,38 @@ class MPVView @JvmOverloads constructor(
 
         @Volatile
         private var activeGeneration: Int = 0
+
+        /**
+         * 强制重建标志：由 forceRecreate() 设置。
+         * ensureInstanceAlive() 检测到此标志时，即使 nativeInstanceCreated=true
+         * 也会强制标记为死亡并重建核心，用于清除卡死的 demuxer。
+         */
+        @Volatile
+        private var forceRecreatePending = false
+    }
+
+    /**
+     * 强制重建 mpv 核心。
+     *
+     * 用于连续超时换源场景：当 stop 命令无法清除卡死的 demuxer 时，
+     * 发送 quit 命令关闭整个 mpv 核心，下次 playFile 时 ensureInstanceAlive()
+     * 会检测到 forceRecreatePending 标志并强制重建核心。
+     *
+     * 注意：quit 是异步的，mpv 核心会在后台线程执行关闭。
+     * forceRecreatePending 标志确保即使 MPV_EVENT_SHUTDOWN 尚未到达，
+     * ensureInstanceAlive() 也能正确处理。
+     */
+    fun forceRecreate() {
+        Log.w(TAG, "forceRecreate: forcing mpv core recreation (quit + recreate)")
+        forceRecreatePending = true
+        try {
+            MPVLib.command(arrayOf("quit"))
+        } catch (e: Throwable) {
+            Log.w(TAG, "forceRecreate: quit command failed: ${e.message}, marking dead directly")
+            // quit 失败说明核心可能已经死了，直接标记
+            nativeInstanceCreated = false
+            nativeInstanceAlive = false
+            forceRecreatePending = false
+        }
     }
 }

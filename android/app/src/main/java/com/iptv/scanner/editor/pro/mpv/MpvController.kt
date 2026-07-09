@@ -103,6 +103,12 @@ class MpvController : MPVLib.EventObserver, Player {
     private val _videoHeight = MutableStateFlow(0)
     override val videoHeight: StateFlow<Int> = _videoHeight.asStateFlow()
 
+    /**
+     * VO 自动 fallback 回调（由黑屏检测触发）。
+     * AppViewModel 注册此回调以同步 UI 状态（_currentVo / _currentHwdec）。
+     */
+    var onVoFallback: ((String, String) -> Unit)? = null
+
     private val _speed = MutableStateFlow(1.0)
     override val speed: StateFlow<Double> = _speed.asStateFlow()
 
@@ -158,6 +164,26 @@ class MpvController : MPVLib.EventObserver, Player {
         // deinterlace 是运行时属性，在 attach 阶段设置确保首次播放即生效。
         setDeinterlace(UserPrefs.getInstance().getDeinterlace())
 
+        // 注册 mpv 核心重建回调：当核心 shutdown 后由 ensureInstanceAlive() 重建时，
+        // 需要重新注册 MpvController 的额外 observeProperty（chapter/width/height 等）。
+        // MPVView.observeProperties() 只注册基本属性，MpvController 的额外属性需要在此补充。
+        view.onInstanceRecreated = {
+            Log.i(TAG, "onInstanceRecreated: re-observing properties after mpv core re-creation")
+            try {
+                MPVLib.observeProperty("chapter", MPVLib.MpvFormat.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("chapter-count", MPVLib.MpvFormat.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("width", MPVLib.MpvFormat.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("height", MPVLib.MpvFormat.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("speed", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
+                MPVLib.observeProperty("path", MPVLib.MpvFormat.MPV_FORMAT_STRING)
+                MPVLib.observeProperty("sub-visibility", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
+            } catch (e: Throwable) {
+                Log.w(TAG, "onInstanceRecreated: observeProperty failed: ${e.message}")
+            }
+            // 重新应用反交错设置
+            setDeinterlace(UserPrefs.getInstance().getDeinterlace())
+        }
+
         Log.i(TAG, "MpvController attached to MPVView")
     }
 
@@ -176,6 +202,7 @@ class MpvController : MPVLib.EventObserver, Player {
      */
     override fun detach() {
         MPVLib.removeObserver(this)
+        mpvView?.onInstanceRecreated = null
         this.mpvView = null
         // 重置状态（避免 Compose 用旧值）
         _fileLoaded.value = false
@@ -363,14 +390,48 @@ class MpvController : MPVLib.EventObserver, Player {
     // 基础播放控制
     // -----------------------------------------------------------------
     override fun playFile(url: String) = postOnUiThread {
+        // 始终先 stop + playlist-clear 清除旧 demuxer，防止坏流卡死后影响后续频道。
+        //
+        // 问题场景：切到一个坏频道后，mpv 的 demuxer 线程卡在等待网络数据。
+        // 即使坏流触发了 MPV_EVENT_FILE_LOADED（demuxer 打开了 HTTP 连接但无有效视频数据），
+        // _fileLoaded 仍为 true，导致条件性 pre-stop 被跳过。
+        // 直接 loadfile 在旧 demuxer 未释放时被发送，新流也无法加载——
+        // 此后所有频道都无法播放（即使切回之前能正常播放的频道）。
+        //
+        // 修复：无条件 stop + playlist-clear，确保旧 demuxer 被终止。
+        // keep-open=yes 会在 stop 后保留最后一帧画面，正常切台时不会黑屏闪烁。
+        try {
+            MPVLib.command(arrayOf("stop"))
+            MPVLib.command(arrayOf("playlist-clear"))
+            Log.i(TAG, "playFile: pre-stop + playlist-clear (clearing previous demuxer)")
+        } catch (e: Throwable) {
+            Log.w(TAG, "playFile: pre-stop failed: ${e.message}")
+        }
         setupProtocolOptions(url)
         // 立即设置 _paused=false，避免 UI 在 loadfile 和 pause 属性事件到达之间
         // 误显示"已暂停"。detach() 会将 _paused 设为 true（安全默认值），
         // 但 playFile 后实际会播放，需立即更新 UI 状态。
         _paused.value = false
+        // MPVView.playFile 内部会调用 ensureInstanceAlive() 检测核心是否存活，
+        // 如果核心已 shutdown 则自动重建后再执行 loadfile。
         mpvView?.playFile(url)
     }
     override fun stop() = postOnUiThread { mpvView?.stop() }
+
+    /**
+     * 强制重建 mpv 核心。
+     *
+     * 当连续超时换源仍无法恢复播放时，调用此方法强制关闭并重建 mpv 核心，
+     * 彻底清除卡死的 demuxer 和所有内部状态。
+     *
+     * 内部流程：
+     * 1. MPVView.forceRecreate() 发送 quit 命令关闭旧核心
+     * 2. 设置 forceRecreatePending 标志
+     * 3. 下次 playFile() → ensureInstanceAlive() 检测到标志后重建核心
+     */
+    fun forceRecreate() = postOnUiThread {
+        mpvView?.forceRecreate()
+    }
     override fun togglePause() = postOnUiThread { MPVLib.command(arrayOf("cycle", "pause")) }
     override fun setPause(p: Boolean) = postOnUiThread { MPVLib.setPropertyBoolean("pause", p) }
 
@@ -1040,8 +1101,13 @@ class MpvController : MPVLib.EventObserver, Player {
                 // 文件结束（eof 或切换）：UI 自行根据 eof-reached 判断
             }
             MPVLib.MpvEvent.MPV_EVENT_SHUTDOWN -> {
+                Log.w(TAG, "MPV_EVENT_SHUTDOWN: mpv core has shut down, marking instance as dead")
                 _fileLoaded.value = false
                 _eofReached.value = true
+                // 标记 native 实例已死亡，使下次 playFile 时能重新创建 mpv 实例。
+                // 不在此处立即重建——重建需要在 UI 线程执行且涉及 surface 操作，
+                // 由 playFile 中的 ensureInstanceAlive() 延迟处理更安全。
+                mpvView?.markInstanceDead()
             }
         }
     }
@@ -1094,15 +1160,26 @@ class MpvController : MPVLib.EventObserver, Player {
         }
         if (currentVo == "mediacodec_embed" || currentVo.isEmpty()) return@Runnable
 
-        // 黑屏判断：仅以 videoWidth==0（解码器没工作）为准
+        // 黑屏判断：两个指标综合判断
+        // 1. videoWidth==0：解码器完全没工作
+        // 2. videoWidth>0 但 estimated-vfps==0：解码器工作了但 VO 没有输出帧（GPU 渲染管线失败）
         val videoWidth = _videoWidth.value
-        Log.d(TAG, "blackScreenCheck: vo=$currentVo, videoWidth=$videoWidth, attempt=${blackScreenRetryCount + 1}, fboDowngraded=$fboFormatDowngraded")
+        val estimatedVfps = try {
+            MPVLib.getPropertyDouble("estimated-vfps") ?: 0.0
+        } catch (_: Throwable) { 0.0 }
+        // VO: [gpu] 输出格式，检查是否实际在渲染
+        val voActive = estimatedVfps > 0.0
 
-        if (videoWidth == 0) {
+        Log.d(TAG, "blackScreenCheck: vo=$currentVo, videoWidth=$videoWidth, vfps=$estimatedVfps, voActive=$voActive, attempt=${blackScreenRetryCount + 1}, fboDowngraded=$fboFormatDowngraded")
+
+        // 黑屏条件：videoWidth==0（解码器没工作）或 vfps==0 但 videoWidth>0（VO 渲染失败）
+        val isBlackScreen = videoWidth == 0 || (videoWidth > 0 && !voActive)
+
+        if (isBlackScreen) {
             blackScreenRetryCount++
             if (blackScreenRetryCount < 2) {
-                // 首次检测到 videoWidth==0：可能是直播流还在缓冲，3 秒后复查
-                Log.w(TAG, "Possible black screen (attempt $blackScreenRetryCount, videoWidth=0), retrying in 3s...")
+                // 首次检测到黑屏：可能是直播流还在缓冲，3 秒后复查
+                Log.w(TAG, "Possible black screen (attempt $blackScreenRetryCount, videoWidth=$videoWidth, vfps=$estimatedVfps), retrying in 3s...")
                 mpvView?.postDelayed(blackScreenCheckRunnable, 3000)
                 return@Runnable
             }
@@ -1161,6 +1238,8 @@ class MpvController : MPVLib.EventObserver, Player {
             // 不持久化：仅本次会话生效，避免误判永久化
             Log.i(TAG, "Switched to vo=mediacodec_embed (session only, not persisted)")
             Log.i(TAG, "diagnostic: ${mpvView?.getDiagnosticInfo()}")
+            // 通知 AppViewModel 更新 UI 状态（_currentVo / _currentHwdec）
+            onVoFallback?.invoke("mediacodec_embed", "mediacodec")
         } catch (e: Throwable) {
             Log.e(TAG, "Fallback to mediacodec_embed failed", e)
         }

@@ -1002,6 +1002,10 @@ textarea.form-input {
           <div class="card-subtitle" id="logMeta">应用运行日志（尾部 200 行）</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="logSource" onchange="loadLogs()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px">
+            <option value="python" selected>Python 日志</option>
+            <option value="logcat">Logcat 日志</option>
+          </select>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim)">
             <input type="checkbox" id="logAutoScroll" checked style="width:18px;height:18px"> 自动滚动
           </label>
@@ -2394,7 +2398,13 @@ let _logTimer = null;
 
 async function loadLogs() {
   const lines = document.getElementById('logLines')?.value || 200;
-  const data = await apiGet('/api/log/view?lines=' + lines);
+  const source = document.getElementById('logSource')?.value || 'python';
+  let data;
+  if (source === 'logcat') {
+    data = await apiGet('/api/logcat/view?lines=' + lines);
+  } else {
+    data = await apiGet('/api/log/view?lines=' + lines);
+  }
   if (!data || !data.success) {
     const el = document.getElementById('logContent');
     if (el) el.textContent = '日志加载失败或日志文件不存在';
@@ -2406,10 +2416,10 @@ async function loadLogs() {
   // 渲染日志，按级别着色
   const html = (d.lines || []).map(line => {
     let color = '#a0ffa0';
-    if (line.includes(' - ERROR -')) color = '#ff6b6b';
-    else if (line.includes(' - WARNING -')) color = '#ffd93d';
-    else if (line.includes(' - DEBUG -')) color = '#6b9eff';
-    else if (line.includes(' - INFO -')) color = '#a0ffa0';
+    if (line.includes(' E ') || line.includes(' - ERROR -')) color = '#ff6b6b';
+    else if (line.includes(' W ') || line.includes(' - WARNING -')) color = '#ffd93d';
+    else if (line.includes(' D ') || line.includes(' - DEBUG -')) color = '#6b9eff';
+    else if (line.includes(' I ') || line.includes(' - INFO -')) color = '#a0ffa0';
     // HTML 转义
     const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return '<span style="color:' + color + '">' + escaped + '</span>';
@@ -2418,8 +2428,12 @@ async function loadLogs() {
   // 更新元信息
   const meta = document.getElementById('logMeta');
   if (meta) {
-    const sizeKB = d.size > 0 ? (d.size / 1024).toFixed(1) + ' KB' : '0 KB';
-    meta.textContent = `路径: ${d.path} | 大小: ${sizeKB} | 总行数: ${d.total_lines}${d.truncated ? ' (已截断)' : ''}`;
+    if (source === 'logcat') {
+      meta.textContent = `Logcat (PID: ${d.pid}) | 总行数: ${d.total_lines}${d.truncated ? ' (已截断)' : ''}`;
+    } else {
+      const sizeKB = d.size > 0 ? (d.size / 1024).toFixed(1) + ' KB' : '0 KB';
+      meta.textContent = `路径: ${d.path} | 大小: ${sizeKB} | 总行数: ${d.total_lines}${d.truncated ? ' (已截断)' : ''}`;
+    }
   }
   // 自动滚动到底部
   if (document.getElementById('logAutoScroll')?.checked) {

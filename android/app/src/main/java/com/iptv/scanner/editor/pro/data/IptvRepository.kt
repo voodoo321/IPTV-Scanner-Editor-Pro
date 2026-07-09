@@ -138,8 +138,8 @@ class IptvRepository private constructor() {
     // -----------------------------------------------------------------
 
     /** 初始化 Python 环境 + ServerContext 单例。返回 'OK' 或 'FAILED: ...' */
-    suspend fun initContext(extFilesDir: String = "", filesDir: String = ""): Result<Unit> {
-        val raw = callPyRaw("init_context", extFilesDir, filesDir)
+    suspend fun initContext(extFilesDir: String = "", filesDir: String = "", logLevel: String = "info"): Result<Unit> {
+        val raw = callPyRaw("init_context", extFilesDir, filesDir, logLevel)
         return if (raw.startsWith("OK")) {
             Result.success(Unit)
         } else {
@@ -150,6 +150,16 @@ class IptvRepository private constructor() {
     /** 设置应用版本信息（供 mobile Web 界面动态注入） */
     suspend fun setAppInfo(version: String, buildDate: String): Result<Unit> {
         val raw = callPyRaw("set_app_info", version, buildDate)
+        return if (raw.startsWith("OK")) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IptvException(raw))
+        }
+    }
+
+    /** 设置 Python 日志等级（debug/info/warn/error），影响 app.log 文件和 logcat 输出 */
+    suspend fun setLogLevel(level: String): Result<Unit> {
+        val raw = callPyRaw("set_log_level", level)
         return if (raw.startsWith("OK")) {
             Result.success(Unit)
         } else {

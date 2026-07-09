@@ -8,6 +8,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player as Media3Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -150,14 +151,28 @@ class ExoPlayerWrapper(
     private fun ensurePlayer() {
         if (player != null) return
         try {
+            // ExoPlayer 使用 Android HTTP 栈，受 network_security_config.xml 限制。
+            // MPV 用自己的网络栈不受影响，但 ExoPlayer 需要显式允许 cleartext HTTP。
+            // setAllowCrossProtocolRedirects=true 允许 HTTPS→HTTP 重定向（IPTV 常见）。
             val httpDataSourceFactory = DefaultHttpDataSource.Factory()
                 .setUserAgent(USER_AGENT)
                 .setConnectTimeoutMs(10_000)
-                .setReadTimeoutMs(15_000)
+                .setReadTimeoutMs(30_000)
+                .setAllowCrossProtocolRedirects(true)
             val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
             val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
-            player = ExoPlayer.Builder(context)
+            // 硬解：优先 MediaCodec 硬件解码器，FFmpeg 扩展作为 fallback
+            // 软解：优先 FFmpeg 扩展解码器（软件解码），绕过 MediaCodec
+            val renderersFactory = DefaultRenderersFactory(context)
+                .setEnableDecoderFallback(true)
+                .setExtensionRendererMode(
+                    if (hardwareDecodeEnabled)
+                        DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                    else
+                        DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                )
+            player = ExoPlayer.Builder(context, renderersFactory)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setUseLazyPreparation(true)
                 .build().also { p ->
@@ -383,14 +398,43 @@ class ExoPlayerWrapper(
     // 硬件解码切换
     // -----------------------------------------------------------------
 
+    @Volatile
+    private var hardwareDecodeEnabled = true
+
     override fun setHardwareDecode(enabled: Boolean): Boolean {
-        // ExoPlayer 默认使用硬解，软解需要配置 MediaCodecRenderer
-        // 此处简化：通过 trackSelectionParameters 控制是否使用 hardware-accelerated decoders
-        Log.i(TAG, "setHardwareDecode: $enabled (simplified)")
+        if (hardwareDecodeEnabled == enabled) return true
+        hardwareDecodeEnabled = enabled
+        Log.i(TAG, "setHardwareDecode: $enabled")
+        try {
+            val p = player ?: return true
+            // 重建播放器以应用新的 RenderersFactory 配置
+            //（EXTENSION_RENDERER_MODE_ON=硬解优先 / PREFER=软解优先）
+            val currentUrl = this.currentUrl
+            if (currentUrl.isNotEmpty()) {
+                val currentPosition = p.currentPosition
+                p.release()
+                player = null
+                ensurePlayer()
+                player?.let { newPlayer ->
+                    val mediaItem = MediaItem.Builder().setUri(Uri.parse(currentUrl)).build()
+                    newPlayer.setMediaItem(mediaItem)
+                    newPlayer.prepare()
+                    if (currentPosition > 0) {
+                        newPlayer.seekTo(currentPosition)
+                    }
+                    newPlayer.playWhenReady = true
+                    _paused.value = false
+                    // 重新绑定到 PlayerView
+                    playerView?.player = newPlayer
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "setHardwareDecode failed", e)
+        }
         return true
     }
 
-    override fun isHardwareDecodeEnabled(): Boolean = type == PlayerType.EXO
+    override fun isHardwareDecodeEnabled(): Boolean = hardwareDecodeEnabled
 
     // -----------------------------------------------------------------
     // 播放状态保存/恢复

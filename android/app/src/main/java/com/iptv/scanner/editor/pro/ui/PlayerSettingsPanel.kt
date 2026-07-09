@@ -68,6 +68,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
     val currentDeinterlace by viewModel.currentDeinterlace.collectAsState()
     val logLevel by viewModel.logLevel.collectAsState()
     val hdrMode by viewModel.hdrMode.collectAsState()
+    val hardwareDecode by viewModel.hardwareDecode.collectAsState()
 
     // 面板打开时主动抢焦点，避免焦点回落到下层统一面板的菜单项
     val closeFocusRequester = remember { FocusRequester() }
@@ -136,7 +137,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                 FilterChip(
                     selected = currentPlayerType == PlayerType.EXO,
                     onClick = { viewModel.switchPlayerType(PlayerType.EXO) },
-                    label = { Text("ExoPlayer 硬解") },
+                    label = { Text("ExoPlayer") },
                     modifier = Modifier.tvFocusBorder()
                 )
                 FilterChip(
@@ -349,7 +350,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // -----------------------------------------------------------------
-            // 2. 硬件解码（HWDEC）选择
+            // 2. 硬件解码（HWDEC）选择 — MPV 专用
             // -----------------------------------------------------------------
             SectionTitle("硬件解码（HWDEC）")
             Spacer(modifier = Modifier.height(4.dp))
@@ -417,6 +418,55 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             )
 
             Spacer(modifier = Modifier.height(20.dp))
+            } // end if (MPV)
+
+            // -----------------------------------------------------------------
+            // 2b. 硬解/软解选择 — ExoPlayer / 系统解码 通用
+            // -----------------------------------------------------------------
+            if (currentPlayerType == PlayerType.EXO || currentPlayerType == PlayerType.SYSTEM) {
+                SectionTitle("解码模式")
+                Spacer(modifier = Modifier.height(4.dp))
+                SectionDesc("硬解使用 GPU MediaCodec 加速，软解使用 FFmpeg 扩展解码器。软解兼容性更好但更耗电")
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    FilterChip(
+                        selected = hardwareDecode,
+                        onClick = { viewModel.setHardwareDecode(true) },
+                        label = { Text("硬件解码（推荐）") },
+                        modifier = Modifier.tvFocusBorder()
+                    )
+                    FilterChip(
+                        selected = !hardwareDecode,
+                        onClick = { viewModel.setHardwareDecode(false) },
+                        label = { Text("软件解码") },
+                        modifier = Modifier.tvFocusBorder()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = if (hardwareDecode) {
+                        "硬件解码：使用 Android MediaCodec 硬件加速解码。" +
+                            "功耗低、速度快，但部分 4K/HDR 流可能不兼容。" +
+                            "遇到花屏/卡顿时可尝试软解"
+                    } else {
+                        "软件解码：使用 FFmpeg 扩展解码器（软解）。" +
+                            "兼容性最好，支持更多编码格式，但 CPU 负载高、可能发热。" +
+                            "适合硬解不兼容的 4K/HDR 流"
+                    },
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
 
             // -----------------------------------------------------------------
             // 3. 反交错（Deinterlace）
@@ -570,7 +620,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             // -----------------------------------------------------------------
             SectionTitle("日志等级")
             Spacer(modifier = Modifier.height(4.dp))
-            SectionDesc("控制 mpv 日志输出量（logcat）。立即生效，无需重启")
+            SectionDesc("控制日志输出等级（app.log + logcat）。立即生效，无需重启")
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -700,8 +750,6 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-
-            } // end if (MPV mode)
 
             // -----------------------------------------------------------------
             // 提示

@@ -156,8 +156,81 @@ def _migrate_old_data(app, files_dir, new_dir):
         _log(f'_migrate_old_data failed: {e}', 'W')
 
 
+# 日志等级映射：字符串 → logging 常量
+_LOG_LEVEL_MAP = {
+    'debug': logging.DEBUG,
+    'info': logging.INFO,
+    'warn': logging.WARNING,
+    'warning': logging.WARNING,
+    'error': logging.ERROR,
+}
+
+# 当前 Python 日志等级（初始默认 INFO，由 Kotlin 端通过 set_log_level 更新）
+_current_log_level = logging.INFO
+
+
+def _get_log_file_path():
+    """获取 app.log 文件路径（与 LogManager._get_log_path 逻辑一致）"""
+    data_dir = os.environ.get('IPTV_DATA_DIR', '')
+    if data_dir:
+        config_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
+        return os.path.join(config_dir, 'app.log')
+    return os.path.join(os.path.expanduser('~'), 'ISEP', 'app.log')
+
+
+def _add_file_handler(root_logger):
+    """为 root logger 添加 RotatingFileHandler，写入 app.log 文件。
+
+    与 PC 端 core/log_manager.py 保持一致：
+    - 每次启动清除旧日志（非追加模式）
+    - maxBytes=5MB, backupCount=0
+    - 格式: '2026-07-09 01:52:43 - server.context - WARNING - 消息内容'
+    """
+    try:
+        from logging.handlers import RotatingFileHandler
+
+        log_path = _get_log_file_path()
+        log_dir = os.path.dirname(log_path)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+
+        # 每次启动时清除旧日志文件（与 PC 端 LogManager 一致）
+        if os.path.exists(log_path):
+            try:
+                os.remove(log_path)
+            except Exception:
+                pass
+
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=0,
+            encoding='utf-8',
+            mode='w',
+        )
+        file_handler.setLevel(_current_log_level)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
+        file_handler.setFormatter(formatter)
+
+        # 避免重复添加
+        if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+            root_logger.addHandler(file_handler)
+
+        _log(f'File logging to {log_path} (level={logging.getLevelName(_current_log_level)})')
+    except Exception as e:
+        _log(f'File logging setup failed: {e}', 'W')
+
+
 def _setup_android_logging():
-    """设置 Android 日志：优先用 AndroidLog，失败则用 print() fallback"""
+    """设置 Android 日志：logcat + app.log 文件双通道输出
+
+    1. logcat：优先用 AndroidLog (jnius)，失败则用 print() fallback
+    2. app.log：RotatingFileHandler 写入 ISEP 目录，与 PC 端格式一致
+    """
+    # --- logcat handler ---
     try:
         from jnius import autoclass  # type: ignore
         AndroidLog = autoclass('android.util.Log')
@@ -181,21 +254,47 @@ def _setup_android_logging():
         if not any(isinstance(h, AndroidLogHandler) for h in root.handlers):
             root.addHandler(AndroidLogHandler())
         _log('Android logging via jnius OK')
-        return True
     except Exception as e:
         _log(f'jnius logging unavailable, using print fallback: {e}', 'W')
 
-    # Fallback: 用 print() 输出日志（Chaquopy 会重定向到 logcat 的 python 标签）
-    class PrintLogHandler(logging.Handler):
-        def emit(self, record):
-            msg = self.format(record)
-            level = record.levelname[0]
-            print(f'[{level}] {record.name}: {msg}', flush=True)
+        # Fallback: 用 print() 输出日志（Chaquopy 会重定向到 logcat 的 python 标签）
+        class PrintLogHandler(logging.Handler):
+            def emit(self, record):
+                msg = self.format(record)
+                level = record.levelname[0]
+                print(f'[{level}] {record.name}: {msg}', flush=True)
+        root = logging.getLogger()
+        if not any(isinstance(h, PrintLogHandler) for h in root.handlers):
+            root.addHandler(PrintLogHandler())
+        _log('Android logging via print fallback OK')
+
+    # --- file handler (app.log) ---
     root = logging.getLogger()
-    if not any(isinstance(h, PrintLogHandler) for h in root.handlers):
-        root.addHandler(PrintLogHandler())
-    _log('Android logging via print fallback OK')
-    return False
+    root.setLevel(_current_log_level)
+    _add_file_handler(root)
+
+
+def set_log_level(level_str='info'):
+    """运行时切换 Python 日志等级（由 Kotlin 端通过 Chaquopy callAttr 调用）。
+
+    同时影响 logcat 输出和 app.log 文件输出。
+    与 PC 端 core/log_manager.py 的 LogManager.set_level() 对齐。
+
+    参数：
+        level_str: 'debug' / 'info' / 'warn' / 'error'
+    返回 'OK' 表示成功。
+    """
+    global _current_log_level
+    level = _LOG_LEVEL_MAP.get(level_str.lower(), logging.INFO)
+    _current_log_level = level
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    for handler in root.handlers:
+        handler.setLevel(level)
+
+    _log(f'Python log level set to {level_str} ({logging.getLevelName(level)})')
+    return 'OK'
 
 
 def _find_mobile_dir():
@@ -477,11 +576,12 @@ def set_app_info(version='', build_date=''):
     return 'OK'
 
 
-def init_context(ext_files_dir='', files_dir=''):
+def init_context(ext_files_dir='', files_dir='', log_level='info'):
     """初始化 Python 环境 + ServerContext 单例，立即返回（不阻塞）。
 
     参数 ext_files_dir / files_dir 由 Kotlin 端通过 Chaquopy callAttr 传入，
     用于在 jnius 不可用时定位 Android 数据目录。
+    参数 log_level 由 Kotlin 端传入，设置 Python 日志等级（debug/info/warn/error）。
 
     返回 'OK' 表示成功，'FAILED: ...' 表示错误。
     Compose 端应在 Dispatchers.IO 调用，调用后用 get_status_json() 轮询加载进度。
@@ -492,8 +592,11 @@ def init_context(ext_files_dir='', files_dir=''):
             return 'OK'
         try:
             _setup_android_paths(ext_files_dir, files_dir)
+            # 在设置日志前先应用 Kotlin 端传入的日志等级
+            if log_level:
+                set_log_level(log_level)
             _setup_android_logging()
-            _log('init_context: paths and logging setup done')
+            _log(f'init_context: paths and logging setup done (log_level={log_level})')
 
             # 设置配置目录（与 start_server() 保持一致）
             # 不使用 os.chdir（全局状态，多线程不安全）
@@ -1468,6 +1571,58 @@ def start_admin_server(port=8080):
 
             app.router.add_get('/api/player/status', _handle_player_status)
             _log('Admin server player status route registered')
+
+            # 注册 logcat 日志查看路由（供 admin 日志页面查看 Kotlin/Android 端日志）
+            async def _handle_logcat_view(request):
+                import subprocess
+                lines = min(int(request.query.get('lines', 200)), 2000)
+                try:
+                    # 获取当前应用 PID
+                    pid_result = subprocess.run(
+                        ['sh', '-c', 'pidof com.iptv.scanner.editor.pro || echo 0'],
+                        capture_output=True, text=True, timeout=2
+                    )
+                    pid = pid_result.stdout.strip().split()[0] if pid_result.stdout.strip() else '0'
+                    result = subprocess.run(
+                        ['logcat', '-d', '--pid=' + pid],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    all_lines = result.stdout.splitlines() if result.stdout else []
+                    # 过滤掉 chatty 和无用日志
+                    filtered = [line for line in all_lines if 'chatty' not in line]
+                    tail = filtered[-lines:] if len(filtered) > lines else filtered
+                    return web.json_response({
+                        'success': True,
+                        'data': {
+                            'lines': tail,
+                            'total_lines': len(filtered),
+                            'pid': pid,
+                            'truncated': len(filtered) > lines
+                        }
+                    })
+                except Exception as e:
+                    return web.json_response({'success': False, 'error': str(e)})
+
+            app.router.add_get('/api/logcat/view', _handle_logcat_view)
+            _log('Admin server logcat view route registered')
+
+            # 注册音量控制路由（供 mobile 页面通过 HTTP 控制音量）
+            async def _handle_set_volume(request):
+                data = await request.json()
+                vol = int(data.get('volume', 100))
+                push_remote_command(f'set_volume:{vol}')
+                return web.json_response({'success': True, 'volume': vol})
+
+            app.router.add_post('/api/player/volume', _handle_set_volume)
+
+            async def _handle_set_mute(request):
+                data = await request.json()
+                muted = bool(data.get('muted', False))
+                push_remote_command('set_mute:true' if muted else 'set_mute:false')
+                return web.json_response({'success': True, 'muted': muted})
+
+            app.router.add_post('/api/player/mute', _handle_set_mute)
+            _log('Admin server volume/mute control routes registered')
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
