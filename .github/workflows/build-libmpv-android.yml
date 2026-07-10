@@ -314,6 +314,9 @@ jobs:
             sed -i '/^int ff_libcavs_init/i\static int cavs_decoder_param_init( AVSContext *h );' libavcodec/libcavsdec.c
             # 在 cavs_decoder_create 前插入 cavs_decoder_param_init 调用
             sed -i '/h->param.b_accelerate = 1;/i\    cavs_decoder_param_init( h );' libavcodec/libcavsdec.c
+            # 禁用 b_accelerate：_opt 代码路径在 ARM64 上会崩溃（get_mb_p_aec_opt+16）
+            # b_accelerate=0 使用非加速路径，配合 cavs_decoder_param_init 确保初始化
+            sed -i 's/h->param.b_accelerate\s*=\s*1/h->param.b_accelerate = 0/g' libavcodec/libcavsdec.c
             echo "=== Patched libcavsdec.c: added forward decl + cavs_decoder_param_init call ==="
             grep -n 'cavs_decoder_param_init' libavcodec/libcavsdec.c | head -5
           else
