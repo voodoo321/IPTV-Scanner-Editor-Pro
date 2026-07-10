@@ -320,6 +320,21 @@ jobs:
             echo "=== cavs_decoder_param_init already present or cavs_decoder_create not found, skipping ==="
           fi
 
+          # 修复 ARM64 多线程崩溃：cavs_decoder_param_init() 设置 i_thread_num=64，
+          # CAVS 解码器在 ARM64 上使用 64 线程时会在 cavs_threadpool_thread 中崩溃
+          # (get_mb_p_aec_opt → cavs_get_slice_aec → field_decode_aec_threads_far)。
+          # 原因：CAVS 解码器的多线程实现存在线程安全问题（ARM64/Clang 上更敏感）。
+          # 修复：将 i_thread_num 强制设为 1，使用单线程解码。
+          # 性能影响：CAVS 流通常码率不高，单线程解码足够。
+          if grep -q 'i_thread_num.*=.*64' libavcodec/libcavsdec.c; then
+            sed -i 's/param->i_thread_num\s*=\s*64/param->i_thread_num = 1/g' libavcodec/libcavsdec.c
+            echo "=== Patched libcavsdec.c: i_thread_num 64 → 1 (single-threaded) ==="
+            grep -n 'i_thread_num' libavcodec/libcavsdec.c | head -5
+          else
+            echo "=== i_thread_num=64 not found, checking other patterns ==="
+            grep -n 'i_thread_num' libavcodec/libcavsdec.c | head -10
+          fi
+
           # 验证 patch 应用结果
           echo "=== Verify CAVS files exist ==="
           ls -la libavcodec/libcavs* libavcodec/libcavsdec* libavcodec/dradec* 2>/dev/null || \
