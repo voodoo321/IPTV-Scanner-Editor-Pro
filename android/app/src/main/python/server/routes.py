@@ -15,43 +15,19 @@ logger = logging.getLogger('server.routes')
 # --- 安全配置 ---
 # 认证 Token：通过环境变量 ISEP_AUTH_TOKEN 或配置文件 [Server] auth_token 设置
 # 为空时表示不需要认证（仅限 localhost 场景）
-# 动态读取，确保运行时修改环境变量或配置后立即生效
+_AUTH_TOKEN = os.environ.get('ISEP_AUTH_TOKEN', '').strip()
 
 # 允许的流代理 URL 协议
 _ALLOWED_STREAM_PROTOCOLS = {'http', 'https', 'rtsp', 'rtmp', 'rtp', 'udp', 'srt'}
 
 # 共享 aiohttp ClientSession（流代理用），延迟初始化
 _stream_session = None
-_stream_session_lock = asyncio.Lock()
 
 
-def _get_auth_token():
-    """动态获取认证 Token，优先读环境变量，其次读配置文件"""
-    token = os.environ.get('ISEP_AUTH_TOKEN', '').strip()
-    if token:
-        return token
-    # 尝试从配置文件读取
-    try:
-        config = get_config()
-        if config:
-            return config.get_setting('Server', 'auth_token', '').strip()
-    except Exception:
-        pass
-    return ''
-
-
-async def _get_stream_session():
-    """获取共享的 aiohttp ClientSession，避免每个请求创建新连接池
-
-    使用 asyncio.Lock 确保并发请求时只创建一个 session。
-    """
+def _get_stream_session():
+    """获取共享的 aiohttp ClientSession，避免每个请求创建新连接池"""
     global _stream_session
-    if _stream_session is not None and not _stream_session.closed:
-        return _stream_session
-    async with _stream_session_lock:
-        # double-check：持锁后再次确认（可能其他协程已创建）
-        if _stream_session is not None and not _stream_session.closed:
-            return _stream_session
+    if _stream_session is None or _stream_session.closed:
         import aiohttp
         _stream_session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30),
@@ -172,27 +148,12 @@ def _register_admin_routes(app):
             return web.Response(text='404: Not Found', status=404)
         ext = os.path.splitext(rel_path)[1].lower()
         content_type = _MIME_TYPES.get(ext, 'application/octet-stream')
-        file_size = os.path.getsize(file_path)
-        # 使用 StreamResponse 流式传输，避免大文件全量读入内存
-        response = web_response.StreamResponse(
-            status=200,
-            headers={
-                'Content-Type': content_type,
-                'Content-Length': str(file_size),
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0',
-            }
-        )
-        await response.prepare(request)
         with open(file_path, 'rb') as f:
-            while True:
-                chunk = f.read(65536)  # 64KB chunks
-                if not chunk:
-                    break
-                await response.write(chunk)
-        await response.write_eof()
-        return response
+            content = f.read()
+        return web.Response(
+            body=content, content_type=content_type,
+            headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
+                     'Pragma': 'no-cache', 'Expires': '0'})
 
     try:
         app.router.add_get('/admin/', _handle_admin)
@@ -228,23 +189,44 @@ _I18N = {
         'footer': 'IPTV扫描编辑器专业版 · 内置HTTP Server · 基于 aiohttp',
         'm3u_desc': 'M3U播放列表 (参数: valid=1, search=, group=)',
         'm3u_group_desc': '按分组获取M3U播放列表',
-        'ch_list_desc': '频道列表 (参数: valid=1/0, group=, search=, page=, size=)',
+        'ch_list_desc': '频道列表 (参数: valid=1/0, group=, search=, page=, size=, source=)',
         'ch_get_desc': '按索引获取频道',
         'ch_add_desc': '添加频道 (body: {url, name, group})',
         'ch_update_desc': '更新频道',
         'ch_delete_desc': '删除频道',
+        'ch_import_desc': '导入M3U内容 (body: {content, name})',
         'src_list_desc': '获取订阅源列表',
         'src_add_desc': '添加订阅源 (body: {url, name})',
+        'src_update_desc': '更新订阅源 (启用/禁用)',
         'src_delete_desc': '删除订阅源',
+        'src_reload_desc': '重新加载全部订阅源',
+        'src_status_desc': '订阅源加载状态',
+        'epg_src_list_desc': '获取EPG订阅源列表',
+        'epg_src_add_desc': '添加EPG源 (body: {url, name})',
+        'epg_src_delete_desc': '删除EPG源',
+        'epg_reload_desc': '重新加载EPG数据',
         'scan_start_desc': '开始扫描 (body: {url})',
         'scan_stop_desc': '停止扫描',
         'scan_status_desc': '扫描状态和统计',
+        'scan_range_desc': 'URL范围扫描 (body: {url, timeout, threads})',
+        'scan_results_desc': '获取扫描结果列表',
         'epg_desc': 'EPG节目单数据 (参数: id=, search=)',
         'stream_desc': '按索引代理频道流',
+        'mappings_desc': '频道映射管理 (获取/添加/删除/刷新)',
+        'player_desc': '播放器控制 (章节/HDR/截图/状态/遥控)',
+        'subtitle_desc': '字幕搜索与下载',
+        'log_desc': '日志查看/下载/清空',
+        'cache_desc': '缓存清理 (缩略图/截图/字幕)',
         'quick_m3u': 'M3U播放列表',
         'quick_channels': '频道列表',
         'quick_status': '运行状态',
         'quick_epg': '节目单',
+        'quick_admin': '管理后台',
+        'quick_mobile': '移动播放器',
+        'nav_admin': '管理后台',
+        'nav_admin_desc': '完整的频道/订阅源/EPG/扫描/映射/日志管理界面',
+        'nav_mobile': '移动播放器',
+        'nav_mobile_desc': '手机/平板浏览器播放器（支持遥控器触控）',
         'no_data': '暂无频道数据',
     },
     'en': {
@@ -264,23 +246,44 @@ _I18N = {
         'footer': 'ISEP · Built-in HTTP Server · Powered by aiohttp',
         'm3u_desc': 'M3U playlist (params: valid=1, search=, group=)',
         'm3u_group_desc': 'M3U playlist by group',
-        'ch_list_desc': 'Channel list (params: valid=1/0, group=, search=, page=, size=)',
+        'ch_list_desc': 'Channel list (params: valid=1/0, group=, search=, page=, size=, source=)',
         'ch_get_desc': 'Get channel by index',
         'ch_add_desc': 'Add channel (body: {url, name, group})',
         'ch_update_desc': 'Update channel',
         'ch_delete_desc': 'Delete channel',
+        'ch_import_desc': 'Import M3U content (body: {content, name})',
         'src_list_desc': 'List subscription sources',
         'src_add_desc': 'Add source (body: {url, name})',
+        'src_update_desc': 'Update source (enable/disable)',
         'src_delete_desc': 'Delete source',
+        'src_reload_desc': 'Reload all sources',
+        'src_status_desc': 'Source loading status',
+        'epg_src_list_desc': 'List EPG sources',
+        'epg_src_add_desc': 'Add EPG source (body: {url, name})',
+        'epg_src_delete_desc': 'Delete EPG source',
+        'epg_reload_desc': 'Reload EPG data',
         'scan_start_desc': 'Start scan (body: {url})',
         'scan_stop_desc': 'Stop scan',
         'scan_status_desc': 'Scan status & stats',
+        'scan_range_desc': 'URL range scan (body: {url, timeout, threads})',
+        'scan_results_desc': 'Get scan results list',
         'epg_desc': 'EPG data (params: id=, search=)',
         'stream_desc': 'Proxy stream for channel by index',
+        'mappings_desc': 'Channel mapping management (get/add/delete/refresh)',
+        'player_desc': 'Player control (chapters/HDR/screenshot/status/remote)',
+        'subtitle_desc': 'Subtitle search & download',
+        'log_desc': 'Log view/download/clear',
+        'cache_desc': 'Cache clear (thumbnails/screenshots/subtitles)',
         'quick_m3u': 'M3U Playlist',
         'quick_channels': 'Channels',
         'quick_status': 'Status',
         'quick_epg': 'EPG',
+        'quick_admin': 'Admin Panel',
+        'quick_mobile': 'Mobile Player',
+        'nav_admin': 'Admin Panel',
+        'nav_admin_desc': 'Full management UI for channels/sources/EPG/scan/mappings/logs',
+        'nav_mobile': 'Mobile Player',
+        'nav_mobile_desc': 'Phone/tablet browser player with touch & remote control',
         'no_data': 'No channel data',
     }
 }
@@ -363,7 +366,7 @@ def _is_auth_required(request):
     if not path.startswith('/api/'):
         return False
     # 如果未配置 Token，免认证（仅限 localhost 场景）
-    if not _get_auth_token():
+    if not _AUTH_TOKEN:
         return False
     return True
 
@@ -384,7 +387,7 @@ async def auth_middleware(request, handler):
         token = auth_header[7:].strip()
     if not token:
         token = request.rel_url.query.get('token', '').strip()
-    if token != _get_auth_token():
+    if token != _AUTH_TOKEN:
         return web.json_response(
             {'success': False, 'error': '未授权访问'}, status=401
         )
@@ -486,6 +489,7 @@ def _render_index_page(base_url, server, lang='en'):
                 {"method": "GET", "path": "/api/channels", "desc": _t(lang, 'ch_list_desc'), "type": "json"},
                 {"method": "GET", "path": "/api/channels/{id}", "desc": _t(lang, 'ch_get_desc'), "type": "json"},
                 {"method": "POST", "path": "/api/channels", "desc": _t(lang, 'ch_add_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/channels/import", "desc": _t(lang, 'ch_import_desc'), "type": "json"},
                 {"method": "PUT", "path": "/api/channels/{id}", "desc": _t(lang, 'ch_update_desc'), "type": "json"},
                 {"method": "DELETE", "path": "/api/channels/{id}", "desc": _t(lang, 'ch_delete_desc'), "type": "json"},
             ]
@@ -496,7 +500,21 @@ def _render_index_page(base_url, server, lang='en'):
             "apis": [
                 {"method": "GET", "path": "/api/sources", "desc": _t(lang, 'src_list_desc'), "type": "json"},
                 {"method": "POST", "path": "/api/sources", "desc": _t(lang, 'src_add_desc'), "type": "json"},
+                {"method": "PUT", "path": "/api/sources/{id}", "desc": _t(lang, 'src_update_desc'), "type": "json"},
                 {"method": "DELETE", "path": "/api/sources/{id}", "desc": _t(lang, 'src_delete_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/sources/reload", "desc": _t(lang, 'src_reload_desc'), "type": "json"},
+                {"method": "GET", "path": "/api/sources/status", "desc": _t(lang, 'src_status_desc'), "type": "json"},
+            ]
+        },
+        {
+            "title": _t(lang, 'epg'),
+            "icon": "&#128197;",
+            "apis": [
+                {"method": "GET", "path": "/api/epg", "desc": _t(lang, 'epg_desc'), "type": "json"},
+                {"method": "GET", "path": "/api/epg/sources", "desc": _t(lang, 'epg_src_list_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/epg/sources", "desc": _t(lang, 'epg_src_add_desc'), "type": "json"},
+                {"method": "DELETE", "path": "/api/epg/sources/{id}", "desc": _t(lang, 'epg_src_delete_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/epg/reload", "desc": _t(lang, 'epg_reload_desc'), "type": "json"},
             ]
         },
         {
@@ -506,13 +524,18 @@ def _render_index_page(base_url, server, lang='en'):
                 {"method": "POST", "path": "/api/scan/start", "desc": _t(lang, 'scan_start_desc'), "type": "json"},
                 {"method": "POST", "path": "/api/scan/stop", "desc": _t(lang, 'scan_stop_desc'), "type": "json"},
                 {"method": "GET", "path": "/api/scan/status", "desc": _t(lang, 'scan_status_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/scan/range", "desc": _t(lang, 'scan_range_desc'), "type": "json"},
+                {"method": "GET", "path": "/api/scan/results", "desc": _t(lang, 'scan_results_desc'), "type": "json"},
             ]
         },
         {
-            "title": _t(lang, 'epg'),
-            "icon": "&#128197;",
+            "title": _t(lang, 'mappings_desc').split('(')[0].strip(),
+            "icon": "&#128279;",
             "apis": [
-                {"method": "GET", "path": "/api/epg", "desc": _t(lang, 'epg_desc'), "type": "json"},
+                {"method": "GET", "path": "/api/mappings", "desc": _t(lang, 'mappings_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/mappings", "desc": _t(lang, 'mappings_desc'), "type": "json"},
+                {"method": "DELETE", "path": "/api/mappings/{id}", "desc": _t(lang, 'mappings_desc'), "type": "json"},
+                {"method": "POST", "path": "/api/mappings/refresh", "desc": _t(lang, 'mappings_desc'), "type": "json"},
             ]
         },
         {
@@ -630,6 +653,10 @@ body {{ background:#1a1a2e; color:#E0E0E0;
         </div>
     </div>
     <div class="quick-links">
+        <a class="quick-link" href="{base_url}/admin/" target="_blank" style="border-color:rgba(74,126,255,.3);background:rgba(74,126,255,.08)">
+            &#128736; {_t(lang, 'quick_admin')} <span class="path">/admin/</span></a>
+        <a class="quick-link" href="{base_url}/mobile/" target="_blank" style="border-color:rgba(156,39,176,.3);background:rgba(156,39,176,.08)">
+            &#128241; {_t(lang, 'quick_mobile')} <span class="path">/mobile/</span></a>
         <a class="quick-link" href="{base_url}/api/m3u" target="_blank">
             &#9654; {_t(lang, 'quick_m3u')} <span class="path">/api/m3u</span></a>
         <a class="quick-link" href="{base_url}/api/channels" target="_blank">
@@ -717,7 +744,7 @@ async def handle_channels_list(request):
     try:
         ctx = get_context()
         # 直接读取已加载的 channels，不触发 reload_if_needed（避免同步加载导致请求超时）
-        all_channels = ctx.get_all_channels() if ctx else []
+        all_channels = ctx._channels if ctx else []
         if not all_channels:
             # 返回空列表而非 503，让前端正常显示"暂无频道"
             return _json_success(
@@ -811,30 +838,19 @@ async def handle_channel_update(request):
         return _json_error('没有可更新的字段')
     if model and 0 <= idx < model.rowCount():
         model.update_channel(idx, data)
-    elif ctx and hasattr(ctx, 'update_channel'):
-        # standalone 模式（Android）：通过线程安全 API 更新并持久化
-        if not ctx.update_channel(idx, data):
-            return _json_error('频道不存在', 404)
+    elif ctx and hasattr(ctx, '_channels') and 0 <= idx < len(ctx._channels):
+        # standalone 模式（Android）：直接更新内存中的频道并持久化
+        with getattr(ctx, '_channels_lock', _noop_lock):
+            if 0 <= idx < len(ctx._channels):
+                ctx._channels[idx].update(data)
         ctx._save_channels_to_cache()
     else:
         mw = get_main_window()
         if mw:
-            updated = False
-            for ch_list_attr in ('_sub_channels', '_local_channels'):
-                ch_list = getattr(mw, ch_list_attr, None)
-                if ch_list and 0 <= idx < len(ch_list):
-                    # 使用 ServerContext 的线程安全 API 更新
-                    ctx2 = get_context()
-                    if ctx2 and hasattr(ctx2, 'update_channel'):
-                        ctx2.update_channel(idx, data)
-                    else:
-                        ch_list[idx].update(data)
-                    updated = True
+            for ch_list in (getattr(mw, '_sub_channels', []), getattr(mw, '_local_channels', [])):
+                if 0 <= idx < len(ch_list):
+                    ch_list[idx].update(data)
                     break
-            if not updated:
-                return _json_error('频道不存在', 404)
-        else:
-            return _json_error('频道不存在', 404)
     return _json_success()
 
 
@@ -847,13 +863,10 @@ async def handle_channel_delete(request):
         return _json_error('无效的频道ID')
     if model and 0 <= idx < model.rowCount():
         model.remove_channel(idx)
-    elif ctx and hasattr(ctx, 'delete_channel'):
-        # standalone 模式（Android）：通过线程安全 API 删除并持久化
-        if not ctx.delete_channel(idx):
-            return _json_error('频道不存在', 404)
+    elif ctx and hasattr(ctx, '_channels') and 0 <= idx < len(ctx._channels):
+        # standalone 模式（Android）：直接从内存列表删除并持久化
+        ctx._channels.pop(idx)
         ctx._save_channels_to_cache()
-    else:
-        return _json_error('频道不存在', 404)
     return _json_success()
 
 
@@ -883,9 +896,10 @@ async def handle_channel_add(request):
     model = get_channel_model() if ctx else None
     if model:
         model.add_channel(data)
-    elif ctx and hasattr(ctx, 'add_channel'):
-        # standalone 模式（Android）：通过线程安全 API 追加并持久化
-        ctx.add_channel(data)
+    elif ctx and hasattr(ctx, '_channels'):
+        # standalone 模式（Android）：直接追加到内存列表并持久化
+        data['id'] = len(ctx._channels) + 1
+        ctx._channels.append(data)
         ctx._save_channels_to_cache()
     return _json_success()
 
@@ -904,16 +918,19 @@ async def handle_channels_import(request):
         # 标记为手动导入（source=''），在 Android 端 LOCAL tab 显示
         # 同时补全 id 字段（与 android_bridge.py import_channels 对齐）
         ctx = get_context()
-        if not ctx or not hasattr(ctx, 'import_channels'):
+        if not ctx or not hasattr(ctx, '_channels'):
             return _json_error('上下文未初始化', 503)
-        # 标记为手动导入（source=''），在 Android 端 LOCAL tab 显示
-        for c in channels:
+        base_id = len(ctx._channels)
+        for i, c in enumerate(channels):
             c['source'] = ''
-        # 使用线程安全 API 批量导入
-        imported_count = ctx.import_channels(channels)
+            c.setdefault('id', base_id + i + 1)
+        with getattr(ctx, '_channels_lock', _noop_lock):
+            ctx._channels.extend(channels)
         # 持久化到缓存，重启后不丢失
         ctx._save_channels_to_cache()
-        return _json_success(imported=imported_count)
+        all_groups = list(dict.fromkeys([c.get('group', '未分组') for c in ctx._channels]))
+        ctx._channels_list = all_groups if hasattr(ctx, '_channels_list') else None
+        return _json_success(imported=len(channels))
     except Exception as e:
         return _json_error(f'解析失败: {e}', 500)
 
@@ -1468,12 +1485,9 @@ async def handle_stream_proxy(request):
     if not is_safe:
         logger.warning(f'Stream proxy blocked: {stream_url} - {reject_reason}')
         return _json_error(f'不允许的流地址: {reject_reason}', 403)
-    session = await _get_stream_session()
+    session = _get_stream_session()
     try:
-        # 使用 sock_read timeout 防止数据传输卡死（total=300s，sock_read=30s）
-        import aiohttp as _aiohttp
-        stream_timeout = _aiohttp.ClientTimeout(total=300, sock_read=30, sock_connect=10)
-        async with session.get(stream_url, timeout=stream_timeout) as resp:
+        async with session.get(stream_url) as resp:
             content_type = resp.headers.get('Content-Type', 'video/mp2t')
             response = web_response.StreamResponse(
                 status=resp.status,
@@ -1808,39 +1822,29 @@ async def handle_log_view(request):
 
 
 async def handle_log_download(request):
-    """下载完整日志文件（流式传输，避免大文件全量读入内存）"""
+    """下载完整日志文件"""
     try:
         log_path = _get_log_file_path()
         if not os.path.isfile(log_path):
             return _json_error('日志文件不存在', 404)
 
         file_size = os.path.getsize(log_path)
+        with open(log_path, 'rb') as f:
+            content = f.read()
 
         # 生成带时间戳的文件名
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'app_{timestamp}.log'
 
-        # 使用 StreamResponse 流式传输，避免大日志文件撑爆内存
-        response = web_response.StreamResponse(
-            status=200,
+        return web.Response(
+            body=content,
+            content_type='application/octet-stream',
             headers={
-                'Content-Type': 'application/octet-stream',
                 'Content-Disposition': f'attachment; filename="{filename}"',
                 'Content-Length': str(file_size),
                 'Cache-Control': 'no-cache',
             }
         )
-        await response.prepare(request)
-
-        # 分块读取并写入响应
-        with open(log_path, 'rb') as f:
-            while True:
-                chunk = f.read(65536)  # 64KB chunks
-                if not chunk:
-                    break
-                await response.write(chunk)
-        await response.write_eof()
-        return response
     except Exception as e:
         logger.error(f"下载日志失败: {e}")
         return _json_error(f'下载日志失败: {e}', 500)
