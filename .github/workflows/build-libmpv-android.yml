@@ -365,37 +365,56 @@ jobs:
             find libavcodec -name '*.c' -exec grep -l 'cavs_threadpool_run' {} \;
           fi
 
-          # 修复 ARM64 CAVS 解码崩溃：cavs_decoder_slice_num_probe() 会设置
-          # b_accelerate=0（"accelerate version don't support multi-slice"），
-          # 导致 cavs_decode_one_frame 走非加速路径（cavs_topfield_pack +
-          # decode_top_field），而非加速路径在 ARM64 上会因 p->Frame 为 NULL
-          # 而 SIGSEGV（cavs_topfield_pack 访问 field->slice[0].i_startcode，
-          # field 为 NULL，偏移 ~4MB = m_buf 大小）。
-          # 修复1：在 cavs_decoder_param_init 中强制 b_accelerate=1，确保始终
-          # 走加速路径（cavs_field_decode_far / decode_one_frame_far），
-          # 配合同步 threadpool 补丁，加速路径在单线程下安全运行。
-          if grep -q 'param->output_type = -1;' libavcodec/libcavsdec.c; then
-            sed -i '/param->output_type = -1;/i\    param->b_accelerate = 1; /* force accelerate path: non-accelerate crashes on ARM64 */' libavcodec/libcavsdec.c
-            echo "=== Patched libcavsdec.c: force b_accelerate=1 in cavs_decoder_param_init ==="
+          # 修复 ARM64 CAVS 解码崩溃：加速路径（b_accelerate=1）需要 AEC 子解码器
+          # (unused[] 数组) 初始化，但同步 threadpool 补丁导致这些未初始化，
+          # 在 get_mb_p_aec_opt 中 SIGSEGV。
+          # 非加速路径（b_accelerate=0）不需要 AEC，但需要 p->Frame 不为 NULL。
+          # 策略：强制 b_accelerate=0 + 确保 p->Frame 有效。
+
+          # 修复1：在 ff_libcavs_init 中强制 b_accelerate=0（原来是 1）
+          if grep -q 'h->param.b_accelerate = 1;' libavcodec/libcavsdec.c; then
+            sed -i 's/h->param.b_accelerate = 1;/h->param.b_accelerate = 0; \/\/ force non-accelerate: accelerate path crashes on ARM64/' libavcodec/libcavsdec.c
+            echo "=== Patched libcavsdec.c: force b_accelerate=0 in ff_libcavs_init ==="
             grep -n 'b_accelerate' libavcodec/libcavsdec.c | head -10
           fi
 
-          # 修复2：在 cavs_decode_one_frame 中添加 p->Frame NULL 检查。
-          # 如果 p->Frame 为 NULL（例如 cavs_decoder_slice_num_probe 释放后），
-          # 重新分配，避免 SIGSEGV。
-          if grep -q 'cavs_decode_one_frame' libavcodec/libcavs.c; then
-            sed -i '/if (!param->seq_header_flag)/i\    if( !p->Frame ) {\n        p->Frame = (frame_pack*)cavs_malloc(sizeof(frame_pack));\n        memset(p->Frame, 0, sizeof(frame_pack));\n        p->Frame->p_start = (uint8_t*)cavs_malloc(MAX_CODED_FRAME_SIZE*sizeof(uint8_t));\n        memset(p->Frame->p_start, 0, MAX_CODED_FRAME_SIZE);\n    }' libavcodec/libcavs.c
-            echo "=== Patched libcavs.c: p->Frame NULL check in cavs_decode_one_frame ==="
-            grep -n 'p->Frame' libavcodec/libcavs.c | head -10
+          # 修复2：在 cavs_decoder_param_init 中强制 b_accelerate=0
+          if grep -q 'param->output_type = -1;' libavcodec/libcavsdec.c; then
+            sed -i '/param->output_type = -1;/i\    param->b_accelerate = 0; /* force non-accelerate path */' libavcodec/libcavsdec.c
+            echo "=== Patched libcavsdec.c: force b_accelerate=0 in cavs_decoder_param_init ==="
+            grep -n 'b_accelerate' libavcodec/libcavsdec.c | head -10
           fi
 
-          # 修复3：强制 p->param.b_accelerate=1 在 cavs_decoder_create 中，
-          # 确保 decoder 内部参数也被正确设置（cavs_decoder_create 会复制 param，
-          # 但 cavs_decoder_thread_param_init 可能覆盖某些字段）。
+          # 修复3：在 cavs_decoder_create 中强制 b_accelerate=0
           if grep -q 'p->param.b_accelerate = param->b_accelerate;' libavcodec/libcavs.c; then
-            sed -i 's/p->param.b_accelerate = param->b_accelerate;/p->param.b_accelerate = 1; \/\/ force accelerate/' libavcodec/libcavs.c
-            echo "=== Patched libcavs.c: force p->param.b_accelerate=1 in cavs_decoder_create ==="
+            sed -i 's/p->param.b_accelerate = param->b_accelerate;/p->param.b_accelerate = 0; \/\/ force non-accelerate/' libavcodec/libcavs.c
+            echo "=== Patched libcavs.c: force p->param.b_accelerate=0 in cavs_decoder_create ==="
             grep -n 'b_accelerate' libavcodec/libcavs.c | head -10
+          fi
+
+          # 修复4：在 cavs_decode_one_frame 中添加 p->Frame NULL 检查。
+          # 如果 p->Frame 为 NULL（例如被 cavs_decoder_slice_num_probe 释放），
+          # 重新分配，避免 cavs_topfield_pack 访问 NULL 导致 SIGSEGV。
+          # 使用 Python 脚本确保多行代码正确插入。
+          if grep -q 'cavs_decode_one_frame' libavcodec/libcavs.c; then
+            echo 'import re' > /tmp/fix_fn.py
+            echo 'with open("libavcodec/libcavs.c","r") as f: content=f.read()' >> /tmp/fix_fn.py
+            echo 'old="if (!param->seq_header_flag)"' >> /tmp/fix_fn.py
+            echo 'new_code="if( !p->Frame ) {\\n        p->Frame = (frame_pack*)cavs_malloc(sizeof(frame_pack));\\n        memset(p->Frame, 0, sizeof(frame_pack));\\n        p->Frame->p_start = (uint8_t*)cavs_malloc(MAX_CODED_FRAME_SIZE*sizeof(uint8_t));\\n        memset(p->Frame->p_start, 0, MAX_CODED_FRAME_SIZE);\\n    }\\n    if (!param->seq_header_flag)"' >> /tmp/fix_fn.py
+            echo 'if old in content:' >> /tmp/fix_fn.py
+            echo '    content=content.replace(old,new_code,1)' >> /tmp/fix_fn.py
+            echo '    with open("libavcodec/libcavs.c","w") as f: f.write(content)' >> /tmp/fix_fn.py
+            echo '    print("Patched: p->Frame NULL check added")' >> /tmp/fix_fn.py
+            echo 'else:' >> /tmp/fix_fn.py
+            echo '    content2=re.sub(r"if\\s*\\(!param->seq_header_flag\\)",new_code,content,count=1)' >> /tmp/fix_fn.py
+            echo '    if content2!=content:' >> /tmp/fix_fn.py
+            echo '        with open("libavcodec/libcavs.c","w") as f: f.write(content2)' >> /tmp/fix_fn.py
+            echo '        print("Patched: p->Frame NULL check added (alternate)")' >> /tmp/fix_fn.py
+            echo '    else:' >> /tmp/fix_fn.py
+            echo '        print("ERROR: Could not find pattern")' >> /tmp/fix_fn.py
+            python3 /tmp/fix_fn.py
+            echo "=== Patched libcavs.c: p->Frame NULL check ==="
+            grep -n 'p->Frame' libavcodec/libcavs.c | head -10
           fi
 
           # 验证 patch 应用结果
