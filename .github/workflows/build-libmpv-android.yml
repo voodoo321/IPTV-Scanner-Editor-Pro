@@ -397,22 +397,7 @@ jobs:
           # 重新分配，避免 cavs_topfield_pack 访问 NULL 导致 SIGSEGV。
           # 使用 Python 脚本确保多行代码正确插入。
           if grep -q 'cavs_decode_one_frame' libavcodec/libcavs.c; then
-            echo 'import re' > /tmp/fix_fn.py
-            echo 'with open("libavcodec/libcavs.c","r") as f: content=f.read()' >> /tmp/fix_fn.py
-            echo 'old="if (!param->seq_header_flag)"' >> /tmp/fix_fn.py
-            echo 'new_code="if( !p->Frame ) {\\n        p->Frame = (frame_pack*)cavs_malloc(sizeof(frame_pack));\\n        memset(p->Frame, 0, sizeof(frame_pack));\\n        p->Frame->p_start = (uint8_t*)cavs_malloc(MAX_CODED_FRAME_SIZE*sizeof(uint8_t));\\n        memset(p->Frame->p_start, 0, MAX_CODED_FRAME_SIZE);\\n    }\\n    if (!param->seq_header_flag)"' >> /tmp/fix_fn.py
-            echo 'if old in content:' >> /tmp/fix_fn.py
-            echo '    content=content.replace(old,new_code,1)' >> /tmp/fix_fn.py
-            echo '    with open("libavcodec/libcavs.c","w") as f: f.write(content)' >> /tmp/fix_fn.py
-            echo '    print("Patched: p->Frame NULL check added")' >> /tmp/fix_fn.py
-            echo 'else:' >> /tmp/fix_fn.py
-            echo '    content2=re.sub(r"if\\s*\\(!param->seq_header_flag\\)",new_code,content,count=1)' >> /tmp/fix_fn.py
-            echo '    if content2!=content:' >> /tmp/fix_fn.py
-            echo '        with open("libavcodec/libcavs.c","w") as f: f.write(content2)' >> /tmp/fix_fn.py
-            echo '        print("Patched: p->Frame NULL check added (alternate)")' >> /tmp/fix_fn.py
-            echo '    else:' >> /tmp/fix_fn.py
-            echo '        print("ERROR: Could not find pattern")' >> /tmp/fix_fn.py
-            python3 /tmp/fix_fn.py
+            sed -i '/if (!param->seq_header_flag)/i\    if(!p->Frame){p->Frame=(frame_pack*)cavs_malloc(sizeof(frame_pack));memset(p->Frame,0,sizeof(frame_pack));p->Frame->p_start=(uint8_t*)cavs_malloc(MAX_CODED_FRAME_SIZE*sizeof(uint8_t));memset(p->Frame->p_start,0,MAX_CODED_FRAME_SIZE);}' libavcodec/libcavs.c
             echo "=== Patched libcavs.c: p->Frame NULL check ==="
             grep -n 'p->Frame' libavcodec/libcavs.c | head -10
           fi
