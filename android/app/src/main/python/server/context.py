@@ -625,47 +625,38 @@ class ServerContext:
                     logger.warning(f"加载源 {src_url} 异常: {e}")
 
             # 更新频道列表
-            if all_channels:
-                # 合并而非覆盖：保留不在订阅源中的扫描/导入频道（按 URL 去重）
-                # 根因：之前 self._channels = all_channels 完全覆盖，导致扫描/导入的频道丢失
-                existing_urls = {c.get('url', '') for c in all_channels if c.get('url', '')}
-                with self._channels_lock:
-                    extra_channels = [
-                        c for c in self._channels
-                        if c.get('url', '') and c.get('url', '') not in existing_urls
+            # 合并策略：保留本地频道（扫描/导入，无 source 字段），
+            # 替换所有订阅频道（有 source 字段）为本次加载的结果。
+            # 这样禁用/删除源后，其频道会被正确移除。
+            with self._channels_lock:
+                local_channels = [
+                    c for c in self._channels
+                    if not c.get('source', '')
+                ]
+                if all_channels:
+                    # 去重：本地频道中 URL 与订阅频道重复的移除
+                    sub_urls = {c.get('url', '') for c in all_channels if c.get('url', '')}
+                    local_channels = [
+                        c for c in local_channels
+                        if not c.get('url', '') or c.get('url', '') not in sub_urls
                     ]
-                    if extra_channels:
-                        self._channels = all_channels + extra_channels
-                        logger.info(f"订阅源 {len(all_channels)} 个 + 本地保留 {len(extra_channels)} 个（扫描/导入）")
-                    else:
-                        self._channels = all_channels
+                    self._channels = all_channels + local_channels
                     ch_count = len(self._channels)
-                self._save_channels_to_cache()
-                self._last_load_time = time.time()
-                with self._source_load_lock:
-                    self._source_loading = False
-                    self._source_load_status = {
-                        'loading': False, 'total': len(sources),
-                        'loaded': len(sources), 'channels': ch_count,
-                        'message': f'完成：{ch_count} 个频道'}
-                logger.info(f"订阅源加载完成，共 {ch_count} 个频道")
-            else:
-                # 加载到空列表时不覆盖已有频道，提示当前频道数和失败原因
-                with self._channels_lock:
-                    existing = len(self._channels)
-                if existing > 0:
-                    msg = f'本次未加载到新频道（现有 {existing} 个）'
-                elif errors:
-                    # 显示首个失败原因，让用户知道为什么加载失败
-                    msg = f'加载失败：{errors[0]}'
+                    logger.info(f"订阅源 {len(all_channels)} 个 + 本地保留 {len(local_channels)} 个（扫描/导入）")
                 else:
-                    msg = '未加载到频道'
-                with self._source_load_lock:
-                    self._source_loading = False
-                    self._source_load_status = {
-                        'loading': False, 'total': len(sources),
-                        'loaded': len(sources), 'channels': existing,
-                        'message': msg}
+                    # 所有源都禁用/删除/加载失败时，只保留本地频道
+                    self._channels = local_channels
+                    ch_count = len(self._channels)
+                    logger.info(f"订阅源无频道，保留本地 {len(local_channels)} 个")
+            self._save_channels_to_cache()
+            self._last_load_time = time.time()
+            with self._source_load_lock:
+                self._source_loading = False
+                self._source_load_status = {
+                    'loading': False, 'total': len(sources),
+                    'loaded': len(sources), 'channels': ch_count,
+                    'message': f'完成：{ch_count} 个频道'}
+            logger.info(f"订阅源加载完成，共 {ch_count} 个频道")
         except Exception as e:
             logger.error(f"订阅源加载异常: {e}")
             with self._source_load_lock:

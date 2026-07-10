@@ -993,6 +993,11 @@ async def handle_sources_update(request):
         if key in data:
             sources[idx][key] = data[key]
     config.save_playlist_sources(sources)
+    # 禁用/启用源后触发重新加载，确保频道列表与源状态同步
+    if 'enabled' in data:
+        ctx = get_context()
+        if ctx and ctx.is_standalone():
+            ctx.reload_sources('')  # url 为空 → 加载所有启用的源
     return _json_success()
 
 
@@ -1012,6 +1017,10 @@ async def handle_sources_delete(request):
         return _json_error('源不存在', 404)
     sources.pop(idx)
     config.save_playlist_sources(sources)
+    # 删除源后触发重新加载，移除该源的频道
+    ctx = get_context()
+    if ctx and ctx.is_standalone():
+        ctx.reload_sources('')  # url 为空 → 加载所有启用的源
     return _json_success()
 
 

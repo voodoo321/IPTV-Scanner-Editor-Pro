@@ -327,6 +327,81 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;color:#e
 }
 
 /* Token 登录覆盖层 */
+
+/* ======================== 手机分屏模式 ======================== */
+/* 竖屏：上视频 + 下频道浏览（左分组 + 右频道）
+ * 横屏：左视频 + 右频道浏览
+ * 通过 body.split-mode 激活，频道面板从浮动抽屉变为内联布局 */
+body.split-mode #panelChannels{
+  position:fixed!important;
+  bottom:0!important;left:0!important;right:0!important;
+  top:auto!important;width:100%!important;max-width:none!important;
+  height:55vh!important;transform:none!important;opacity:1!important;
+  border-radius:14px 14px 0 0;z-index:5;pointer-events:auto;
+}
+body.split-mode #panelChannels.hidden{transform:none!important;opacity:1!important}
+/* 触摸层仅覆盖视频区域 */
+body.split-mode #touchLayer{bottom:55vh!important}
+/* 分屏模式下不显示面板遮罩 */
+body.split-mode #panelOverlay{display:none!important}
+/* 视频区小控制条 */
+body.split-mode #splitVideoBar{
+  display:flex;position:fixed;left:0;right:0;bottom:55vh;
+  height:36px;background:rgba(0,0,0,.6);align-items:center;
+  padding:0 8px;gap:6px;z-index:6;transform:translateY(0);
+  transition:transform .3s,opacity .3s;
+}
+body.split-mode #splitVideoBar.hidden{transform:translateY(100%);opacity:0;pointer-events:none}
+body.split-mode #splitVideoBar .svb-name{
+  flex:1;font-size:12px;font-weight:600;color:#fff;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+body.split-mode #splitVideoBar .svb-btn{
+  width:30px;height:30px;border-radius:6px;background:rgba(255,255,255,.12);
+  border:none;color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;flex-shrink:0;
+}
+body.split-mode #splitVideoBar .svb-btn:active{background:rgba(255,255,255,.25)}
+body.split-mode #splitVideoBar .svb-btn svg{width:16px;height:16px;fill:#fff}
+/* 分屏切换按钮 */
+body.split-mode #splitToggleBtn{
+  display:flex;position:fixed;top:8px;right:8px;z-index:7;
+  width:32px;height:32px;border-radius:8px;background:rgba(0,0,0,.5);
+  border:none;color:#fff;align-items:center;justify-content:center;cursor:pointer;
+}
+body.split-mode #splitToggleBtn svg{width:18px;height:18px;fill:#fff}
+/* 非分屏模式下隐藏分屏专用元素 */
+#splitVideoBar{display:none}
+#splitToggleBtn{display:none}
+
+/* 横屏分屏：左视频 + 右频道浏览 */
+@media(orientation:landscape){
+  body.split-mode #panelChannels{
+    top:0!important;bottom:0!important;left:auto!important;right:0!important;
+    width:42%!important;max-width:520px!important;height:100%!important;
+    border-radius:14px 0 0 14px;
+  }
+  body.split-mode #touchLayer{bottom:0!important;right:42%!important}
+  body.split-mode #splitVideoBar{
+    bottom:0!important;right:42%!important;left:0!important;
+    width:auto;height:36px;
+  }
+  body.split-mode #splitToggleBtn{top:8px;right:calc(42% + 8px)}
+  /* 横屏时分类栏更宽 */
+  body.split-mode .ch-sidebar{width:130px}
+}
+/* 大屏横屏（平板）分屏更宽 */
+@media(orientation:landscape) and (min-width:768px){
+  body.split-mode #panelChannels{width:40%!important;max-width:600px!important}
+  body.split-mode #touchLayer{right:40%!important}
+  body.split-mode #splitVideoBar{right:40%!important}
+  body.split-mode #splitToggleBtn{right:calc(40% + 8px)}
+}
+
+/* 分屏模式下面板标题栏简化 */
+body.split-mode .panel-titlebar{padding:8px 12px}
+body.split-mode .panel-titlebar .title{font-size:13px}
+
 .token-login-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s}
 .token-login-overlay.show{opacity:1;pointer-events:auto}
 .token-login-card{background:#1e1e1e;border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:32px 28px;width:88%;max-width:360px;text-align:center}
@@ -364,6 +439,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;color:#e
   <span class="tb-status" id="tbStatus">就绪</span>
   <button class="tb-btn" id="tbChannelsBtn" title="频道"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
 </div>
+
+<div id="splitVideoBar">
+  <button class="svb-btn" id="svbPlay" title="播放/暂停"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+  <button class="svb-btn" id="svbPrev" title="上一频道"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+  <button class="svb-btn" id="svbNext" title="下一频道"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+  <span class="svb-name" id="svbName">ISEP</span>
+  <button class="svb-btn" id="svbMenu" title="菜单"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+  <button class="svb-btn" id="svbFullscreen" title="全屏"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+</div>
+<button id="splitToggleBtn" title="切换全屏/分屏"><svg viewBox="0 0 24 24"><path d="M3 5v4h2V7h3V5H3zm0 14h5v-2H5v-2H3v4zM19 5h-5v2h3v2h2V5zm0 14v-4h-2v2h-3v2h5z"/></svg></button>
 
 <div id="touchLayer"></div>
 <div id="panelOverlay"></div>
@@ -584,6 +669,7 @@ const state = {
   /* UI 状态 */
   panelOpen: null, funcPanelOpen: false, controlsVisible: false,
   tvMode: false, tvFocus: 'channels', /* 电视导航模式：焦点在 channels/epg/controls */
+  splitMode: false, /* 手机分屏模式：视频 + 频道列表并排显示 */
   osdTimer: null, hideControlsTimer: null,
   /* 持续 OSD（与 PC 端 toggle_osd 一致）：O 键或控制面板按钮切换显示/隐藏 */
   osdVisible: false, osdRefreshTimer: null,
@@ -711,7 +797,7 @@ window.onMpvProperty = function(prop, val){
     return;
   }
   switch(prop){
-    case 'pause': state.mpv.paused = !!val; if(!val) hideCenterIcon(); else if(state.currentIdx<0) showCenterIcon(); updatePlayBtn(); break;
+    case 'pause': state.mpv.paused = !!val; if(!val) hideCenterIcon(); else if(state.currentIdx<0) showCenterIcon(); updatePlayBtn(); updateSplitVideoBar(); break;
     case 'time-pos': state.mpv.timePos = val; break;
     case 'duration': state.mpv.duration = val; break;
     case 'volume': state.mpv.volume = val; $('#bbVolSlider').value = val; break;
@@ -767,7 +853,15 @@ function playChannel(idx, opts={}){
   fetchEpgForCurrent();
   /* 若持续 OSD 已开启，立即刷新一次让频道名/URL 更新（媒体信息稍后由定时器刷新） */
   if(state.osdVisible) refreshOSD();
-  if(!opts.silent){ closePanels(); }
+  if(!opts.silent){
+    if(state.splitMode){
+      /* 分屏模式：不关闭面板，仅刷新频道列表高亮和视频区小控制条 */
+      renderChannelList($('#searchInput')?.value||'');
+      updateSplitVideoBar();
+    } else {
+      closePanels();
+    }
+  }
   hideCenterIcon();
   /* 加入历史 */
   state.playHistory = state.playHistory.filter(i=>i!==idx);
@@ -2418,14 +2512,30 @@ function openPanel(which){
   /* 'controls' 由 showControls/hideControls 独立管理，不走 panelOverlay 机制 */
   if(which==='controls'){ showControls(); return; }
   closeFuncPanel();
-  closePanels();
+  /* 分屏模式下频道面板始终打开，只处理 EPG 等其他面板 */
+  if(state.splitMode && which==='channels'){
+    /* 频道面板已在分屏中显示，仅确保分组筛选和列表正确 */
+    updateGroupFilter();
+    renderChannelList();
+    return;
+  }
+  if(!state.splitMode) closePanels();
+  else { $('#panelEPG').classList.remove('open'); }
   state.panelOpen = which;
-  $('#panelOverlay').classList.add('show');
+  if(!state.splitMode) $('#panelOverlay').classList.add('show');
   if(which==='channels'){ $('#panelChannels').classList.add('open'); renderChannelList(); }
   else if(which==='epg'){ $('#panelEPG').classList.add('open'); renderEPGList(); }
 }
 function closePanels(){
   if(state.tvMode) closeTVMode();
+  if(state.splitMode){
+    /* 分屏模式：只关闭 EPG 等叠加面板，频道面板保持打开 */
+    $('#panelEPG').classList.remove('open');
+    $('#panelControls').classList.remove('open');
+    if(!state.funcPanelOpen) $('#panelOverlay').classList.remove('show');
+    state.panelOpen = 'channels';
+    return;
+  }
   $('#panelChannels').classList.remove('open');
   $('#panelEPG').classList.remove('open');
   $('#panelControls').classList.remove('open');
@@ -2559,6 +2669,57 @@ function openSources(){
   closePanels(); openFuncPanel('sources');
 }
 
+/* ============== 分屏模式 ============== */
+/* 分屏模式：视频区域 + 频道浏览区域并排显示
+ * 竖屏：上视频（45%）+ 下频道浏览（55%，左分组 + 右频道）
+ * 横屏：左视频（58%）+ 右频道浏览（42%） */
+function enableSplitMode(){
+  if(state.splitMode) return;
+  state.splitMode = true;
+  document.body.classList.add('split-mode');
+  /* 打开频道面板（内联显示，非浮动抽屉） */
+  $('#panelChannels').classList.add('open');
+  state.panelOpen = 'channels';
+  renderChannelList();
+  updateGroupFilter();
+  updateSplitVideoBar();
+  /* 隐藏面板遮罩（分屏模式不需要） */
+  $('#panelOverlay').classList.remove('show');
+  storage._set('splitMode', true);
+}
+function disableSplitMode(){
+  if(!state.splitMode) return;
+  state.splitMode = false;
+  document.body.classList.remove('split-mode');
+  $('#panelChannels').classList.remove('open');
+  state.panelOpen = null;
+  $('#panelOverlay').classList.remove('show');
+  storage._set('splitMode', false);
+}
+function toggleSplitMode(){
+  if(state.splitMode) disableSplitMode();
+  else enableSplitMode();
+}
+/* 更新分屏模式视频区小控制条 */
+function updateSplitVideoBar(){
+  if(!state.splitMode) return;
+  const nameEl = $('#svbName');
+  if(!nameEl) return;
+  if(state.currentIdx >= 0 && state.channels[state.currentIdx]){
+    const ch = state.channels[state.currentIdx];
+    nameEl.textContent = ch.name || 'ISEP';
+  } else {
+    nameEl.textContent = 'ISEP';
+  }
+  /* 更新播放/暂停图标 */
+  const playBtn = $('#svbPlay');
+  if(playBtn){
+    playBtn.innerHTML = state.mpv.paused
+      ? '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+  }
+}
+
 /* 顶部按钮与控制面板内按钮事件绑定 */
 $('#tbMenuBtn').addEventListener('click', openMainMenu);
 $('#tbChannelsBtn').addEventListener('click', ()=>openPanel('channels'));
@@ -2576,6 +2737,13 @@ $('#bbOSD').addEventListener('click', toggleOSD);
 $('#bbFullscreen').addEventListener('click', toggleFullscreen);
 $('#bbExitCatchup').addEventListener('click', exitCatchup);
 $('#bbVolSlider').addEventListener('input', e=>setVolume(e.target.value));
+/* 分屏模式按钮事件 */
+$('#splitToggleBtn').addEventListener('click', toggleSplitMode);
+$('#svbPlay').addEventListener('click', ()=>{ togglePlay(); updateSplitVideoBar(); });
+$('#svbPrev').addEventListener('click', prevChannel);
+$('#svbNext').addEventListener('click', nextChannel);
+$('#svbMenu').addEventListener('click', openMainMenu);
+$('#svbFullscreen').addEventListener('click', toggleFullscreen);
 /* 进度条 Seek：与 PC 端 mixins/progress_mixin.py:_seek_live/_seek_vod 对齐
  * 实现 pointer 事件支持拖动（与 PC 端 sliderPressed/sliderReleased 对齐）
  * - VOD 模式：直接 seekAbs(pct * duration)
@@ -4130,13 +4298,27 @@ registerFunc('sources', { title:'订阅源' }, body=>{
 });
 function renderSourcesList(){
   if(!state.sources.length) return '<div style="padding:16px;text-align:center;color:var(--text-faint)">无订阅源</div>';
-  return state.sources.map((s,i)=>`
+  return state.sources.map((s,i)=>{
+    const enabled = s.enabled !== false;
+    const toggleBtn = enabled
+      ? `<button class="btn sm" onclick="toggleSource(${i},false)">禁用</button>`
+      : `<button class="btn sm primary" onclick="toggleSource(${i},true)">启用</button>`;
+    const badge = enabled ? '' : '<span class="badge" style="background:rgba(244,67,54,0.15);color:#f44336;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px">禁用</span>';
+    return `
     <div class="list-item">
       <div class="li-icon"><svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></div>
-      <div class="li-text"><div class="li-title">${esc(s.name||s.url||'')}</div><div class="li-sub">${esc(s.url||'')}</div></div>
-      <div class="li-action"><button class="btn sm" onclick="refreshSource(${i})">刷新</button><button class="btn sm danger" onclick="delSource(${i})">删</button></div>
-    </div>
-  `).join('');
+      <div class="li-text"><div class="li-title">${esc(s.name||s.url||'')}${badge}</div><div class="li-sub">${esc(s.url||'')}</div></div>
+      <div class="li-action">${toggleBtn}<button class="btn sm" onclick="refreshSource(${i})">刷新</button><button class="btn sm danger" onclick="delSource(${i})">删</button></div>
+    </div>`;
+  }).join('');
+}
+async function toggleSource(i, enabled){
+  await api.put('/api/sources/'+i, {enabled});
+  await api.fetchSources();
+  $('#srcList').innerHTML=renderSourcesList();
+  showOSD('订阅源', enabled?'已启用':'已禁用');
+  // 禁用/启用后等待后端重新加载频道，然后刷新频道列表
+  setTimeout(()=>api.fetchChannels(), 2000);
 }
 async function delSource(i){
   if(!confirm('删除订阅源？')) return;
@@ -4145,6 +4327,8 @@ async function delSource(i){
   renderSourcesList();
   $('#srcList').innerHTML=renderSourcesList();
   showOSD('订阅源','已删除');
+  // 删除后等待后端重新加载频道，然后刷新频道列表
+  setTimeout(()=>api.fetchChannels(), 2000);
 }
 function importM3U(){
   const inp = document.createElement('input'); inp.type='file'; inp.accept='.m3u,.m3u8,text/plain';
@@ -4572,6 +4756,12 @@ async function initApp(){
 
   /* 3. 拉取服务器数据 */
   await Promise.all([api.fetchSources(), api.fetchChannels()]).catch(()=>{});
+
+  /* 3.5 自动启用分屏模式（默认开启，用户可通过按钮关闭） */
+  const savedSplitMode = storage._get('splitMode', true);
+  if(savedSplitMode && !state.tvMode){
+    enableSplitMode();
+  }
 
   /* 4. 隐藏 splash */
   setTimeout(()=>{

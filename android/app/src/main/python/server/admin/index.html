@@ -1405,6 +1405,8 @@ async function toggleSource(idx, enabled) {
   if (d && d.success) {
     showToast(enabled ? '已启用' : '已禁用', 'success');
     await loadSources();
+    // 禁用/启用后等待后端重新加载频道，然后刷新频道列表
+    setTimeout(() => loadChannels(channelPage), 2000);
   } else {
     showToast((d && d.error) || '操作失败', 'error');
   }
@@ -1436,6 +1438,8 @@ function deleteSource(idx) {
     if (d && d.success) {
       showToast('订阅源已删除', 'success');
       await loadSources();
+      // 删除后等待后端重新加载频道，然后刷新频道列表
+      setTimeout(() => loadChannels(channelPage), 2000);
     } else {
       showToast((d && d.error) || '删除失败', 'error');
     }
