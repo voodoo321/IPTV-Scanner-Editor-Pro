@@ -5,7 +5,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 
 /**
  * IPTV 应用主题。支持深色/浅色/跟随系统三种模式。
@@ -121,4 +123,77 @@ fun IptvTheme(
         colorScheme = if (useDark) IptvDarkColorScheme else IptvLightColorScheme,
         content = content
     )
+}
+
+/**
+ * 判断当前是否为深色主题。
+ * 通过 surface 颜色的亮度判断（luminance < 0.5 = 深色）。
+ */
+@Composable
+@ReadOnlyComposable
+fun isDarkTheme(): Boolean {
+    return MaterialTheme.colorScheme.surface.luminance() < 0.5f
+}
+
+/**
+ * 播放器控制层覆盖颜色 — 随主题自适应。
+ *
+ * 视频控制层叠在视频上方，需要遮罩保证对比度：
+ * - 深色主题：深色半透明遮罩 + 白色图标/文字
+ * - 浅色主题：浅色半透明遮罩 + 深色图标/文字
+ * 强调色（进度条、激活态）在两种主题下统一使用蓝色。
+ */
+data class PlayerOverlayColors(
+    val scrim: Color,           // 控制层半透明背景
+    val topBarBg: Color,        // 顶部信息条背景
+    val infoBarBg: Color,       // 竖屏信息栏背景
+    val iconTint: Color,        // 图标默认颜色
+    val iconTintActive: Color,  // 激活态图标颜色（如静音/锁定）
+    val textPrimary: Color,     // 主文字色
+    val textSecondary: Color,   // 次要文字色
+    val accent: Color,          // 强调色（进度条/激活按钮）
+    val trackInactive: Color,   // 进度条未激活轨道色
+    val badgeBg: Color,         // 徽章背景色
+    val badgeText: Color,       // 徽章文字色
+    val divider: Color,         // 分隔线/边框色
+)
+
+/**
+ * 获取当前主题下的播放器控制层颜色。
+ */
+@Composable
+@ReadOnlyComposable
+fun rememberPlayerOverlayColors(): PlayerOverlayColors {
+    val dark = isDarkTheme()
+    return if (dark) {
+        PlayerOverlayColors(
+            scrim = Color(0x66000000),
+            topBarBg = Color(0xCC000000),
+            infoBarBg = Color(0xFF1A1A1A),
+            iconTint = Color.White,
+            iconTintActive = Color(0xFFFFA500),
+            textPrimary = Color.White,
+            textSecondary = Color(0xFFCCCCCC),
+            accent = Color(0xFF4A9EFF),
+            trackInactive = Color(0xFF444444),
+            badgeBg = Color(0xFFBDBDBD).copy(alpha = 0.12f),
+            badgeText = Color(0xFFBDBDBD),
+            divider = Color(0xFF333333),
+        )
+    } else {
+        PlayerOverlayColors(
+            scrim = Color(0x66FFFFFF),
+            topBarBg = Color(0xCCFFFFFF),
+            infoBarBg = Color(0xFFF0F0F0),
+            iconTint = Color(0xFF212121),
+            iconTintActive = Color(0xFFE65100),
+            textPrimary = Color(0xFF212121),
+            textSecondary = Color(0xFF666666),
+            accent = Color(0xFF1A73E8),
+            trackInactive = Color(0xFFCCCCCC),
+            badgeBg = Color(0xFF757575).copy(alpha = 0.12f),
+            badgeText = Color(0xFF616161),
+            divider = Color(0xFFE0E0E0),
+        )
+    }
 }

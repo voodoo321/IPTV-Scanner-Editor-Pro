@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.iptv.scanner.editor.pro.player.PlayMode
 import com.iptv.scanner.editor.pro.player.ProgressHelper
+import com.iptv.scanner.editor.pro.ui.theme.rememberPlayerOverlayColors
 import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 import kotlinx.coroutines.delay
 
@@ -79,6 +80,7 @@ fun ControlPanel(viewModel: AppViewModel) {
     val playbackState by viewModel.playbackState.collectAsState()
     val showExitCatchup by viewModel.showExitCatchup.collectAsState()
     val currentProgram = remember { mutableStateOf<com.iptv.scanner.editor.pro.data.IptvEpgProgram?>(null) }
+    val oc = rememberPlayerOverlayColors()
 
     // 周期刷新：当前节目（2 秒）+ 媒体徽章数据（1 秒，对齐 PC 端 updateCtrlInfo 频率）
     var mediaBadgeTick by remember { mutableStateOf(0L) }
@@ -100,7 +102,7 @@ fun ControlPanel(viewModel: AppViewModel) {
     val isTV = uiMode.isTV
 
     Surface(
-        color = Color(0xCC000000),
+        color = oc.topBarBg,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -138,7 +140,7 @@ fun ControlPanel(viewModel: AppViewModel) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = prog.desc,
-                    color = Color(0xFFAAAAAA),
+                    color = oc.textSecondary,
                     fontSize = 11.sp,
                     maxLines = if (isTV) 3 else 2,
                     overflow = TextOverflow.Ellipsis,
@@ -282,17 +284,18 @@ private fun MediaBadgesRow(
         verticalArrangement = Arrangement.spacedBy(if (isTV) 6.dp else 4.dp)
     ) {
         val badgeFontSize = if (isTV) 12.sp else 10.sp
+        val oc = rememberPlayerOverlayColors()
         if (videoInfo.isNotEmpty()) {
-            Badge(text = videoInfo, color = Color(0xFFBDBDBD), fontSize = badgeFontSize)
+            Badge(text = videoInfo, color = oc.badgeText, fontSize = badgeFontSize)
         }
         if (isHdr) {
             Badge(text = if (gamma == "pq") "HDR10" else "HLG", color = Color(0xFFFF9800), fontSize = badgeFontSize)
         }
         if (audioInfo.isNotEmpty()) {
-            Badge(text = audioInfo, color = Color(0xFFBDBDBD), fontSize = badgeFontSize)
+            Badge(text = audioInfo, color = oc.badgeText, fontSize = badgeFontSize)
         }
         if (networkInfo.isNotEmpty()) {
-            Badge(text = networkInfo, color = Color(0xFFBDBDBD), fontSize = badgeFontSize)
+            Badge(text = networkInfo, color = oc.badgeText, fontSize = badgeFontSize)
         }
         // 缓冲徽章：仅缓冲中显示（0 < bufState < 100）
         if (bufferingState in 1..99) {
@@ -317,6 +320,7 @@ private fun formatBitrate(bitrate: Double): String {
 
 @Composable
 private fun Badge(text: String, color: Color, fontSize: androidx.compose.ui.unit.TextUnit = 10.sp) {
+    val oc = rememberPlayerOverlayColors()
     Surface(
         color = color.copy(alpha = 0.15f),
         shape = RoundedCornerShape(4.dp),
@@ -344,6 +348,7 @@ private fun ProgramInfoRow(
     program: com.iptv.scanner.editor.pro.data.IptvEpgProgram?,
     playbackState: com.iptv.scanner.editor.pro.player.PlaybackState
 ) {
+    val oc = rememberPlayerOverlayColors()
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -351,7 +356,7 @@ private fun ProgramInfoRow(
         // 频道名
         Text(
             text = channel?.name ?: "未选择频道",
-            color = Color.White,
+            color = oc.textPrimary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -363,7 +368,7 @@ private fun ProgramInfoRow(
         if (program != null && program.title.isNotEmpty()) {
             Text(
                 text = " · ${program.title}",
-                color = Color(0xFFCCCCCC),
+                color = oc.textSecondary,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -372,7 +377,7 @@ private fun ProgramInfoRow(
         } else if (mediaTitle.isNotEmpty() && mediaTitle != channel?.name) {
             Text(
                 text = " · $mediaTitle",
-                color = Color(0xFFCCCCCC),
+                color = oc.textSecondary,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -389,7 +394,7 @@ private fun ProgramInfoRow(
                 PlayMode.TIMESHIFT -> "时移"
                 else -> ""
             }
-            Badge(text = indicatorText, color = Color(0xFFFFA500))
+            Badge(text = indicatorText, color = oc.iconTintActive)
             Spacer(modifier = Modifier.width(6.dp))
         }
 
@@ -402,11 +407,12 @@ private fun ProgramInfoRow(
 private fun StatusBadge(
     playbackState: com.iptv.scanner.editor.pro.player.PlaybackState
 ) {
+    val oc = rememberPlayerOverlayColors()
     val text = when {
         playbackState.mode == PlayMode.IDLE -> "已停止"
         else -> "播放中"
     }
-    Badge(text = text, color = Color(0xFF888888))
+    Badge(text = text, color = oc.textSecondary)
 }
 
 // -----------------------------------------------------------------
@@ -415,6 +421,7 @@ private fun StatusBadge(
 
 @Composable
 private fun ProgressBar(viewModel: AppViewModel) {
+    val oc = rememberPlayerOverlayColors()
     // 每秒刷新进度条
     var tick by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
@@ -438,7 +445,7 @@ private fun ProgressBar(viewModel: AppViewModel) {
         // 开始时间标签
         Text(
             text = progressInfo.startLabel,
-            color = Color(0xFFCCCCCC),
+            color = oc.textSecondary,
             fontSize = 11.sp,
             modifier = Modifier.padding(end = 8.dp)
         )
@@ -456,16 +463,16 @@ private fun ProgressBar(viewModel: AppViewModel) {
             },
             modifier = Modifier.weight(1f),
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF4A9EFF),
-                activeTrackColor = Color(0xFF4A9EFF),
-                inactiveTrackColor = Color(0xFF444444)
+                thumbColor = oc.accent,
+                activeTrackColor = oc.accent,
+                inactiveTrackColor = oc.trackInactive
             )
         )
 
         // 结束时间标签
         Text(
             text = progressInfo.endLabel,
-            color = Color(0xFFCCCCCC),
+            color = oc.textSecondary,
             fontSize = 11.sp,
             modifier = Modifier.padding(start = 8.dp)
         )
@@ -492,6 +499,7 @@ private fun ControlButtonsRow(
     onVolumeChange: (Float) -> Unit,
     onExitCatchup: () -> Unit
 ) {
+    val oc = rememberPlayerOverlayColors()
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -500,24 +508,24 @@ private fun ControlButtonsRow(
         // 左侧：频道切换 + 播放控制（TV 模式下隐藏，由遥控器直接控制）
         if (!isTV) {
             IconButton(onClick = onPrev, modifier = Modifier.size(36.dp).tvFocusBorder()) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "上一频道", tint = Color.White)
+                Icon(Icons.Default.SkipPrevious, contentDescription = "上一频道", tint = oc.iconTint)
             }
 
             IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp).tvFocusBorder()) {
                 Icon(
                     imageVector = if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     contentDescription = if (paused) "播放" else "暂停",
-                    tint = Color.White,
+                    tint = oc.iconTint,
                     modifier = Modifier.size(28.dp)
                 )
             }
 
             IconButton(onClick = onStop, modifier = Modifier.size(36.dp).tvFocusBorder()) {
-                Icon(Icons.Default.Stop, contentDescription = "停止", tint = Color.White)
+                Icon(Icons.Default.Stop, contentDescription = "停止", tint = oc.iconTint)
             }
 
             IconButton(onClick = onNext, modifier = Modifier.size(36.dp).tvFocusBorder()) {
-                Icon(Icons.Default.SkipNext, contentDescription = "下一频道", tint = Color.White)
+                Icon(Icons.Default.SkipNext, contentDescription = "下一频道", tint = oc.iconTint)
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -529,7 +537,7 @@ private fun ControlButtonsRow(
                 Icon(
                     imageVector = if (muted || volume == 0) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                     contentDescription = "静音",
-                    tint = if (muted) Color(0xFFFFA500) else Color.White
+                    tint = if (muted) oc.iconTintActive else oc.iconTint
                 )
             }
 
@@ -541,15 +549,15 @@ private fun ControlButtonsRow(
                     .weight(1f)
                     .height(24.dp),
                 colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF4A9EFF),
-                    activeTrackColor = Color(0xFF4A9EFF),
-                    inactiveTrackColor = Color(0xFF444444)
+                    thumbColor = oc.accent,
+                    activeTrackColor = oc.accent,
+                    inactiveTrackColor = oc.trackInactive
                 )
             )
 
             Text(
                 text = volume.toString(),
-                color = Color(0xFFCCCCCC),
+                color = oc.textSecondary,
                 fontSize = 11.sp,
                 modifier = Modifier.width(28.dp)
             )
@@ -567,7 +575,7 @@ private fun ControlButtonsRow(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFFFFA500)),
+                        .background(oc.iconTintActive),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

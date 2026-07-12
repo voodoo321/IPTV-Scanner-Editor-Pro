@@ -4382,6 +4382,42 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     }
 
     // -----------------------------------------------------------------
+    // 画面比例切换 — 循环：默认 → 16:9 → 4:3 → 拉伸 → 默认
+    // -----------------------------------------------------------------
+
+    private val aspectRatioModes = listOf("默认" to null, "16:9" to "16:9", "4:3" to "4:3", "拉伸" to "stretch")
+    private val _aspectRatioIdx = MutableStateFlow(0)
+    val aspectRatioIdx: StateFlow<Int> = _aspectRatioIdx.asStateFlow()
+
+    /** 循环切换画面比例 */
+    fun cycleAspectRatio() {
+        _aspectRatioIdx.value = (_aspectRatioIdx.value + 1) % aspectRatioModes.size
+        val (label, value) = aspectRatioModes[_aspectRatioIdx.value]
+        when (value) {
+            null -> {
+                // 默认：恢复 keepaspect + 取消 pan-scan
+                mpv.setPropertyString("keepaspect", "yes")
+                mpv.setPropertyString("video-unscaled", "no")
+                mpv.setPropertyString("video-zoom", "0")
+            }
+            "stretch" -> {
+                // 拉伸：关闭 keepaspect，填满画面
+                mpv.setPropertyString("keepaspect", "no")
+                mpv.setPropertyString("video-unscaled", "no")
+                mpv.setPropertyString("video-zoom", "0")
+            }
+            else -> {
+                // 指定比例：keepaspect + video-aspect-override
+                mpv.setPropertyString("keepaspect", "yes")
+                mpv.setPropertyString("video-aspect-override", value)
+                mpv.setPropertyString("video-unscaled", "no")
+                mpv.setPropertyString("video-zoom", "0")
+            }
+        }
+        showOsd("画面比例", label)
+    }
+
+    // -----------------------------------------------------------------
     // 切片导出 — 利用 ffmpeg（与 PC 端 ClipExportDialog 对齐）
     // -----------------------------------------------------------------
 

@@ -26,10 +26,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -72,6 +79,8 @@ import com.iptv.scanner.editor.pro.data.ReminderItem
 import com.iptv.scanner.editor.pro.data.UserPrefs
 import com.iptv.scanner.editor.pro.mpv.MPVView
 import com.iptv.scanner.editor.pro.player.PlayerType
+import com.iptv.scanner.editor.pro.ui.theme.PlayerOverlayColors
+import com.iptv.scanner.editor.pro.ui.theme.rememberPlayerOverlayColors
 import androidx.media3.ui.PlayerView
 
 /**
@@ -136,6 +145,9 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
     val videoWidth by player.videoWidth.collectAsState()
     val videoHeight by player.videoHeight.collectAsState()
     val fileLoaded by player.fileLoaded.collectAsState()
+
+    // 主题自适应覆盖颜色
+    val oc = rememberPlayerOverlayColors()
 
     // 多画面状态
     val multiViewState by viewModel.multiViewState.collectAsState()
@@ -366,7 +378,7 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color(0x66000000))
+                            .background(oc.scrim)
                     ) {
                         Column(
                             modifier = Modifier.fillMaxSize().systemBarsPadding(),
@@ -381,6 +393,13 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                                 onEpgClick = { viewModel.showEpgPanel() },
                                 onMenuClick = { viewModel.showMenuPanel() }
                             )
+                            // 快捷工具栏（横屏模式）
+                            if (!uiMode.isTV) {
+                                QuickActionBar(
+                                    viewModel = viewModel,
+                                    orientation = QuickActionBarOrientation.Landscape
+                                )
+                            }
                             ControlPanel(viewModel = viewModel)
                         }
                     }
@@ -605,8 +624,9 @@ private fun TopBar(
     onEpgClick: () -> Unit,
     onMenuClick: () -> Unit
 ) {
+    val oc = rememberPlayerOverlayColors()
     Surface(
-        color = Color(0xCC000000),
+        color = oc.topBarBg,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -624,7 +644,7 @@ private fun TopBar(
                 Text(
                     text = channelName,
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
+                    color = oc.textPrimary,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1
                 )
@@ -632,7 +652,7 @@ private fun TopBar(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "（已暂停）",
-                        color = Color(0xFFFFA500),
+                        color = oc.iconTintActive,
                         fontSize = 12.sp
                     )
                 }
@@ -645,21 +665,21 @@ private fun TopBar(
                         Icon(
                             Icons.Default.VideoLibrary,
                             contentDescription = "频道列表",
-                            tint = Color.White
+                            tint = oc.iconTint
                         )
                     }
                     IconButton(onClick = onEpgClick) {
                         Icon(
                             Icons.Default.CalendarMonth,
                             contentDescription = "EPG 节目单",
-                            tint = Color.White
+                            tint = oc.iconTint
                         )
                     }
                     IconButton(onClick = onMenuClick) {
                         Icon(
                             Icons.Default.Menu,
                             contentDescription = "主菜单",
-                            tint = Color.White
+                            tint = oc.iconTint
                         )
                     }
                 }
@@ -668,7 +688,7 @@ private fun TopBar(
             Text(
                 text = mode,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF888888)
+                color = oc.textSecondary
             )
         }
     }
@@ -693,6 +713,7 @@ private fun SplitVideoArea(
     val volume by mpv.volume.collectAsState()
     val showExitCatchup by viewModel.showExitCatchup.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+    val oc = rememberPlayerOverlayColors()
 
     Box(
         modifier = modifier
@@ -714,7 +735,7 @@ private fun SplitVideoArea(
                     .clickable { viewModel.toggleControls() }
             )
         }
-        // 控制层（简化版：右上角菜单按钮 + 底部播放控制）
+        // 控制层（简化版：右上角菜单按钮 + QuickActionBar + 底部播放控制）
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(),
@@ -723,13 +744,13 @@ private fun SplitVideoArea(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x66000000))
+                    .background(oc.scrim)
             ) {
-                // 右上角：仅菜单按钮
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                 ) {
+                    // 右上角：菜单按钮
                     IconButton(
                         onClick = { viewModel.showMenuPanel() },
                         modifier = Modifier
@@ -739,15 +760,20 @@ private fun SplitVideoArea(
                         Icon(
                             Icons.Default.Menu,
                             contentDescription = "主菜单",
-                            tint = Color.White
+                            tint = oc.iconTint
                         )
                     }
-                    // 底部控制栏（仅按钮+进度条，无媒体信息和节目信息）
+                    // 底部控制栏：QuickActionBar + 进度条 + 控制按钮
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                     ) {
+                        // 快捷工具栏
+                        QuickActionBar(
+                            viewModel = viewModel,
+                            orientation = QuickActionBarOrientation.Portrait
+                        )
                         // 进度条
                         PortraitProgressBar(viewModel = viewModel)
                         // 控制按钮行
@@ -783,6 +809,7 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
     val videoHeight by mpv.videoHeight.collectAsState()
     val fileLoaded by mpv.fileLoaded.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+    val oc = rememberPlayerOverlayColors()
 
     // 当前 EPG 节目（2秒刷新）
     var currentProgram by remember { mutableStateOf<com.iptv.scanner.editor.pro.data.IptvEpgProgram?>(null) }
@@ -803,7 +830,7 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
     }
 
     Surface(
-        color = Color(0xFF1A1A1A),
+        color = oc.infoBarBg,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -832,7 +859,7 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = currentChannel?.name ?: "未选择频道",
-                        color = Color.White,
+                        color = oc.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -841,7 +868,7 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
                     if (currentProgram != null && currentProgram!!.title.isNotEmpty()) {
                         Text(
                             text = currentProgram!!.title,
-                            color = Color(0xFFCCCCCC),
+                            color = oc.textSecondary,
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -849,7 +876,7 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
                     } else if (currentChannel != null && currentChannel!!.group.isNotEmpty()) {
                         Text(
                             text = currentChannel!!.group,
-                            color = Color(0xFF888888),
+                            color = oc.textSecondary,
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -864,13 +891,13 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
                         else -> ""
                     }
                     Surface(
-                        color = Color(0xFFFFA500).copy(alpha = 0.15f),
+                        color = oc.iconTintActive.copy(alpha = 0.15f),
                         shape = RoundedCornerShape(4.dp),
                         modifier = Modifier.clip(RoundedCornerShape(4.dp)).padding(end = 4.dp)
                     ) {
                         Text(
                             text = indicatorText,
-                            color = Color(0xFFFFA500),
+                            color = oc.iconTintActive,
                             fontSize = 10.sp,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
@@ -884,7 +911,7 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
                     Icon(
                         Icons.Default.CalendarMonth,
                         contentDescription = "查看EPG",
-                        tint = Color(0xFF4A9EFF),
+                        tint = oc.accent,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -901,13 +928,13 @@ private fun PortraitInfoBar(viewModel: AppViewModel) {
                     ) {
                         mediaInfo.take(3).forEach { info ->
                             Surface(
-                                color = Color(0xFFBDBDBD).copy(alpha = 0.12f),
+                                color = oc.badgeBg,
                                 shape = RoundedCornerShape(4.dp),
                                 modifier = Modifier.clip(RoundedCornerShape(4.dp))
                             ) {
                                 Text(
                                     text = info,
-                                    color = Color(0xFFBDBDBD),
+                                    color = oc.badgeText,
                                     fontSize = 10.sp,
                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
                                     maxLines = 1
@@ -954,6 +981,7 @@ private fun buildPortraitMediaInfo(
 /** 竖屏进度条（精简版） */
 @Composable
 private fun PortraitProgressBar(viewModel: AppViewModel) {
+    val oc = rememberPlayerOverlayColors()
     var tick by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -975,7 +1003,7 @@ private fun PortraitProgressBar(viewModel: AppViewModel) {
     ) {
         Text(
             text = progressInfo.startLabel,
-            color = Color(0xFFCCCCCC),
+            color = oc.textSecondary,
             fontSize = 10.sp
         )
         Slider(
@@ -987,14 +1015,14 @@ private fun PortraitProgressBar(viewModel: AppViewModel) {
             },
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF4A9EFF),
-                activeTrackColor = Color(0xFF4A9EFF),
-                inactiveTrackColor = Color(0xFF444444)
+                thumbColor = oc.accent,
+                activeTrackColor = oc.accent,
+                inactiveTrackColor = oc.trackInactive
             )
         )
         Text(
             text = progressInfo.endLabel,
-            color = Color(0xFFCCCCCC),
+            color = oc.textSecondary,
             fontSize = 10.sp
         )
     }
@@ -1016,6 +1044,7 @@ private fun PortraitControlButtons(
     onVolumeChange: (Float) -> Unit,
     onExitCatchup: () -> Unit
 ) {
+    val oc = rememberPlayerOverlayColors()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1024,28 +1053,28 @@ private fun PortraitControlButtons(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         IconButton(onClick = onPrev, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.SkipPrevious, contentDescription = "上一频道", tint = Color.White)
+            Icon(Icons.Default.SkipPrevious, contentDescription = "上一频道", tint = oc.iconTint)
         }
         IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
                 contentDescription = if (paused) "播放" else "暂停",
-                tint = Color.White,
+                tint = oc.iconTint,
                 modifier = Modifier.size(28.dp)
             )
         }
         IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.Stop, contentDescription = "停止", tint = Color.White)
+            Icon(Icons.Default.Stop, contentDescription = "停止", tint = oc.iconTint)
         }
         IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.SkipNext, contentDescription = "下一频道", tint = Color.White)
+            Icon(Icons.Default.SkipNext, contentDescription = "下一频道", tint = oc.iconTint)
         }
         Spacer(modifier = Modifier.width(8.dp))
         IconButton(onClick = onMute, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = if (muted || volume == 0) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                 contentDescription = "静音",
-                tint = if (muted) Color(0xFFFFA500) else Color.White
+                tint = if (muted) oc.iconTintActive else oc.iconTint
             )
         }
         Slider(
@@ -1054,14 +1083,14 @@ private fun PortraitControlButtons(
             valueRange = 0f..130f,
             modifier = Modifier.weight(1f).height(24.dp),
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF4A9EFF),
-                activeTrackColor = Color(0xFF4A9EFF),
-                inactiveTrackColor = Color(0xFF444444)
+                thumbColor = oc.accent,
+                activeTrackColor = oc.accent,
+                inactiveTrackColor = oc.trackInactive
             )
         )
         Text(
             text = volume.toString(),
-            color = Color(0xFFCCCCCC),
+            color = oc.textSecondary,
             fontSize = 11.sp,
             modifier = Modifier.width(28.dp)
         )
@@ -1072,7 +1101,7 @@ private fun PortraitControlButtons(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFFFFA500)),
+                        .background(oc.iconTintActive),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -1252,5 +1281,138 @@ private fun ReminderPopup(
                 }
             }
         }
+    }
+}
+
+// -----------------------------------------------------------------
+// 快捷工具栏 (QuickActionBar)
+//
+// 在视频控制层中提供常用功能的快捷入口，避免每次都要打开主菜单。
+// 图标颜色随深色/浅色主题自适应。
+// -----------------------------------------------------------------
+
+/** QuickActionBar 朝向 */
+enum class QuickActionBarOrientation { Portrait, Landscape }
+
+/**
+ * 快捷工具栏：截图 / 比例 / 锁定 / 画中画 / 音频可视化 / 歌词 / 主题切换
+ *
+ * - 深色主题：白色图标，激活态橙色
+ * - 浅色主题：深色图标，激活态橙色
+ * 所有颜色通过 [rememberPlayerOverlayColors] 自动适配。
+ */
+@Composable
+private fun QuickActionBar(
+    viewModel: AppViewModel,
+    orientation: QuickActionBarOrientation
+) {
+    val oc = rememberPlayerOverlayColors()
+    val controlsPinned by viewModel.controlsPinned.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val audioVisualizerOpen by viewModel.audioVisualizerOpen.collectAsState()
+    val lyricsOpen by viewModel.lyricsOpen.collectAsState()
+    val aspectRatioIdx by viewModel.aspectRatioIdx.collectAsState()
+
+    val aspectLabels = listOf("默认", "16:9", "4:3", "拉伸")
+
+    Surface(
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = if (orientation == QuickActionBarOrientation.Landscape) 16.dp else 12.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (orientation == QuickActionBarOrientation.Landscape) 6.dp else 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 截图
+            QuickActionItem(
+                icon = Icons.Default.CropFree,
+                label = "截图",
+                tint = oc.iconTint,
+                onClick = { viewModel.takeScreenshot("video") }
+            )
+            // 画面比例
+            QuickActionItem(
+                icon = Icons.Default.AspectRatio,
+                label = aspectLabels.getOrElse(aspectRatioIdx) { "比例" },
+                tint = if (aspectRatioIdx > 0) oc.accent else oc.iconTint,
+                onClick = { viewModel.cycleAspectRatio() }
+            )
+            // 锁定控制层
+            QuickActionItem(
+                icon = if (controlsPinned) Icons.Default.Lock else Icons.Default.LockOpen,
+                label = if (controlsPinned) "已锁" else "锁定",
+                tint = if (controlsPinned) oc.accent else oc.iconTint,
+                onClick = { viewModel.toggleControlsPinned() }
+            )
+            // 画中画
+            QuickActionItem(
+                icon = Icons.Default.PictureInPicture,
+                label = "PiP",
+                tint = oc.iconTint,
+                onClick = { viewModel.enterPip() }
+            )
+            // 音频可视化
+            QuickActionItem(
+                icon = Icons.Default.MusicNote,
+                label = "频谱",
+                tint = if (audioVisualizerOpen) oc.accent else oc.iconTint,
+                onClick = { viewModel.toggleAudioVisualizer() }
+            )
+            // 歌词
+            QuickActionItem(
+                icon = Icons.Default.MusicNote,
+                label = "歌词",
+                tint = if (lyricsOpen) oc.accent else oc.iconTint,
+                onClick = { viewModel.toggleLyricsPanel() }
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            // 主题切换（深色↔浅色快速切换）
+            QuickActionItem(
+                icon = Icons.Default.Brightness4,
+                label = when (themeMode) { "light" -> "浅色"; "system" -> "系统"; else -> "深色" },
+                tint = oc.iconTint,
+                onClick = {
+                    val next = when (themeMode) {
+                        "dark" -> "light"
+                        "light" -> "system"
+                        else -> "dark"
+                    }
+                    viewModel.setThemeMode(next)
+                }
+            )
+        }
+    }
+}
+
+/** QuickActionBar 单个快捷按钮 */
+@Composable
+private fun QuickActionItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = label,
+            color = tint,
+            fontSize = 9.sp,
+            maxLines = 1
+        )
     }
 }
