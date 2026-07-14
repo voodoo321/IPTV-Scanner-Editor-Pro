@@ -175,7 +175,7 @@ fun FileBrowserPanel(viewModel: AppViewModel) {
 Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
 // 标题栏
 Surface(
-                color = Color(0xFF1F1F1F),
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -217,7 +217,7 @@ Surface(
             // 权限不足提示
             if (!hasStoragePermission) {
                 Surface(
-                    color = Color(0xFF2A2010),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(

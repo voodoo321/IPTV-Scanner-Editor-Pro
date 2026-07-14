@@ -150,12 +150,12 @@ fun ChannelsPanel(viewModel: AppViewModel, inline: Boolean = false, compact: Boo
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.setSearchQuery(it) },
-                    placeholder = { Text("搜索频道...", color = Color(0xFF888888), fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF888888)) },
+                    placeholder = { Text("搜索频道...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.tvFocusBorder()) {
-                                Icon(Icons.Default.Close, contentDescription = "清空", tint = Color(0xFF888888))
+                                Icon(Icons.Default.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     },
@@ -168,7 +168,7 @@ fun ChannelsPanel(viewModel: AppViewModel, inline: Boolean = false, compact: Boo
                 )
             }
 
-            Divider(color = Color(0xFF2A2A2A))
+            Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             // -----------------------------------------------------------------
             // 主体区域：左列分组 + 右列频道（双列布局）
@@ -189,7 +189,7 @@ fun ChannelsPanel(viewModel: AppViewModel, inline: Boolean = false, compact: Boo
                         modifier = Modifier
                             .fillMaxHeight()
                             .width(1.dp)
-                            .background(Color(0xFF2A2A2A))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     )
 
                     // 右列：频道列表
@@ -239,7 +239,7 @@ private fun ChannelListContent(
                     ChannelTab.FAV -> "暂无收藏\n点击频道右侧星标添加"
                     ChannelTab.HIST -> "暂无历史\n播放后会自动记录"
                 },
-                color = Color(0xFF888888),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 20.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -280,7 +280,7 @@ private fun GroupListColumn(
     val allItems = remember(groups) { listOf("") + groups }
 
     Surface(
-        color = Color(0xFF121212),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier.fillMaxHeight()
     ) {
         LazyColumn(
@@ -304,7 +304,7 @@ private fun GroupListColumn(
                             .width(3.dp)
                             .height(16.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(if (isSelected) Color(0xFF4A9EFF) else Color.Transparent)
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -336,7 +336,7 @@ fun PanelHeader(
     closeFocusRequester: FocusRequester? = null
 ) {
     Surface(
-        color = Color(0xFF1F1F1F),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -350,14 +350,14 @@ fun PanelHeader(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
                 if (subtitle.isNotEmpty()) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF888888)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -370,7 +370,7 @@ fun PanelHeader(
                         else Modifier
                     )
             ) {
-                Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                Icon(Icons.Default.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
@@ -391,7 +391,7 @@ fun ChannelTabsRow(
         ChannelTab.HIST to "历史"
     )
     Surface(
-        color = Color(0xFF1A1A1A),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -408,8 +408,8 @@ fun ChannelTabsRow(
                     label = { Text(label, fontSize = 12.sp) },
                     modifier = Modifier.weight(1f),
                     colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF4A9EFF),
-                        selectedLabelColor = Color.White,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onSurface,
                         containerColor = Color.Transparent,
                         labelColor = Color(0xFFCCCCCC)
                     )
@@ -443,7 +443,7 @@ private fun ChannelListItem(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (isPlaying) Color(0xFF4A9EFF) else Color(0xFF444444))
+                .background(if (isPlaying) MaterialTheme.colorScheme.primary else Color(0xFF444444))
         )
 
         Spacer(modifier = Modifier.width(10.dp))
@@ -452,7 +452,7 @@ private fun ChannelListItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = channel.name,
-                color = if (isPlaying) Color(0xFF6A9EFF) else Color.White,
+                color = if (isPlaying) Color(0xFF6A9EFF) else MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = if (isPlaying) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -461,7 +461,7 @@ private fun ChannelListItem(
             if (showGroupMeta && channel.group.isNotEmpty()) {
                 Text(
                     text = channel.group,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

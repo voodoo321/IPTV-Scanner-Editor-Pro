@@ -606,7 +606,15 @@ class ServerContext:
                         logger.warning(f"加载源 {src_url} 失败: {err}")
                         continue
                     content = load_m3u_from_url_data(resp.content)
-                    channels, _ = parse_m3u_content(content)
+                    channels, header_attrs = parse_m3u_content(content)
+                    # 提取 M3U 头部 x-tvg-url 定义的 EPG 地址并自动加载
+                    epg_url_from_m3u = header_attrs.get('epg_url', '') if header_attrs else ''
+                    if epg_url_from_m3u:
+                        logger.info(f"M3U 源 {src_url} 包含 EPG 地址: {epg_url_from_m3u}")
+                        try:
+                            self.load_single_epg(epg_url_from_m3u)
+                        except Exception as epg_e:
+                            logger.warning(f"加载 M3U 内嵌 EPG 失败: {epg_e}")
                     # 更新该源的 last_update 时间戳（无论是否解析到频道，HTTP 拉取已成功）
                     from datetime import datetime
                     config.update_playlist_source_last_update(idx, datetime.now().isoformat())

@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -105,6 +106,7 @@ import androidx.compose.ui.unit.sp
 import com.iptv.scanner.editor.pro.data.MappingEntry
 import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 import com.iptv.scanner.editor.pro.ui.theme.tvTextField
+import com.iptv.scanner.editor.pro.ui.theme.rememberPlayerOverlayColors
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -137,13 +139,14 @@ import java.util.Locale
  */
 @Composable
 private fun PanelScaffold(
-    title: String,
-    subtitle: String = "",
-    onClose: () -> Unit,
-    actions: @Composable (() -> Unit) = {},
-    scrollable: Boolean = true,
-    content: @Composable () -> Unit
+title: String,
+subtitle: String = "",
+onClose: () -> Unit,
+actions: @Composable (() -> Unit) = {},
+scrollable: Boolean = true,
+content: @Composable () -> Unit
 ) {
+val oc = rememberPlayerOverlayColors()
     // 面板打开时主动抢焦点，避免焦点回落到下层统一面板的菜单项导致无法操作子面板。
     // focusGroup() 让 DPAD 导航限制在面板内部，不外溢到下层。
     val closeFocusRequester = remember { FocusRequester() }
@@ -153,7 +156,7 @@ private fun PanelScaffold(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Surface(
-        color = Color(0xF0121212),
+        color = Color.Transparent,
         modifier = Modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -178,12 +181,13 @@ private fun PanelScaffold(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White
+                        color = oc.textPrimary,
+                        maxLines = 1
                     )
                     if (subtitle.isNotEmpty()) {
                         Text(
                             text = subtitle,
-                            color = Color(0xFF888888),
+                            color = oc.textSecondary,
                             fontSize = 12.sp
                         )
                     }
@@ -194,7 +198,7 @@ private fun PanelScaffold(
                         onClick = onClose,
                         modifier = Modifier.tvFocusBorder().focusRequester(closeFocusRequester)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = oc.iconTint)
                     }
                 }
             }
@@ -217,7 +221,7 @@ private fun PanelScaffold(
 private fun SectionLabel(text: String) {
     Text(
         text = text,
-        color = Color(0xFF4A9EFF),
+        color = MaterialTheme.colorScheme.primary,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
@@ -228,7 +232,7 @@ private fun SectionLabel(text: String) {
 private fun DescText(text: String) {
     Text(
         text = text,
-        color = Color(0xFF888888),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 12.sp,
         modifier = Modifier.padding(bottom = 8.dp)
     )
@@ -237,6 +241,7 @@ private fun DescText(text: String) {
 /**
  * 带标签和重置按钮的滑块。
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun LabeledSlider(
     label: String,
@@ -252,29 +257,41 @@ private fun LabeledSlider(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = label, color = Color.White, fontSize = 13.sp)
+            Text(text = label, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = valueText,
-                    color = Color(0xFF4A9EFF),
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 13.sp,
                     modifier = Modifier.width(60.dp),
                     fontWeight = FontWeight.Medium
                 )
                 TextButton(onClick = onReset, modifier = Modifier.padding(start = 0.dp).tvFocusBorder()) {
-                    Text("重置", fontSize = 12.sp, color = Color(0xFF888888))
+                    Text("重置", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
+        val oc = rememberPlayerOverlayColors()
         Slider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
             modifier = Modifier.fillMaxWidth().tvFocusBorder(),
+            thumb = {
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .background(oc.accent, androidx.compose.foundation.shape.CircleShape)
+                        .then(Modifier.border(2.dp, oc.accent.copy(alpha = 0.3f), androidx.compose.foundation.shape.CircleShape))
+                )
+            },
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF4A9EFF),
-                activeTrackColor = Color(0xFF4A9EFF),
-                inactiveTrackColor = Color(0xFF444444)
+                thumbColor = oc.accent,
+                activeTrackColor = oc.accent,
+                inactiveTrackColor = oc.trackInactive,
+                disabledThumbColor = oc.accent.copy(alpha = 0.5f),
+                disabledActiveTrackColor = oc.accent.copy(alpha = 0.5f),
+                disabledInactiveTrackColor = oc.trackInactive
             )
         )
     }
@@ -298,7 +315,7 @@ fun OpenUrlDialog(viewModel: AppViewModel) {
             Column {
                 Text(
                     "输入 M3U/M3U8/HLS/RTSP/RTMP 等协议 URL",
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -380,11 +397,11 @@ fun VideoSettingsPanel(viewModel: AppViewModel) {
                     viewModel.showOsd("视频设置", "已重置")
                 },
                 modifier = Modifier.tvFocusBorder()
-            ) { Text("全部重置", color = Color(0xFF888888), fontSize = 12.sp) }
+            ) { Text("全部重置", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
         }
     ) {
         if (!fileLoaded) {
-            Text("未在播放，调整将在播放后生效", color = Color(0xFF888888), fontSize = 12.sp)
+            Text("未在播放，调整将在播放后生效", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
 
         SectionLabel("图像调整")
@@ -471,7 +488,7 @@ fun VideoSettingsPanel(viewModel: AppViewModel) {
         DescText("调整后点击「应用」生效。需 ffmpeg panorama 滤镜支持，部分设备不可用")
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("投影：", color = Color.White, fontSize = 13.sp)
+            Text("投影：", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
             listOf("flat" to "平面", "equirect" to "等距柱状", "cubemap" to "立方体贴图").forEach { (p, label) ->
                 FilterChip(
                     selected = projection == p,
@@ -609,11 +626,11 @@ fun AudioSettingsPanel(viewModel: AppViewModel) {
                     viewModel.showOsd("音频设置", "已重置")
                 },
                 modifier = Modifier.tvFocusBorder()
-            ) { Text("重置", color = Color(0xFF888888), fontSize = 12.sp) }
+            ) { Text("重置", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
         }
     ) {
         if (!fileLoaded) {
-            Text("未在播放", color = Color(0xFF888888), fontSize = 12.sp)
+            Text("未在播放", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
 
         SectionLabel("音轨")
@@ -731,7 +748,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
                 viewModel.toggleSubtitleSettings()
                 viewModel.toggleSubtitleSearchPanel()
             }, modifier = Modifier.tvFocusBorder()) {
-                Icon(Icons.Default.Search, contentDescription = "在线搜索字幕", tint = Color.White)
+                Icon(Icons.Default.Search, contentDescription = "在线搜索字幕", tint = MaterialTheme.colorScheme.onSurface)
             }
             // 加载外挂字幕按钮
             IconButton(onClick = {
@@ -740,7 +757,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
                     "application/x-srt", "application/x-ass", "application/x-ssa"
                 ))
             }, modifier = Modifier.tvFocusBorder()) {
-                Icon(Icons.Default.Subtitles, contentDescription = "加载字幕", tint = Color.White)
+                Icon(Icons.Default.Subtitles, contentDescription = "加载字幕", tint = MaterialTheme.colorScheme.onSurface)
             }
             TextButton(
                 onClick = {
@@ -758,11 +775,11 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
                     viewModel.showOsd("字幕设置", "已重置")
                 },
                 modifier = Modifier.tvFocusBorder()
-            ) { Text("重置", color = Color(0xFF888888), fontSize = 12.sp) }
+            ) { Text("重置", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
         }
     ) {
         if (!fileLoaded) {
-            Text("未在播放", color = Color(0xFF888888), fontSize = 12.sp)
+            Text("未在播放", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
 
         // 字幕显示开关
@@ -772,7 +789,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("显示字幕", color = Color.White, fontSize = 14.sp)
+            Text("显示字幕", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
             Switch(
                 checked = subVisible,
                 onCheckedChange = { subVisible = it; mpv.setSubVisibility(it) },
@@ -906,10 +923,10 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
         )
 
         // 字幕颜色选择（预设色块）
-        Text("字幕颜色", color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        Text("字幕颜色", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
             listOf(
-                "#FFFFFFFF" to Color.White, "#FFFFFF00" to Color.Yellow,
+                "#FFFFFFFF" to MaterialTheme.colorScheme.onSurface, "#FFFFFF00" to Color.Yellow,
                 "#FFFF0000" to Color.Red, "#FF00FF00" to Color.Green,
                 "#FF00FFFF" to Color.Cyan, "#FF000000" to Color.Black
             ).forEach { (hex, color) ->
@@ -929,7 +946,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✓", color = if (color == Color.Black) Color.White else Color.Black, fontSize = 14.sp)
+                            Text("✓", color = if (color == Color.Black) MaterialTheme.colorScheme.onSurface else Color.Black, fontSize = 14.sp)
                         }
                     }
                 }
@@ -937,10 +954,10 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
         }
 
         // 边框颜色选择（预设色块）
-        Text("边框颜色", color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        Text("边框颜色", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
             listOf(
-                "#FF000000" to Color.Black, "#FFFFFFFF" to Color.White,
+                "#FF000000" to Color.Black, "#FFFFFFFF" to MaterialTheme.colorScheme.onSurface,
                 "#FFFF0000" to Color.Red, "#FF0000FF" to Color.Blue,
                 "#FF00FF00" to Color.Green, "#00000000" to Color.Transparent
             ).forEach { (hex, color) ->
@@ -960,7 +977,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✓", color = if (color == Color.Black) Color.White else Color.Black, fontSize = 14.sp)
+                            Text("✓", color = if (color == Color.Black) MaterialTheme.colorScheme.onSurface else Color.Black, fontSize = 14.sp)
                         }
                     }
                 }
@@ -973,7 +990,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("加粗", color = Color.White, fontSize = 13.sp)
+                Text("加粗", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = subBold,
@@ -982,7 +999,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("斜体", color = Color.White, fontSize = 13.sp)
+                Text("斜体", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = subItalic,
@@ -1038,11 +1055,11 @@ fun PlaybackPanel(viewModel: AppViewModel) {
                     viewModel.showOsd("播放设置", "已重置")
                 },
                 modifier = Modifier.tvFocusBorder()
-            ) { Text("重置", color = Color(0xFF888888), fontSize = 12.sp) }
+            ) { Text("重置", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
         }
     ) {
         if (!fileLoaded) {
-            Text("未在播放", color = Color(0xFF888888), fontSize = 12.sp)
+            Text("未在播放", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
 
         SectionLabel("播放速度")
@@ -1091,7 +1108,7 @@ fun PlaybackPanel(viewModel: AppViewModel) {
             )
             Text(
                 text = if (shuffleMode) "随机播放：开" else "随机播放：关",
-                color = if (shuffleMode) Color(0xFF4A9EFF) else Color(0xFF888888),
+                color = if (shuffleMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
         }
@@ -1128,7 +1145,7 @@ fun PlaybackPanel(viewModel: AppViewModel) {
             Text(
                 "A: ${abLoopA?.let { "%.1f".format(it) + "s" } ?: "未设置"}  " +
                     "B: ${abLoopB?.let { "%.1f".format(it) + "s" } ?: "未设置"}",
-                color = Color(0xFF4A9EFF),
+                color = MaterialTheme.colorScheme.primary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -1151,7 +1168,7 @@ fun PlaybackPanel(viewModel: AppViewModel) {
             SectionLabel("章节（${chapterCount} 个）")
             Text(
                 "当前: 第 ${currentChapter + 1} 章",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -1205,7 +1222,7 @@ fun ScreenshotPanel(viewModel: AppViewModel) {
         }
     ) {
         if (!fileLoaded) {
-            Text("未在播放，无法截图", color = Color(0xFF888888), fontSize = 12.sp)
+            Text("未在播放，无法截图", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
 
         SectionLabel("截图模式")
@@ -1240,9 +1257,9 @@ fun ScreenshotPanel(viewModel: AppViewModel) {
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White)
+                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("截图", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                Text("截图", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             }
         }
 
@@ -1407,7 +1424,7 @@ fun AboutPanel(viewModel: AppViewModel) {
     ) {
         SectionLabel("版本信息")
         Surface(
-            color = Color(0xFF1E1E1E),
+            color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -1499,8 +1516,8 @@ private fun InfoRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, color = Color(0xFF888888), fontSize = 13.sp)
-        Text(text = value, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        Text(text = value, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -1551,7 +1568,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "当前版本：v$currentVersion",
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -1567,7 +1584,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
                     is AppViewModel.ApkDownloadState.Downloading -> {
                         Text(
                             "正在下载更新包… ${s.progress}%",
-                            color = Color(0xFF4A9EFF),
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -1575,13 +1592,13 @@ fun UpdateDialog(viewModel: AppViewModel) {
                         LinearProgressIndicator(
                             progress = { s.progress / 100f },
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF4A9EFF),
+                            color = MaterialTheme.colorScheme.primary,
                             trackColor = Color(0xFF333333)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "下载过程中请保持网络畅通，完成后将自动弹出安装界面。",
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp
                         )
                     }
@@ -1595,7 +1612,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "若安装界面未自动弹出，请点击「立即安装」重试。",
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp
                         )
                     }
@@ -1608,7 +1625,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "请重试，或点击「浏览器下载」跳转 GitHub 手动安装。",
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp
                         )
                     }
@@ -1789,18 +1806,18 @@ fun MappingPanel(viewModel: AppViewModel) {
                 enabled = !mappingLoading,
                 modifier = Modifier.tvFocusBorder()
             ) {
-                Text("刷新远程", color = Color.White, fontSize = 12.sp)
+                Text("刷新远程", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
             }
             Spacer(modifier = Modifier.width(8.dp))
             OutlinedButton(
                 onClick = { showAddDialog = true },
                 modifier = Modifier.tvFocusBorder()
             ) {
-                Text("添加", color = Color.White, fontSize = 12.sp)
+                Text("添加", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
             }
         }
     ) {
-        Text(text = statusText, color = Color(0xFF888888), fontSize = 12.sp)
+        Text(text = statusText, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
 
         OutlinedTextField(
             value = searchQuery,
@@ -1815,7 +1832,7 @@ fun MappingPanel(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Color(0xFF4A9EFF))
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
             val filtered = if (searchQuery.isBlank()) {
@@ -1858,7 +1875,7 @@ private fun MappingEntryRow(
     onDelete: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF1E1E1E),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
     ) {
@@ -1869,7 +1886,7 @@ private fun MappingEntryRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = entry.standardName,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -1877,7 +1894,7 @@ private fun MappingEntryRow(
                 )
                 Text(
                     text = "← ${entry.rawName}",
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1998,7 +2015,7 @@ fun AvSyncPanel(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("同步状态", color = Color(0xFF888888), fontSize = 13.sp)
+            Text("同步状态", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             Text(
                 text = when {
                     diffAbs < 0.04 -> "良好"
@@ -2030,13 +2047,13 @@ fun AvSyncPanel(viewModel: AppViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(onClick = { viewModel.adjustAudioDelay(-0.1) }, modifier = Modifier.weight(1f).tvFocusBorder()) {
-                    Text("-0.1s", color = Color.White)
+                    Text("-0.1s", color = MaterialTheme.colorScheme.onSurface)
                 }
                 OutlinedButton(onClick = { viewModel.adjustAudioDelay(0.1) }, modifier = Modifier.weight(1f).tvFocusBorder()) {
-                    Text("+0.1s", color = Color.White)
+                    Text("+0.1s", color = MaterialTheme.colorScheme.onSurface)
                 }
                 OutlinedButton(onClick = { viewModel.resetAudioDelay() }, modifier = Modifier.weight(1f).tvFocusBorder()) {
-                    Text("重置", color = Color.White)
+                    Text("重置", color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         } else {
@@ -2051,7 +2068,7 @@ fun AvSyncPanel(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("启用自动同步", color = Color.White, fontSize = 13.sp)
+            Text("启用自动同步", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
             Switch(
                 checked = subSyncEnabled,
                 onCheckedChange = { viewModel.toggleSubSync() },
@@ -2071,8 +2088,9 @@ private fun AvSyncWaveform(
     history: List<Float>,
     modifier: Modifier = Modifier
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
     Surface(
-        color = Color(0xFF1A1A1A),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
         modifier = modifier
     ) {
@@ -2101,7 +2119,7 @@ private fun AvSyncWaveform(
             }
             drawPath(
                 path = path,
-                color = Color(0xFF4A9EFF),
+                color = accentColor,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
             )
             // 最新的点
@@ -2181,17 +2199,17 @@ fun NetworkPanel(viewModel: AppViewModel) {
                     viewModel.clearNetworkSettings()
                 },
                 modifier = Modifier.weight(1f).tvFocusBorder()
-            ) { Text("清除", color = Color.White) }
+            ) { Text("清除", color = MaterialTheme.colorScheme.onSurface) }
 
             OutlinedButton(
                 onClick = { viewModel.applyNetworkSettings(referer, proxy, headers) },
                 modifier = Modifier.weight(1f).tvFocusBorder()
-            ) { Text("应用", color = Color.White) }
+            ) { Text("应用", color = MaterialTheme.colorScheme.onSurface) }
 
             OutlinedButton(
                 onClick = { viewModel.saveNetworkSettings(referer, proxy, headers) },
                 modifier = Modifier.weight(1f).tvFocusBorder()
-            ) { Text("保存", color = Color(0xFF4A9EFF)) }
+            ) { Text("保存", color = MaterialTheme.colorScheme.primary) }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -2252,7 +2270,7 @@ fun ToolsPanel(viewModel: AppViewModel) {
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
             items(tools) { tool ->
                 ToolEntryRow(tool)
-                HorizontalDivider(color = Color(0xFF2A2A2A))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
     }
@@ -2278,13 +2296,13 @@ private fun ToolEntryRow(tool: ToolEntry) {
         Icon(
             imageVector = tool.icon,
             contentDescription = tool.title,
-            tint = Color(0xFF4A9EFF),
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(28.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = tool.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(text = tool.desc, color = Color(0xFF888888), fontSize = 12.sp)
+            Text(text = tool.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(text = tool.desc, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
     }
 }
@@ -2322,14 +2340,14 @@ fun SubtitleSearchPanel(viewModel: AppViewModel) {
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("输入片名或关键词...", color = Color(0xFF888888), fontSize = 13.sp) },
+            placeholder = { Text("输入片名或关键词...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
                     IconButton(
                         onClick = { query = "" },
                         modifier = Modifier.tvFocusBorder()
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "清空", tint = Color(0xFF888888))
+                        Icon(Icons.Default.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -2354,8 +2372,8 @@ fun SubtitleSearchPanel(viewModel: AppViewModel) {
                     onClick = { selectedLang = code },
                     label = { Text(label, fontSize = 12.sp) },
                     colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF4A9EFF),
-                        selectedLabelColor = Color.White
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.tvFocusBorder()
                 )
@@ -2371,7 +2389,7 @@ fun SubtitleSearchPanel(viewModel: AppViewModel) {
         ) {
             if (searching) {
                 CircularProgressIndicator(
-                    color = Color(0xFF4A9EFF),
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
             } else {
@@ -2379,16 +2397,16 @@ fun SubtitleSearchPanel(viewModel: AppViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF4A9EFF))
+                        .background(MaterialTheme.colorScheme.primary)
                         .clickable { viewModel.searchSubtitles(query, selectedLang) }
                         .tvFocusBorder()
                         .padding(vertical = 10.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("搜索", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("搜索", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -2424,7 +2442,7 @@ fun SubtitleSearchPanel(viewModel: AppViewModel) {
                             }
                         }
                     )
-                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 }
             }
         } else if (!searching && query.isNotEmpty() && error.isEmpty()) {
@@ -2432,7 +2450,7 @@ fun SubtitleSearchPanel(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("点击搜索按钮开始查找", color = Color(0xFF888888), fontSize = 13.sp)
+                Text("点击搜索按钮开始查找", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
         }
     }
@@ -2455,7 +2473,7 @@ private fun SubtitleResultRow(
             // 第一行：文件名
             Text(
                 text = item.fileName.ifBlank { item.title },
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -2468,10 +2486,10 @@ private fun SubtitleResultRow(
             ) {
                 SourceBadge(item.source)
                 if (item.language.isNotEmpty()) {
-                    Text(item.language, color = Color(0xFF888888), fontSize = 11.sp)
+                    Text(item.language, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 if (item.score > 0) {
-                    Text("★ ${item.score}", color = Color(0xFFAAAAAA), fontSize = 11.sp)
+                    Text("★ ${item.score}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
             }
         }
@@ -2481,7 +2499,7 @@ private fun SubtitleResultRow(
         // 操作按钮
         if (downloading) {
             CircularProgressIndicator(
-                color = Color(0xFF4A9EFF),
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
         } else if (item.autoDownload) {
@@ -2490,7 +2508,7 @@ private fun SubtitleResultRow(
                 onClick = onDownload,
                 modifier = Modifier.tvFocusBorder()
             ) {
-                Text("下载", color = Color(0xFF4A9EFF), fontSize = 12.sp)
+                Text("下载", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
             }
         } else {
             // 需浏览器打开（SubHD）
@@ -2508,9 +2526,9 @@ private fun SubtitleResultRow(
 private fun SourceBadge(source: String) {
     val color = when (source) {
         "OpenSubtitles" -> Color(0xFF4CAF50)
-        "SubHD" -> Color(0xFF2196F3)
+        "SubHD" -> MaterialTheme.colorScheme.surfaceVariant
         "SubtitleCat" -> Color(0xFFFF9800)
-        else -> Color(0xFF888888)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Surface(
         color = color.copy(alpha = 0.2f),
@@ -2591,7 +2609,7 @@ fun ScanPanel(viewModel: AppViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("超时: ${timeout}s", color = Color.White, fontSize = 13.sp)
+                Text("超时: ${timeout}s", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 Slider(
                     value = timeout.toFloat(),
                     onValueChange = { timeout = it.toInt().coerceIn(3, 30) },
@@ -2599,14 +2617,14 @@ fun ScanPanel(viewModel: AppViewModel) {
                     enabled = !running,
                     modifier = Modifier.fillMaxWidth().tvFocusBorder(),
                     colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF4A9EFF),
-                        activeTrackColor = Color(0xFF4A9EFF),
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
                         inactiveTrackColor = Color(0xFF444444)
                     )
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text("线程: ${threads}", color = Color.White, fontSize = 13.sp)
+                Text("线程: ${threads}", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 Slider(
                     value = threads.toFloat(),
                     onValueChange = { threads = it.toInt().coerceIn(1, 16) },
@@ -2614,8 +2632,8 @@ fun ScanPanel(viewModel: AppViewModel) {
                     enabled = !running,
                     modifier = Modifier.fillMaxWidth().tvFocusBorder(),
                     colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF4A9EFF),
-                        activeTrackColor = Color(0xFF4A9EFF),
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
                         inactiveTrackColor = Color(0xFF444444)
                     )
                 )
@@ -2645,13 +2663,13 @@ fun ScanPanel(viewModel: AppViewModel) {
                 ) {
                     if (scanLoading) {
                         CircularProgressIndicator(
-                            color = Color(0xFF4A9EFF),
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                     } else {
-                        Icon(Icons.Default.Radar, contentDescription = null, tint = Color(0xFF4A9EFF))
+                        Icon(Icons.Default.Radar, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("开始扫描", color = Color(0xFF4A9EFF))
+                        Text("开始扫描", color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -2677,18 +2695,18 @@ fun ScanPanel(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("已扫描: ${status.scanned}/${status.total}", color = Color.White, fontSize = 13.sp)
+                Text("已扫描: ${status.scanned}/${status.total}", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 Text("有效: ${status.valid}", color = Color(0xFF4CAF50), fontSize = 13.sp)
                 Text("无效: ${status.invalid}", color = Color(0xFFFF5252), fontSize = 13.sp)
             }
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                color = Color(0xFF4A9EFF),
+                color = MaterialTheme.colorScheme.primary,
                 trackColor = Color(0xFF333333)
             )
             if (status.message.isNotEmpty()) {
-                Text(status.message, color = Color(0xFF888888), fontSize = 11.sp)
+                Text(status.message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
         }
 
@@ -2702,7 +2720,7 @@ fun ScanPanel(viewModel: AppViewModel) {
             ) {
                 Text(
                     text = "扫描结果（${scanResults.size} 条，有效 ${scanResults.count { it.valid }}）",
-                    color = Color(0xFF4A9EFF),
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
@@ -2713,8 +2731,8 @@ fun ScanPanel(viewModel: AppViewModel) {
                     onClick = { validOnly = !validOnly },
                     label = { Text("仅有效", fontSize = 11.sp) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF4A9EFF).copy(alpha = 0.3f),
-                        selectedLabelColor = Color(0xFF4A9EFF)
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                        selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
                 // 排序：按延迟
@@ -2723,8 +2741,8 @@ fun ScanPanel(viewModel: AppViewModel) {
                     onClick = { sortByLatency = !sortByLatency },
                     label = { Text("按延迟", fontSize = 11.sp) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF4A9EFF).copy(alpha = 0.3f),
-                        selectedLabelColor = Color(0xFF4A9EFF)
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                        selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
                 // 导出有效结果为 M3U
@@ -2749,7 +2767,7 @@ fun ScanPanel(viewModel: AppViewModel) {
             ) {
                 items(displayedResults, key = { it.url }) { result ->
                     ScanResultRow(result, onDelete = { viewModel.deleteScanResult(result.url) })
-                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 }
             }
         }
@@ -2767,7 +2785,7 @@ private fun ScanResultRow(result: ScanResult, onDelete: () -> Unit = {}) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = result.name.ifBlank { result.url },
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2790,16 +2808,16 @@ private fun ScanResultRow(result: ScanResult, onDelete: () -> Unit = {}) {
                     )
                 }
                 if (result.latency > 0) {
-                    Text("${result.latency}ms", color = Color(0xFF888888), fontSize = 11.sp)
+                    Text("${result.latency}ms", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 if (result.status.isNotEmpty()) {
-                    Text(result.status, color = Color(0xFF888888), fontSize = 11.sp,
+                    Text(result.status, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Text(
                 text = result.url,
-                color = Color(0xFF888888),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -2812,7 +2830,7 @@ private fun ScanResultRow(result: ScanResult, onDelete: () -> Unit = {}) {
             modifier = Modifier.tvFocusBorder().size(28.dp)
         ) {
             Icon(Icons.Default.Close, contentDescription = "删除",
-                tint = Color(0xFF888888), modifier = Modifier.size(16.dp))
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -2891,7 +2909,7 @@ fun ReminderPanel(viewModel: AppViewModel) {
                     timeFmt = timeFmt,
                     onDelete = { viewModel.removeReminder(item.id) }
                 )
-                HorizontalDivider(color = Color(0xFF2A2A2A))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
     }
@@ -2910,8 +2928,8 @@ private fun ReminderRow(
 
     val titleColor = when {
         isUpcoming -> Color(0xFFFFC107)  // 黄色高亮
-        isPast -> Color(0xFF888888)
-        else -> Color.White
+        isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     Row(
@@ -2934,7 +2952,7 @@ private fun ReminderRow(
             if (item.channelName.isNotEmpty()) {
                 Text(
                     text = item.channelName,
-                    color = Color(0xFFAAAAAA),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2949,7 +2967,7 @@ private fun ReminderRow(
             ) {
                 Text(
                     text = timeFmt.format(Date(item.startTs)),
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
                 val remainingText = when {
@@ -2962,8 +2980,8 @@ private fun ReminderRow(
                 }
                 val remainingColor = when {
                     isUpcoming -> Color(0xFFFFC107)
-                    isPast -> Color(0xFF888888)
-                    else -> Color(0xFF4A9EFF)
+                    isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.primary
                 }
                 Text(remainingText, color = remainingColor, fontSize = 11.sp)
             }
@@ -3052,7 +3070,7 @@ fun ResumePanel(viewModel: AppViewModel) {
                     onPlay = { viewModel.playResume(item) },
                     onDelete = { viewModel.removeResume(item.url) }
                 )
-                HorizontalDivider(color = Color(0xFF2A2A2A))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
     }
@@ -3084,7 +3102,7 @@ private fun ResumeRow(
             // 名称
             Text(
                 text = item.name.ifBlank { item.url },
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -3101,13 +3119,13 @@ private fun ResumeRow(
                 } else 0f
                 Text(
                     text = "${fmt(item.position)} / ${fmt(item.duration)}",
-                    color = Color(0xFF4A9EFF),
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 11.sp
                 )
                 if (progress > 0) {
                     Text(
                         text = "${(progress * 100).toInt()}%",
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -3120,17 +3138,17 @@ private fun ResumeRow(
             ) {
                 Text(
                     text = timeFmt.format(Date(item.updatedAt)),
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
                 if (item.channelIdx >= 0) {
                     Surface(
-                        color = Color(0xFF4A9EFF).copy(alpha = 0.15f),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                         shape = RoundedCornerShape(3.dp)
                     ) {
                         Text(
                             text = "频道",
-                            color = Color(0xFF4A9EFF),
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 10.sp,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
@@ -3155,7 +3173,7 @@ private fun ResumeRow(
             onClick = onPlay,
             modifier = Modifier.tvFocusBorder()
         ) {
-            Text("恢复", color = Color(0xFF4A9EFF), fontSize = 12.sp)
+            Text("恢复", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
         }
         Spacer(modifier = Modifier.width(4.dp))
         IconButton(onClick = onDelete, modifier = Modifier.size(32.dp).tvFocusBorder()) {
@@ -3218,9 +3236,9 @@ fun BookmarkPanel(viewModel: AppViewModel) {
             onClick = { viewModel.addBookmark() },
             modifier = Modifier.fillMaxWidth().tvFocusBorder()
         ) {
-            Icon(Icons.Default.Bookmark, contentDescription = null, tint = Color(0xFF4A9EFF))
+            Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(6.dp))
-            Text("在当前位置添加书签", color = Color(0xFF4A9EFF))
+            Text("在当前位置添加书签", color = MaterialTheme.colorScheme.primary)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -3236,8 +3254,8 @@ fun BookmarkPanel(viewModel: AppViewModel) {
                 onClick = { viewModel.setBookmarkShowCurrent(true) },
                 label = { Text("当前文件 (${currentBookmarks.size})") },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4A9EFF).copy(alpha = 0.2f),
-                    selectedLabelColor = Color(0xFF4A9EFF)
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.tvFocusBorder()
             )
@@ -3246,8 +3264,8 @@ fun BookmarkPanel(viewModel: AppViewModel) {
                 onClick = { viewModel.setBookmarkShowCurrent(false) },
                 label = { Text("所有文件 (${allBookmarks.size})") },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4A9EFF).copy(alpha = 0.2f),
-                    selectedLabelColor = Color(0xFF4A9EFF)
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    selectedLabelColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.tvFocusBorder()
             )
@@ -3295,7 +3313,7 @@ fun BookmarkPanel(viewModel: AppViewModel) {
                     onGoto = { viewModel.gotoBookmark(item) },
                     onDelete = { viewModel.deleteBookmark(item) }
                 )
-                HorizontalDivider(color = Color(0xFF2A2A2A))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
     }
@@ -3327,7 +3345,7 @@ private fun BookmarkRow(
             // 名称
             Text(
                 text = item.name.ifBlank { "书签 @${fmt(item.position)}" },
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -3340,19 +3358,19 @@ private fun BookmarkRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = Color(0xFF4A9EFF).copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(3.dp)
                 ) {
                     Text(
                         text = fmt(item.position),
-                        color = Color(0xFF4A9EFF),
+                        color = MaterialTheme.colorScheme.primary,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
                 Text(
                     text = timeFmt.format(Date(item.createdAt)),
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
             }
@@ -3373,7 +3391,7 @@ private fun BookmarkRow(
             onClick = onGoto,
             modifier = Modifier.tvFocusBorder()
         ) {
-            Text("跳转", color = Color(0xFF4A9EFF), fontSize = 12.sp)
+            Text("跳转", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
         }
         Spacer(modifier = Modifier.width(4.dp))
         IconButton(onClick = onDelete, modifier = Modifier.size(32.dp).tvFocusBorder()) {
@@ -3408,7 +3426,7 @@ fun RecentFilesPanel(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("暂无最近打开记录", color = Color(0xFF888888), fontSize = 14.sp)
+                Text("暂无最近打开记录", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             }
             return@PanelScaffold
         }
@@ -3446,7 +3464,7 @@ fun RecentFilesPanel(viewModel: AppViewModel) {
                     else -> "视频"
                 }
                 Surface(
-                    color = Color(0xFF1E2A45),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3462,14 +3480,14 @@ fun RecentFilesPanel(viewModel: AppViewModel) {
                         Icon(
                             typeIcon,
                             contentDescription = typeLabel,
-                            tint = Color(0xFF4A9EFF),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = entry.name,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
@@ -3477,7 +3495,7 @@ fun RecentFilesPanel(viewModel: AppViewModel) {
                             )
                             Text(
                                 text = "$typeLabel · ${entry.uri.take(60)}",
-                                color = Color(0xFF888888),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -3529,7 +3547,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (!fileLoaded) {
-                Text("请先加载视频", color = Color(0xFF888888), fontSize = 14.sp)
+                Text("请先加载视频", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 return@PanelScaffold
             }
 
@@ -3543,7 +3561,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             )
 
             // 开始时间输入
-            Text("开始时间（秒）", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text("开始时间（秒）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -3566,7 +3584,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             }
 
             // 持续时间输入
-            Text("持续时间（秒）", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text("持续时间（秒）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             OutlinedTextField(
                 value = durationText,
                 onValueChange = { durationText = it.filter { c -> c.isDigit() || c == '.' } },
@@ -3576,7 +3594,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             )
 
             // 格式选择
-            Text("输出格式", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text("输出格式", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3611,7 +3629,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             // 导出进度
             if (exportProgress > 0 || exportStatus.isNotEmpty()) {
                 Surface(
-                    color = Color(0xFF1E2A45),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -3681,7 +3699,7 @@ fun AudioVisualizerPanel(viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("请先加载音视频", color = Color(0xFF888888), fontSize = 14.sp)
+                    Text("请先加载音视频", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 }
                 return@PanelScaffold
             }
@@ -3691,7 +3709,7 @@ fun AudioVisualizerPanel(viewModel: AppViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .background(Color(0xFF0A0A14), shape = RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(8.dp))
             ) {
                 val barCount = spectrum.size
                 if (barCount == 0) return@Canvas
@@ -3727,7 +3745,7 @@ fun AudioVisualizerPanel(viewModel: AppViewModel) {
             ) {
                 val volume = mpv.getPropertyDouble("volume") ?: 100.0
                 Text("音量: ${volume.toInt()}", color = Color(0xFFCCCCCC), fontSize = 12.sp)
-                Text("频段: ${spectrum.size}", color = Color(0xFF888888), fontSize = 12.sp)
+                Text("频段: ${spectrum.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
         }
     }
@@ -3799,7 +3817,7 @@ fun LyricsPanel(viewModel: AppViewModel) {
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("点击「加载 LRC」导入歌词文件", color = Color(0xFF888888), fontSize = 13.sp)
+                        Text("点击「加载 LRC」导入歌词文件", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         if (fileLoaded) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("播放时将自动同步高亮", color = Color(0xFF666666), fontSize = 11.sp)

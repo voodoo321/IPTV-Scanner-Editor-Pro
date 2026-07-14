@@ -1,13 +1,20 @@
 package com.iptv.scanner.editor.pro.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.dp
 
 /**
  * IPTV 应用主题。支持深色/浅色/跟随系统三种模式。
@@ -168,8 +175,8 @@ fun rememberPlayerOverlayColors(): PlayerOverlayColors {
     return if (dark) {
         PlayerOverlayColors(
             scrim = Color(0x66000000),
-            topBarBg = Color(0xF0202A40),      // 深蓝（信息栏背景，与纯黑视频区域区分）
-            infoBarBg = Color(0xF0202A40),      // 与信息栏同色（控制栏/活动区域背景）
+            topBarBg = Color(0xF0242838),      // TAB/控制栏：更亮的深蓝灰，比活动区域亮
+            infoBarBg = Color(0xF0242838),      // 与信息栏同色
             iconTint = Color.White,
             iconTintActive = Color(0xFFFFA500),
             textPrimary = Color.White,
@@ -183,8 +190,8 @@ fun rememberPlayerOverlayColors(): PlayerOverlayColors {
     } else {
         PlayerOverlayColors(
             scrim = Color(0x66FFFFFF),
-            topBarBg = Color(0xCCFFFFFF),
-            infoBarBg = Color(0xFFF0F0F0),
+            topBarBg = Color(0xC8F0F2F5),       // TAB：略灰白，不要太亮
+            infoBarBg = Color(0xD0E8EAED),       // 活动区域：恢复之前的浅灰白
             iconTint = Color(0xFF212121),
             iconTintActive = Color(0xFFE65100),
             textPrimary = Color(0xFF212121),
@@ -193,7 +200,89 @@ fun rememberPlayerOverlayColors(): PlayerOverlayColors {
             trackInactive = Color(0xFFCCCCCC),
             badgeBg = Color(0xFF757575).copy(alpha = 0.12f),
             badgeText = Color(0xFF616161),
-            divider = Color(0xFFE0E0E0),
+            divider = Color(0xFFBDBDBD),         // 更深的分隔线，浅色模式下可见
         )
     }
+}
+
+// -----------------------------------------------------------------
+// 共享 UI 组件：玻璃态卡片、圆点进度条滑块、选中边框
+// -----------------------------------------------------------------
+
+/**
+ * 玻璃态卡片：半透明背景 + 圆角 + 边框 + Android 12+ 模糊
+ * 用于替换所有硬编码的颜色块（如设置项背景、关于面板等）
+ */
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    cornerRadius: androidx.compose.ui.unit.Dp = 12.dp,
+    content: @Composable () -> Unit
+) {
+    val oc = rememberPlayerOverlayColors()
+    val isAndroid12Plus = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius)
+    Box(modifier = modifier) {
+        if (isAndroid12Plus) {
+            Box(
+                modifier = Modifier
+                    .then(Modifier.matchParentSize())
+                    .blur(15.dp)
+                    .background(oc.topBarBg.copy(alpha = 0.40f), shape)
+            )
+        }
+        Surface(
+            color = if (isAndroid12Plus) oc.topBarBg.copy(alpha = 0.25f) else oc.topBarBg.copy(alpha = 0.75f),
+            shape = shape,
+            border = androidx.compose.foundation.BorderStroke(1.dp, oc.accent.copy(alpha = 0.30f)),
+            modifier = Modifier.matchParentSize()
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * 选中状态边框：给已选择项加玻璃态边框效果
+ */
+@Composable
+fun Modifier.selectedBorder(isSelected: Boolean): Modifier {
+    if (!isSelected) return this
+    val oc = rememberPlayerOverlayColors()
+    return this.then(
+        Modifier.border(
+            width = 1.dp,
+            color = oc.accent.copy(alpha = 0.50f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+        )
+    )
+}
+
+/**
+ * 圆点进度条样式的 Slider
+ */
+@Composable
+fun GlassSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    enabled: Boolean = true
+) {
+    val oc = rememberPlayerOverlayColors()
+    androidx.compose.material3.Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        valueRange = valueRange,
+        enabled = enabled,
+        colors = androidx.compose.material3.SliderDefaults.colors(
+            thumbColor = oc.accent,
+            activeTrackColor = oc.accent,
+            inactiveTrackColor = oc.trackInactive,
+            disabledThumbColor = oc.accent.copy(alpha = 0.5f),
+            disabledActiveTrackColor = oc.accent.copy(alpha = 0.5f),
+            disabledInactiveTrackColor = oc.trackInactive
+        )
+    )
 }

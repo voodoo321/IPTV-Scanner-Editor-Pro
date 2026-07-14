@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -434,7 +435,7 @@ private fun ModeColumn(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color(0xFF1A1A1A),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier.fillMaxHeight()
     ) {
         Column(
@@ -489,7 +490,7 @@ private fun ModeIconButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) Color(0xFF2A4A6A) else Color.Transparent)
+            .background(if (isSelected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
             .tvFocusBorder()
             .onFocusChanged { state ->
                 // 焦点切入时自动触发模式切换（TV 端无需按 OK 键）
@@ -540,7 +541,7 @@ private fun GroupColumn(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             )
-            Divider(color = Color(0xFF2A2A2A))
+            Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             if (groups.isEmpty()) {
                 Box(
@@ -685,7 +686,7 @@ private fun ChannelsColumn(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             )
 
-            Divider(color = Color(0xFF2A2A2A))
+            Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             // 频道列表
             if (filteredChannels.isEmpty()) {
@@ -777,7 +778,7 @@ private fun TvGroupChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val bg = if (selected) Color(0xFF4A9EFF) else Color(0xFF2A2A2A)
+    val bg = if (selected) Color(0xFF4A9EFF) else MaterialTheme.colorScheme.surfaceVariant
     val fg = if (selected) Color.White else Color(0xFFAAAAAA)
     Box(
         modifier = Modifier
@@ -988,7 +989,7 @@ private fun MenuColumn(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             )
-            Divider(color = Color(0xFF2A2A2A))
+            Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -1133,7 +1134,7 @@ private fun EpgListColumn(
                 )
             }
 
-            Divider(color = Color(0xFF2A2A2A))
+            Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             when {
                 loading -> {
@@ -1290,7 +1291,7 @@ private fun EpgDescColumn(
                 )
             }
 
-            Divider(color = Color(0xFF2A2A2A))
+            Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             Box(
                 modifier = Modifier.fillMaxSize().padding(12.dp)

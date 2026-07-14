@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.runtime.key
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
@@ -102,12 +105,14 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -419,17 +424,26 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                             .padding(bottom = 8.dp)
                     )
                 }
-                // EPG 节目单（全屏覆盖抽屉）
+                // EPG 节目单（活动区域百叶窗效果：点击图标后从右侧滑入，分组和频道列表向左收缩）
                 if (epgPanelOpen) {
                     Row(modifier = Modifier.fillMaxSize()) {
-                        EpgPanel(viewModel = viewModel)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .background(Color(0x88000000))
-                                .clickable { viewModel.toggleEpgPanel() }
-                        )
+                        // 左侧：收缩的分组+频道列表（窄列）
+                        Box(modifier = Modifier.width(48.dp)) {
+                            // 点击展开恢复
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0x44000000))
+                                    .clickable { viewModel.toggleEpgPanel() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.ChevronRight, contentDescription = "展开", tint = Color.White)
+                            }
+                        }
+                        // 右侧：EPG 面板占满剩余空间
+                        Box(modifier = Modifier.weight(1f)) {
+                            EpgPanel(viewModel = viewModel)
+                        }
                     }
                 }
             } else {
@@ -548,128 +562,178 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
             FileBrowserPanel(viewModel = viewModel)
         }
 
-        // 订阅源管理（全屏覆盖）
+        // 订阅源管理
         if (sourceManagerOpen) {
-            SourceManagerPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleSourceManager() }) {
+                SourceManagerPanel(viewModel = viewModel)
+            }
         }
 
-        // 播放器设置（全屏覆盖，主菜单 → 设置 → 播放器设置）
+        // 播放器设置
         if (playerSettingsOpen) {
-            PlayerSettingsPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.togglePlayerSettings() }) {
+                PlayerSettingsPanel(viewModel = viewModel)
+            }
         }
 
-        // 视频设置（全屏覆盖，主菜单 → 播放 → 视频）
+        // 视频设置
         if (videoSettingsOpen) {
-            VideoSettingsPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleVideoSettings() }) {
+                VideoSettingsPanel(viewModel = viewModel)
+            }
         }
 
-        // 音频设置（全屏覆盖，主菜单 → 播放 → 音频）
+        // 音频设置
         if (audioSettingsOpen) {
-            AudioSettingsPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleAudioSettings() }) {
+                AudioSettingsPanel(viewModel = viewModel)
+            }
         }
 
-        // 字幕设置（全屏覆盖，含外挂字幕文件选择器）
+        // 字幕设置
         if (subtitleSettingsOpen) {
-            SubtitleSettingsPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleSubtitleSettings() }) {
+                SubtitleSettingsPanel(viewModel = viewModel)
+            }
         }
         if (subtitleSearchOpen) {
-            SubtitleSearchPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleSubtitleSearchPanel() }) {
+                SubtitleSearchPanel(viewModel = viewModel)
+            }
         }
 
-        // 播放设置（全屏覆盖，主菜单 → 播放 → 播放）
+        // 播放设置
         if (playbackPanelOpen) {
-            PlaybackPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.togglePlaybackPanel() }) {
+                PlaybackPanel(viewModel = viewModel)
+            }
         }
 
-        // 截图（全屏覆盖，主菜单 → 播放 → 截图）
+        // 截图
         if (screenshotPanelOpen) {
-            ScreenshotPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleScreenshotPanel() }) {
+                ScreenshotPanel(viewModel = viewModel)
+            }
         }
 
-        // 视图设置（全屏覆盖，主菜单 → 播放 → 视图）
+        // 视图设置
         if (viewSettingsOpen) {
-            ViewSettingsPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleViewSettings() }) {
+                ViewSettingsPanel(viewModel = viewModel)
+            }
         }
 
-        // 关于（全屏覆盖，主菜单 → 播放 → 关于）
+        // 关于
         if (aboutPanelOpen) {
-            AboutPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleAboutPanel() }) {
+                AboutPanel(viewModel = viewModel)
+            }
         }
 
-        // 频道映射（全屏覆盖，主菜单 → 文件 → 频道映射）
+        // 频道映射
         if (mappingPanelOpen) {
-            MappingPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleMappingPanel() }) {
+                MappingPanel(viewModel = viewModel)
+            }
         }
 
-        // A/V 同步监控（全屏覆盖，主菜单 → 播放 → A/V 同步监控）
+        // A/V 同步监控
         if (avSyncPanelOpen) {
-            AvSyncPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleAvSyncPanel() }) {
+                AvSyncPanel(viewModel = viewModel)
+            }
         }
 
-        // 网络增强（全屏覆盖，主菜单 → 播放 → 网络增强）
+        // 网络增强
         if (networkPanelOpen) {
-            NetworkPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleNetworkPanel() }) {
+                NetworkPanel(viewModel = viewModel)
+            }
         }
 
-        // 工具（全屏覆盖，主菜单 → 播放 → 工具）
+        // 工具
         if (toolsPanelOpen) {
-            ToolsPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleToolsPanel() }) {
+                ToolsPanel(viewModel = viewModel)
+            }
         }
 
-        // URL 范围扫描（全屏覆盖，工具 → 扫描整理）
+        // URL 范围扫描
         if (scanPanelOpen) {
-            ScanPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleScanPanel() }) {
+                ScanPanel(viewModel = viewModel)
+            }
         }
 
-        // 节目提醒管理（全屏覆盖，工具 → 提醒管理）
+        // 节目提醒管理
         if (reminderPanelOpen) {
-            ReminderPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleReminderPanel() }) {
+                ReminderPanel(viewModel = viewModel)
+            }
         }
 
-        // 续播位置管理（全屏覆盖，工具 → 续播位置）
+        // 续播位置管理
         if (resumePanelOpen) {
-            ResumePanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleResumePanel() }) {
+                ResumePanel(viewModel = viewModel)
+            }
         }
 
-        // 书签管理（全屏覆盖，工具 → 书签）
+        // 书签管理
         if (bookmarkPanelOpen) {
-            BookmarkPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleBookmarkPanel() }) {
+                BookmarkPanel(viewModel = viewModel)
+            }
         }
 
-        // EPG 时间线视图（全屏覆盖，工具 → EPG 时间线）
+        // EPG 时间线视图
         if (epgTimelineOpen) {
-            EpgTimelinePanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleEpgTimelinePanel() }) {
+                EpgTimelinePanel(viewModel = viewModel)
+            }
         }
 
-        // 全局搜索（全屏覆盖，工具 → 搜索）
+        // 全局搜索
         if (searchPanelOpen) {
-            SearchPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleSearchPanel() }) {
+                SearchPanel(viewModel = viewModel)
+            }
         }
 
-        // 流质量检测（全屏覆盖，工具 → 流质量检测）
+        // 流质量检测
         if (streamQualityPanelOpen) {
-            StreamQualityPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleStreamQualityPanel() }) {
+                StreamQualityPanel(viewModel = viewModel)
+            }
         }
 
-        // 最近打开（全屏覆盖）
+        // 最近打开
         if (recentPanelOpen) {
-            RecentFilesPanel(viewModel = viewModel)
+            PortraitPanelDialog(onDismiss = { viewModel.toggleRecentPanel() }) {
+                RecentFilesPanel(viewModel = viewModel)
+            }
         }
 
-        // 切片导出（全屏覆盖）
-        if (clipExportPanelOpen) {
-            ClipExportPanel(viewModel = viewModel)
-        }
+// 切片导出
+if (clipExportPanelOpen) {
+    PortraitPanelDialog(onDismiss = { viewModel.toggleClipExportPanel() }) {
+        ClipExportPanel(viewModel = viewModel)
+    }
+}
 
-        // 音频可视化（全屏覆盖）
-        if (audioVisualizerOpen) {
-            AudioVisualizerPanel(viewModel = viewModel)
-        }
+// 音频可视化
+if (audioVisualizerOpen) {
+    PortraitPanelDialog(onDismiss = { viewModel.toggleAudioVisualizer() }) {
+        AudioVisualizerPanel(viewModel = viewModel)
+    }
+}
 
-        // 歌词（全屏覆盖）
-        if (lyricsOpen) {
-            LyricsPanel(viewModel = viewModel)
-        }
+// 歌词
+if (lyricsOpen) {
+    PortraitPanelDialog(onDismiss = { viewModel.toggleLyricsPanel() }) {
+        LyricsPanel(viewModel = viewModel)
+    }
+}
 
         // 提醒触发弹窗（节目即将开始时弹出，全屏遮罩）
         if (triggeredReminder != null) {
@@ -1297,7 +1361,7 @@ private fun ReminderPopup(
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            color = Color(0xFF1F1F1F),
+            color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(0.85f)
         ) {
@@ -1327,7 +1391,7 @@ private fun ReminderPopup(
 
                 // 节目信息卡片
                 Surface(
-                    color = Color(0xFF2A2A2A),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1662,7 +1726,7 @@ private fun PortraitDynamicContent(viewModel: AppViewModel) {
     val channelsTab by viewModel.channelsTab.collectAsState()
 
     // 磨砂玻璃背景：半透明色
-    val glassBg = oc.infoBarBg.copy(alpha = 0.88f)
+    val glassBg = oc.infoBarBg.copy(alpha = 0.80f)
 
     Column(
         modifier = Modifier
@@ -2022,53 +2086,115 @@ private fun PortraitBottomTabBar(
     val oc = rememberPlayerOverlayColors()
 
     // 悬浮底部 Tab：圆角 + 阴影
-    val glassBg = oc.topBarBg.copy(alpha = 0.92f)
+    val glassBg = oc.topBarBg.copy(alpha = 0.80f)
     val tabShape = RoundedCornerShape(20.dp)
+    val isAndroid12Plus = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
 
-    Surface(
-        color = glassBg,
-        shape = tabShape,
-        border = androidx.compose.foundation.BorderStroke(1.dp, oc.accent.copy(alpha = 0.15f)),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .shadow(8.dp, tabShape)
-    ) {
-        Row(
-            modifier = Modifier
+    if (isAndroid12Plus) {
+        // Android 12+：双层模糊背景
+        Box(
+            modifier = modifier
                 .fillMaxWidth()
-                .height(56.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp)
+                .height(56.dp)
+                .shadow(8.dp, tabShape)
         ) {
-            PortraitTabItem(
-                icon = Icons.Default.VideoLibrary,
-                label = "视频",
-                isSelected = portraitTab == AppViewModel.PortraitTab.CHANNELS,
-                oc = oc,
-                onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.CHANNELS) }
+            // 底层：模糊背景
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(20.dp)
+                    .background(oc.topBarBg.copy(alpha = 0.50f), tabShape)
             )
-            PortraitTabItem(
-                icon = Icons.Default.Favorite,
-                label = "收藏",
-                isSelected = portraitTab == AppViewModel.PortraitTab.FAV,
-                oc = oc,
-                onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.FAV) }
-            )
-            PortraitTabItem(
-                icon = Icons.Default.Build,
-                label = "工具",
-                isSelected = portraitTab == AppViewModel.PortraitTab.TOOLS,
-                oc = oc,
-                onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.TOOLS) }
-            )
-            PortraitTabItem(
-                icon = Icons.Default.Settings,
-                label = "设置",
-                isSelected = portraitTab == AppViewModel.PortraitTab.SETTINGS,
-                oc = oc,
-                onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.SETTINGS) }
-            )
+            // 上层：半透明色 + 边框 + 内容
+            Surface(
+                color = oc.topBarBg.copy(alpha = 0.30f),
+                shape = tabShape,
+                border = androidx.compose.foundation.BorderStroke(1.dp, oc.accent.copy(alpha = 0.35f)),
+                modifier = Modifier.matchParentSize()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PortraitTabItem(
+                        icon = Icons.Default.VideoLibrary,
+                        label = "视频",
+                        isSelected = portraitTab == AppViewModel.PortraitTab.CHANNELS,
+                        oc = oc,
+                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.CHANNELS) }
+                    )
+                    PortraitTabItem(
+                        icon = Icons.Default.Favorite,
+                        label = "收藏",
+                        isSelected = portraitTab == AppViewModel.PortraitTab.FAV,
+                        oc = oc,
+                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.FAV) }
+                    )
+                    PortraitTabItem(
+                        icon = Icons.Default.Build,
+                        label = "工具",
+                        isSelected = portraitTab == AppViewModel.PortraitTab.TOOLS,
+                        oc = oc,
+                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.TOOLS) }
+                    )
+                    PortraitTabItem(
+                        icon = Icons.Default.Settings,
+                        label = "设置",
+                        isSelected = portraitTab == AppViewModel.PortraitTab.SETTINGS,
+                        oc = oc,
+                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.SETTINGS) }
+                    )
+                }
+            }
+        }
+    } else {
+        // Android 12 以下：简单半透明背景
+        Surface(
+            color = glassBg,
+            shape = tabShape,
+            border = androidx.compose.foundation.BorderStroke(1.dp, oc.accent.copy(alpha = 0.35f)),
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .height(56.dp)
+                .shadow(8.dp, tabShape)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PortraitTabItem(
+                    icon = Icons.Default.VideoLibrary,
+                    label = "视频",
+                    isSelected = portraitTab == AppViewModel.PortraitTab.CHANNELS,
+                    oc = oc,
+                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.CHANNELS) }
+                )
+                PortraitTabItem(
+                    icon = Icons.Default.Favorite,
+                    label = "收藏",
+                    isSelected = portraitTab == AppViewModel.PortraitTab.FAV,
+                    oc = oc,
+                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.FAV) }
+                )
+                PortraitTabItem(
+                    icon = Icons.Default.Build,
+                    label = "工具",
+                    isSelected = portraitTab == AppViewModel.PortraitTab.TOOLS,
+                    oc = oc,
+                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.TOOLS) }
+                )
+                PortraitTabItem(
+                    icon = Icons.Default.Settings,
+                    label = "设置",
+                    isSelected = portraitTab == AppViewModel.PortraitTab.SETTINGS,
+                    oc = oc,
+                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.SETTINGS) }
+                )
+            }
         }
     }
 }
@@ -2081,14 +2207,16 @@ private fun PortraitTabItem(
     oc: PlayerOverlayColors,
     onClick: () -> Unit
 ) {
-    val tint = if (isSelected) oc.accent else oc.iconTint
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-    ) {
+val tint = if (isSelected) oc.accent else oc.iconTint
+Column(
+horizontalAlignment = Alignment.CenterHorizontally,
+modifier = Modifier
+.height(48.dp)
+.clip(RoundedCornerShape(10.dp))
+.then(if (isSelected) Modifier.border(1.dp, oc.accent.copy(alpha = 0.50f), RoundedCornerShape(10.dp)) else Modifier)
+.clickable(onClick = onClick)
+.padding(horizontal = 14.dp, vertical = 4.dp)
+) {
         Icon(
             imageVector = icon,
             contentDescription = label,
@@ -2190,7 +2318,7 @@ private fun PortraitInfoBarV2(viewModel: AppViewModel) {
     val oc = rememberPlayerOverlayColors()
 
     // 磨砂玻璃背景：半透明色（文字不模糊）
-    val glassBg = oc.topBarBg.copy(alpha = 0.88f)
+    val glassBg = oc.topBarBg.copy(alpha = 0.80f)
 
     Surface(
         color = glassBg,
@@ -2298,7 +2426,7 @@ private fun PortraitControlsV2(viewModel: AppViewModel) {
     var dragPercent by remember { mutableStateOf(0f) }
 
     // 磨砂玻璃背景：半透明色（文字不模糊）
-    val glassBg = oc.infoBarBg.copy(alpha = 0.88f)
+    val glassBg = oc.infoBarBg.copy(alpha = 0.80f)
 
     Surface(
         color = glassBg,
@@ -2482,12 +2610,17 @@ private fun PortraitChannelList(
     }
 
     if (filteredChannels.isEmpty()) {
+        val emptyMsg = when {
+            showFavoritesOnly -> "暂无收藏\n点击信息栏星标添加"
+            channelsTab == ChannelTab.LOCAL -> "暂无本地视频\n暂无本地音乐\n暂无本地播放列表"
+            else -> "暂无频道"
+        }
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (showFavoritesOnly) "暂无收藏\n点击信息栏星标添加" else "暂无频道",
+                text = emptyMsg,
                 color = oc.textSecondary,
                 fontSize = 13.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -2580,8 +2713,10 @@ private fun PortraitGroupList(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .then(if (isSelected) Modifier.border(1.dp, oc.accent.copy(alpha = 0.50f), RoundedCornerShape(8.dp)) else Modifier)
                     .clickable { onGroupSelected(group) }
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -2633,8 +2768,10 @@ private fun PortraitChannelListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .then(if (isPlaying) Modifier.border(1.dp, oc.accent.copy(alpha = 0.40f), RoundedCornerShape(8.dp)) else Modifier)
             .clickable(onClick = onPlay)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 台标
@@ -2677,21 +2814,6 @@ private fun PortraitChannelListItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                // 回看标识
-                if (channel.catchup.isNotEmpty() && channel.catchup != "none") {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Surface(
-                        color = oc.accent.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(3.dp)
-                    ) {
-                        Text(
-                            text = "回看",
-                            color = oc.accent,
-                            fontSize = 9.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
-                }
             }
             // 当前节目名
             if (currentProgram != null && currentProgram!!.title.isNotEmpty()) {
@@ -2711,6 +2833,22 @@ private fun PortraitChannelListItem(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+
+        // 回看标识（居右，节目单按钮左边）
+        if (channel.catchup.isNotEmpty() && channel.catchup != "none") {
+            Surface(
+                color = oc.accent.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(3.dp)
+            ) {
+                Text(
+                    text = "回看",
+                    color = oc.accent,
+                    fontSize = 9.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(2.dp))
         }
 
         // 节目单按钮
@@ -2742,9 +2880,9 @@ private fun ChannelInfoDialog(viewModel: AppViewModel) {
 
 AlertDialog(
 onDismissRequest = { viewModel.toggleChannelInfo() },
-containerColor = oc.topBarBg.copy(alpha = 0.85f),
+containerColor = oc.topBarBg.copy(alpha = 0.80f),
 shape = RoundedCornerShape(20.dp),
-modifier = Modifier.border(1.dp, oc.accent.copy(alpha = 0.2f), RoundedCornerShape(20.dp)),
+modifier = Modifier.border(1.dp, oc.accent.copy(alpha = 0.35f), RoundedCornerShape(20.dp)),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (currentChannel != null && currentChannel!!.logo.isNotEmpty()) {
@@ -2977,5 +3115,52 @@ private fun MediaBadge(
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
             maxLines = 1
         )
+    }
+}
+
+/**
+ * 竖屏模式面板弹窗包装器：将全屏面板包装为居中弹窗
+ * 半透明背景 + 圆角 + 边框，点击外部关闭
+ */
+@Composable
+fun PortraitPanelDialog(
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val oc = rememberPlayerOverlayColors()
+    val isAndroid12Plus = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    val dialogShape = RoundedCornerShape(20.dp)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.85f)
+        ) {
+            // 底层：模糊背景层（只模糊背景，不影响内容）
+            if (isAndroid12Plus) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .blur(25.dp)
+                        .background(oc.topBarBg.copy(alpha = 0.55f), dialogShape)
+                )
+            }
+            // 上层：半透明色 + 边框 + 内容（不模糊）
+            Surface(
+                color = if (isAndroid12Plus) oc.topBarBg.copy(alpha = 0.30f) else oc.topBarBg.copy(alpha = 0.80f),
+                shape = dialogShape,
+                border = BorderStroke(1.dp, oc.accent.copy(alpha = 0.35f)),
+                modifier = Modifier.matchParentSize()
+            ) {
+                content()
+            }
+        }
     }
 }

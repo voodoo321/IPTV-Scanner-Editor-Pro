@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.filled.Web
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -353,7 +354,7 @@ private fun MenuGridItem(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = if (entry.highlight) Color(0xFF4A9EFF).copy(alpha = 0.12f) else Color(0xFF1E1E1E),
+        color = if (entry.highlight) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
         modifier = modifier
             .height(72.dp)
@@ -373,15 +374,15 @@ private fun MenuGridItem(
                     .size(28.dp)
                     .clip(CircleShape)
                     .background(
-                        if (entry.highlight) Color(0xFF4A9EFF).copy(alpha = 0.2f)
-                        else Color(0xFF2A2A2A)
+                        if (entry.highlight) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        else MaterialTheme.colorScheme.surfaceVariant
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = entry.icon,
                     contentDescription = null,
-                    tint = if (entry.highlight) Color(0xFF4A9EFF) else Color(0xFFCCCCCC),
+                    tint = if (entry.highlight) MaterialTheme.colorScheme.primary else Color(0xFFCCCCCC),
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -389,7 +390,7 @@ private fun MenuGridItem(
             // 标题
             Text(
                 text = entry.title,
-                color = if (entry.highlight) Color(0xFF6A9EFF) else Color.White,
+                color = if (entry.highlight) Color(0xFF6A9EFF) else MaterialTheme.colorScheme.onSurface,
                 fontSize = 11.sp,
                 fontWeight = if (entry.highlight) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -523,12 +524,12 @@ private fun buildMenuSections(
 @Composable
 private fun SectionHeader(title: String) {
     Surface(
-        color = Color(0xFF1A1A1A),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
             text = title,
-            color = Color(0xFF4A9EFF),
+            color = MaterialTheme.colorScheme.primary,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -555,15 +556,15 @@ private fun MenuEntryItem(
                 .size(36.dp)
                 .clip(CircleShape)
                 .background(
-                    if (entry.highlight) Color(0xFF4A9EFF).copy(alpha = 0.2f)
-                    else Color(0xFF2A2A2A)
+                    if (entry.highlight) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                    else MaterialTheme.colorScheme.surfaceVariant
                 ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = entry.icon,
                 contentDescription = null,
-                tint = if (entry.highlight) Color(0xFF4A9EFF) else Color(0xFFCCCCCC),
+                tint = if (entry.highlight) MaterialTheme.colorScheme.primary else Color(0xFFCCCCCC),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -574,7 +575,7 @@ private fun MenuEntryItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = if (entry.highlight) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -583,7 +584,7 @@ private fun MenuEntryItem(
             if (entry.subtitle.isNotEmpty()) {
                 Text(
                     text = entry.subtitle,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

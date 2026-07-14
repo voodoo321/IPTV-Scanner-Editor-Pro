@@ -39,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.iptv.scanner.editor.pro.ui.UiMode
+import com.iptv.scanner.editor.pro.ui.theme.rememberPlayerOverlayColors
+import com.iptv.scanner.editor.pro.ui.theme.PlayerOverlayColors
 import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 import kotlinx.coroutines.delay
 
@@ -57,6 +59,7 @@ import kotlinx.coroutines.delay
 fun StreamQualityPanel(viewModel: AppViewModel) {
     val mpv = viewModel.mpv
     val fileLoaded by mpv.fileLoaded.collectAsState()
+    val oc = rememberPlayerOverlayColors()
     val isTv = viewModel.uiMode.value == UiMode.TV
 
     // 每秒刷新（与 Web 端 setInterval 1000ms 一致）
@@ -68,7 +71,7 @@ fun StreamQualityPanel(viewModel: AppViewModel) {
         }
     }
 
-    Surface(color = Color(0xF0121212), modifier = Modifier.fillMaxSize()) {
+    Surface(color = Color.Transparent, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             // -----------------------------------------------------------------
             // 标题栏
@@ -82,11 +85,11 @@ fun StreamQualityPanel(viewModel: AppViewModel) {
                     Text(
                         text = "流质量检测",
                         style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "实时流信息（每秒刷新）",
-                        color = Color(0xFF888888),
+color = oc.textPrimary
+)
+Text(
+text = "实时流信息（每秒刷新）",
+color = oc.textSecondary,
                         fontSize = 12.sp
                     )
                 }
@@ -94,13 +97,13 @@ fun StreamQualityPanel(viewModel: AppViewModel) {
                     onClick = { tick++ },
                     modifier = Modifier.tvFocusBorder()
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "刷新", tint = Color.White)
+                    Icon(Icons.Default.Refresh, contentDescription = "刷新", tint = oc.iconTint)
                 }
                 IconButton(
                     onClick = { viewModel.toggleStreamQualityPanel() },
                     modifier = Modifier.tvFocusBorder()
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = oc.iconTint)
                 }
             }
 
@@ -113,8 +116,8 @@ fun StreamQualityPanel(viewModel: AppViewModel) {
                 ) {
                     Text(
                         text = "未在播放，请先选择频道或打开视频",
-                        color = Color(0xFF888888),
-                        fontSize = 13.sp
+color = oc.textSecondary,
+fontSize = 13.sp
                     )
                 }
                 return@Surface
@@ -387,10 +390,10 @@ private fun formatBytesPerSecond(bytesPerSec: Long): String {
 // -----------------------------------------------------------------
 
 @Composable
-private fun SectionLabel(text: String) {
+private fun SectionLabel(text: String, oc: PlayerOverlayColors = rememberPlayerOverlayColors()) {
     Text(
         text = text,
-        color = Color(0xFF4A9EFF),
+        color = oc.accent,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
@@ -402,7 +405,8 @@ private fun InfoRow(
     label: String,
     value: String,
     focusRequester: FocusRequester? = null,
-    isTv: Boolean = false
+    isTv: Boolean = false,
+    oc: PlayerOverlayColors = rememberPlayerOverlayColors()
 ) {
     Row(
         modifier = Modifier
@@ -414,13 +418,13 @@ private fun InfoRow(
     ) {
         Text(
             text = label,
-            color = Color(0xFFAAAAAA),
+            color = oc.textSecondary,
             fontSize = 12.sp,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = value,
-            color = Color.White,
+            color = oc.textPrimary,
             fontSize = 12.sp,
             modifier = Modifier.weight(1.5f),
             fontWeight = FontWeight.Medium

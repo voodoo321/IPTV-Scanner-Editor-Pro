@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -123,7 +124,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
         }
     }
 
-    Surface(color = Color(0xF0121212), modifier = Modifier.fillMaxSize()) {
+    Surface(color = Color.Transparent, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             // -----------------------------------------------------------------
             // 标题栏 + 工具栏
@@ -134,16 +135,18 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "EPG 时间线",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "$selectedDate  |  $status",
-                        color = Color(0xFF888888),
-                        fontSize = 12.sp
-                    )
+Text(
+text = "EPG 时间线",
+style = MaterialTheme.typography.headlineSmall,
+color = MaterialTheme.colorScheme.onSurface,
+maxLines = 1
+)
+Text(
+text = "$selectedDate  |  $status",
+color = MaterialTheme.colorScheme.onSurfaceVariant,
+fontSize = 12.sp,
+maxLines = 1
+)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // 日期切换
@@ -151,7 +154,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                         onClick = { viewModel.setEpgTimelineDateOffset(dateOffset - 1) },
                         modifier = Modifier.tvFocusBorder()
                     ) {
-                        Text("◀", color = Color.White, fontSize = 14.sp)
+                        Text("◀", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     }
                     Text(
                         text = when (dateOffset) {
@@ -160,7 +163,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                             1 -> "明天"
                             else -> "${dateOffset}天"
                         },
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 6.dp)
                     )
@@ -168,7 +171,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                         onClick = { viewModel.setEpgTimelineDateOffset(dateOffset + 1) },
                         modifier = Modifier.tvFocusBorder()
                     ) {
-                        Text("▶", color = Color.White, fontSize = 14.sp)
+                        Text("▶", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     // 刷新
@@ -176,7 +179,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                         onClick = { viewModel.loadEpgTimeline() },
                         modifier = Modifier.tvFocusBorder()
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新", tint = Color.White)
+                        Icon(Icons.Default.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     // 关闭
                     IconButton(
@@ -185,7 +188,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                             .tvFocusBorder()
                             .focusRequester(closeFocusRequester)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -226,9 +229,9 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color(0xFF4A9EFF))
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("加载 EPG 数据...", color = Color(0xFF888888), fontSize = 13.sp)
+                            Text("加载 EPG 数据...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         }
                     }
                 }
@@ -239,7 +242,7 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
                     ) {
                         Text(
                             text = status.ifEmpty { "暂无 EPG 数据\n请在主菜单 > 文件 > EPG 订阅源 添加" },
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                             lineHeight = 20.sp
                         )
@@ -328,16 +331,19 @@ private fun TimelineGrid(
             isAntiAlias = true
         }
     }
+    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    val surfaceVariantArgb = MaterialTheme.colorScheme.surfaceVariant.toArgb()
+    val surfaceArgb = MaterialTheme.colorScheme.surface.toArgb()
     val programTextPaint = remember(density) {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
+            color = onSurfaceColor.toArgb()
             textSize = with(density) { 10.sp.toPx() }
             isAntiAlias = true
         }
     }
     val programTextPaintCurrent = remember(density) {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
+            color = onSurfaceColor.toArgb()
             textSize = with(density) { 10.sp.toPx() }
             isFakeBoldText = true
             isAntiAlias = true
@@ -362,7 +368,7 @@ private fun TimelineGrid(
                 modifier = Modifier
                     .width(CHANNEL_NAME_WIDTH_DP)
                     .height(TIME_HEADER_HEIGHT_DP)
-                    .background(Color(0xFF1A1A1A))
+                    .background(Color(surfaceVariantArgb))
             )
             // 时间刻度（水平滚动同步）
             Box(
@@ -378,7 +384,7 @@ private fun TimelineGrid(
                     )
                 ) {
                     // 背景
-                    drawRect(Color(0xFF1A1A1A))
+                    drawRect(Color(surfaceVariantArgb))
                     // 每 2 小时一刻度
                     drawIntoCanvas { canvas ->
                         for (h in 0..24 step 2) {
@@ -421,15 +427,15 @@ private fun TimelineGrid(
                                 .fillMaxWidth()
                                 .height(ROW_HEIGHT_DP)
                                 .background(
-                                    if (isCurrent) Color(0xFF4A9EFF).copy(alpha = 0.15f)
-                                    else Color(0xFF1A1A1A)
+                                    if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    else Color(surfaceVariantArgb)
                                 )
                                 .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
                             Text(
                                 text = row.channelName,
-                                color = if (isCurrent) Color(0xFF4A9EFF) else Color(0xFFCCCCCC),
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary else Color(0xFFCCCCCC),
                                 fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -546,13 +552,13 @@ private fun TimelineGrid(
                         }
                 ) {
                     // 背景
-                    drawRect(Color(0xFF0F0F0F))
+                    drawRect(Color(surfaceArgb))
 
                     // 水平网格线（行分隔）
                     for (i in 0..rows.size) {
                         val y = i * rowHeightPx
                         drawLine(
-                            color = Color(0xFF222222),
+                            color = Color(surfaceVariantArgb),
                             start = Offset(0f, y),
                             end = Offset(gridWidthPx, y),
                             strokeWidth = 1f
@@ -562,7 +568,7 @@ private fun TimelineGrid(
                     // 垂直网格线（小时分隔，每 2 小时加粗）
                     for (h in 0..24) {
                         val x = h * hourWidthPx
-                        val color = if (h % 2 == 0) Color(0xFF333333) else Color(0xFF222222)
+                        val color = if (h % 2 == 0) Color(0xFF333333) else Color(surfaceVariantArgb)
                         drawLine(
                             color = color,
                             start = Offset(x, 0f),

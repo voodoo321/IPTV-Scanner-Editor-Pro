@@ -85,7 +85,7 @@ fun SearchPanel(viewModel: AppViewModel) {
         viewModel.performSearch(query)
     }
 
-    Surface(color = Color(0xF0121212), modifier = Modifier.fillMaxSize()) {
+    Surface(color = Color.Transparent, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             // -----------------------------------------------------------------
             // 标题栏
@@ -98,7 +98,7 @@ fun SearchPanel(viewModel: AppViewModel) {
                 Text(
                     text = "全局搜索",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 IconButton(
                     onClick = { viewModel.toggleSearchPanel() },
@@ -106,7 +106,7 @@ fun SearchPanel(viewModel: AppViewModel) {
                         .tvFocusBorder()
                         .focusRequester(closeFocusRequester)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
 
@@ -121,17 +121,17 @@ fun SearchPanel(viewModel: AppViewModel) {
                 placeholder = {
                     Text(
                         "搜索频道名 / 分组 / URL / 节目标题...",
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )
                 },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF888888))
+                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusBorder()) {
-                            Icon(Icons.Default.Close, contentDescription = "清空", tint = Color(0xFF888888))
+                            Icon(Icons.Default.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 },
@@ -175,13 +175,13 @@ fun SearchPanel(viewModel: AppViewModel) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = Color(0xFF4A9EFF)
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                     }
                     Text(
                         text = "${results.size} 条结果",
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -200,7 +200,7 @@ fun SearchPanel(viewModel: AppViewModel) {
                     ) {
                         Text(
                             text = "输入关键词搜索频道和节目",
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp
                         )
                     }
@@ -212,7 +212,7 @@ fun SearchPanel(viewModel: AppViewModel) {
                     ) {
                         Text(
                             text = "无搜索结果",
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp
                         )
                     }
@@ -260,14 +260,14 @@ private fun SearchResultRow(
                 Icon(
                     imageVector = Icons.Default.Tv,
                     contentDescription = null,
-                    tint = Color(0xFF4A9EFF),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 // 频道名
                 Text(
                     text = result.channel.name,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -277,7 +277,7 @@ private fun SearchResultRow(
                 if (result.channel.group.isNotEmpty()) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
-                        color = Color(0xFF2A4A8A).copy(alpha = 0.4f),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         shape = RoundedCornerShape(4.dp),
                         modifier = Modifier.clip(RoundedCornerShape(4.dp))
                     ) {
@@ -298,7 +298,7 @@ private fun SearchResultRow(
                 }
                 Text(
                     text = timeText,
-                    color = Color(0xFF4A9EFF),
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 12.sp,
                     modifier = Modifier.width(50.dp)
                 )
@@ -307,14 +307,14 @@ private fun SearchResultRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = result.program.title,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = result.channelName,
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

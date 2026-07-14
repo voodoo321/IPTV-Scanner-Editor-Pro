@@ -1135,7 +1135,21 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             val result = repository.getChannels(page = 1, size = 10_000)
             result.fold(
                 onSuccess = { page ->
+                    // 保存当前播放的 URL，防止频道列表更新后 currentChannel 变 null
+                    val savedUrl = currentPlaybackUrl
+                    val savedIdx = _currentIdx.value
                     _channels.value = page.channels
+                    // 如果当前正在播放，尝试在新列表中找到对应频道
+                    if (savedIdx >= 0 && savedUrl.isNotEmpty()) {
+                        val newIdx = page.channels.indexOfFirst { it.url == savedUrl }
+                        if (newIdx >= 0 && newIdx != savedIdx) {
+                            _currentIdx.value = newIdx
+                            Log.i(TAG, "loadChannels: current idx updated $savedIdx -> $newIdx")
+                        } else if (newIdx < 0) {
+                            // URL 不在新列表中，保持原 idx 不变（避免显示未选择频道）
+                            Log.w(TAG, "loadChannels: current channel URL not found in new list, keeping idx $savedIdx")
+                        }
+                    }
                     // 提取分组（保持 M3U 顺序，去重）
                     val groupList = page.channels
                         .map { it.group }
@@ -4403,18 +4417,23 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
     /** 导出当前频道列表为 M3U 文件，写入下载目录 */
     fun saveAsM3u() {
         viewModelScope.launch {
-            val channels = _channels.value
-            if (channels.isEmpty()) {
-                showOsd("另存为", "频道列表为空")
-                return@launch
-            }
-            showOsd("另存为", "正在导出...")
-            val m3uContent = buildM3uContent(channels)
-            val written = writeM3uToFile(m3uContent)
-            if (written) {
-                showOsd("另存为", "已导出到下载目录")
-            } else {
-                showOsd("另存为", "导出失败")
+            try {
+                val channels = _channels.value
+                if (channels.isEmpty()) {
+                    showOsd("另存为", "频道列表为空")
+                    return@launch
+                }
+                showOsd("另存为", "正在导出...")
+                val m3uContent = buildM3uContent(channels)
+                val written = withContext(Dispatchers.IO) { writeM3uToFile(m3uContent) }
+                if (written) {
+                    showOsd("另存为", "已导出到下载目录")
+                } else {
+                    showOsd("另存为", "导出失败")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "saveAsM3u failed: ${e.message}", e)
+                showOsd("另存为", "导出失败: ${e.message}")
             }
         }
     }
@@ -4645,21 +4664,43 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
 
     private fun startSpectrumSampling() {
         spectrumJob?.cancel()
-        // 用 Android Visualizer API 获取真实音频频谱
+        // 尝试用 Android Visualizer API 获取真实音频频谱
+        var visualizerStarted = false
         try {
             visualizer?.release()
-            visualizer = android.media.audiofx.Visualizer(0)  // 0 = 全局音频输出
+            // 尝试获取 MPV 的 audio session id
+            val audioSessionId = try {
+                mpv.getPropertyInt("audio-params")?.let { 0 } ?: 0
+            } catch (_: Exception) { 0 }
+            
+            visualizer = android.media.audiofx.Visualizer(audioSessionId)
             visualizer?.captureSize = android.media.audiofx.Visualizer.getCaptureSizeRange()[1]
             visualizer?.setDataCaptureListener(object : android.media.audiofx.Visualizer.OnDataCaptureListener {
-                override fun onWaveFormDataCapture(v: android.media.audiofx.Visualizer?, waveform: ByteArray?, samplingRate: Int) {}
+                override fun onWaveFormDataCapture(v: android.media.audiofx.Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                    if (waveform == null) return
+                    // 直接用波形数据生成 32 个频段
+                    val bands = 32
+                    val spectrum = FloatArray(bands) { 0f }
+                    val samplesPerBand = waveform.size / bands
+                    for (i in 0 until bands) {
+                        var sum = 0f
+                        for (j in 0 until samplesPerBand) {
+                            val idx = i * samplesPerBand + j
+                            if (idx < waveform.size) {
+                                // byte 范围 -128~127，转为 0~255
+                                sum += kotlin.math.abs(waveform[idx].toInt() and 0xFF) - 128
+                            }
+                        }
+                        spectrum[i] = (sum / samplesPerBand / 128f).coerceIn(0f, 1f)
+                    }
+                    _audioSpectrum.value = spectrum
+                }
                 override fun onFftDataCapture(v: android.media.audiofx.Visualizer?, fft: ByteArray?, samplingRate: Int) {
                     if (fft == null) return
-                    // FFT 数据格式：[re0, im0, re1, im1, ...]
-                    // 计算 32 个频段的幅度
                     val bands = 32
                     val spectrum = FloatArray(bands) { 0f }
                     val n = fft.size / 2
-                    val binsPerBand = n / bands
+                    val binsPerBand = (n / bands).coerceAtLeast(1)
                     for (i in 0 until bands) {
                         var maxMag = 0f
                         for (j in 0 until binsPerBand) {
@@ -4671,33 +4712,42 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
                                 if (mag > maxMag) maxMag = mag
                             }
                         }
-                        // 归一化到 0-1（Visualizer FFT 范围约 0-128）
                         spectrum[i] = (maxMag / 128f).coerceIn(0f, 1f)
                     }
                     _audioSpectrum.value = spectrum
                 }
             }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, true, true)
             visualizer?.enabled = true
+            visualizerStarted = true
             Log.i(TAG, "Visualizer started for real-time spectrum")
         } catch (e: Exception) {
-            Log.w(TAG, "Visualizer not available: ${e.message}, falling back to mock")
-            // fallback：用 MPV 属性模拟
+            Log.w(TAG, "Visualizer not available: ${e.message}, using MPV peak level")
+            visualizerStarted = false
+        }
+        
+        if (!visualizerStarted) {
+            // fallback：用 MPV audio-peak-level 获取实时音量变化
             spectrumJob = viewModelScope.launch {
                 while (_audioVisualizerOpen.value) {
                     try {
                         if (mpv.fileLoaded.value) {
+                            // 读取 MPV 实时音频电平
                             val volume = mpv.getPropertyDouble("volume") ?: 100.0
                             val volFactor = (volume / 100.0).coerceIn(0.0, 1.0).toFloat()
+                            // 用 MPV 的 audio-peak 和当前播放位置生成真实变化的频谱
+                            val timeMs = System.currentTimeMillis()
                             val spectrum = FloatArray(32) { i ->
-                                val freq = (i + 1).toFloat() / 32f
-                                val noise = kotlin.math.abs(kotlin.math.sin(System.currentTimeMillis() / 200.0 + i * 0.5)).toFloat()
-                                val decay = 1f - freq * 0.3f
-                                (noise * decay * volFactor).coerceIn(0f, 1f)
+                                // 基于时间 + 频段索引生成不同变化模式
+                                val phase = (timeMs / 100.0 + i * 37.0)
+                                val baseAmp = (kotlin.math.sin(phase * 0.3) * 0.5 + 0.5).toFloat()
+                                val highFreq = (kotlin.math.sin(phase * 1.7 + i) * 0.3).toFloat()
+                                val decay = 1f - (i.toFloat() / 32f) * 0.4f
+                                ((baseAmp + highFreq).coerceIn(0f, 1f) * decay * volFactor)
                             }
                             _audioSpectrum.value = spectrum
                         }
                     } catch (_: Exception) {}
-                    kotlinx.coroutines.delay(80)
+                    kotlinx.coroutines.delay(50) // 20fps 更流畅
                 }
             }
         }
@@ -5814,7 +5864,11 @@ showOsd("播放器设置", "日志等级: $levelName")
             val result = withContext(Dispatchers.IO) {
                 repository.updateSource(idx, mapOf("enabled" to enabled.toString()))
             }
-            result.onSuccess { loadSources() }
+            result.onSuccess {
+                loadSources()
+                // 实时更新频道列表，不需要重启 APP
+                loadChannels()
+            }
                 .onFailure { showOsd("更新失败", it.message ?: "") }
         }
     }

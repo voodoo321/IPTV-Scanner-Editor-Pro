@@ -144,12 +144,12 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                         contentDescription = "前一天",
-                        tint = if (epgDateOffset > -7) Color.White else Color(0xFF555555)
+                        tint = if (epgDateOffset > -7) MaterialTheme.colorScheme.onSurface else Color(0xFF555555)
                     )
                 }
                 Text(
                     text = formatEpgDateLabel(epgDateOffset),
-                    color = if (epgDateOffset == 0) Color(0xFF4A9EFF) else Color.White,
+                    color = if (epgDateOffset == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -160,7 +160,7 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = "后一天",
-                        tint = if (epgDateOffset < 7) Color.White else Color(0xFF555555)
+                        tint = if (epgDateOffset < 7) MaterialTheme.colorScheme.onSurface else Color(0xFF555555)
                     )
                 }
             }
@@ -172,12 +172,12 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("搜索节目...", color = Color(0xFF888888), fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF888888)) },
+                    placeholder = { Text("搜索节目...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }, modifier = Modifier.tvFocusBorder()) {
-                                Icon(Icons.Default.Close, contentDescription = "清空", tint = Color(0xFF888888))
+                                Icon(Icons.Default.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     },
@@ -203,9 +203,9 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color(0xFF4A9EFF))
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("加载节目单...", color = Color(0xFF888888), fontSize = 13.sp)
+                            Text("加载节目单...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         }
                     }
                 }
@@ -348,8 +348,8 @@ private fun EpgItem(
     hasReminder: Boolean,
     onClick: () -> Unit
 ) {
-    val bgColor = if (isCurrent) Color(0xFF4A9EFF).copy(alpha = 0.15f) else Color.Transparent
-    val leftBorderColor = if (isCurrent) Color(0xFF4A9EFF) else Color.Transparent
+    val bgColor = if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent
+    val leftBorderColor = if (isCurrent) MaterialTheme.colorScheme.primary else Color.Transparent
     val itemAlpha = if (isPast && !isCurrent) 0.5f else 1f
 
     Row(
@@ -386,7 +386,7 @@ private fun EpgItem(
                 }
                 Text(
                     text = timeText,
-                    color = if (isCurrent) Color.White else Color(0xFFCCCCCC),
+                    color = if (isCurrent) MaterialTheme.colorScheme.onSurface else Color(0xFFCCCCCC),
                     fontSize = 11.sp
                 )
                 if (isCurrent) {
@@ -404,7 +404,7 @@ private fun EpgItem(
             // 节目标题
             Text(
                 text = program.title,
-                color = if (isCurrent) Color.White else Color(0xFFEEEEEE),
+                color = if (isCurrent) MaterialTheme.colorScheme.onSurface else Color(0xFFEEEEEE),
                 fontSize = 14.sp,
                 fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 2,
@@ -416,7 +416,7 @@ private fun EpgItem(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = program.desc,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -470,7 +470,7 @@ private fun LiveBadge() {
     ) {
         Text(
             text = "LIVE",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
@@ -489,7 +489,7 @@ private fun EmptyState(text: String) {
     ) {
         Text(
             text = text,
-            color = Color(0xFF888888),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp,
             lineHeight = 20.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center

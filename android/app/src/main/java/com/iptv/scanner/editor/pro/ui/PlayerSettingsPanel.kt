@@ -83,7 +83,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Surface(
-        color = Color(0xF0121212),
+        color = Color.Transparent,
         modifier = Modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -108,16 +108,16 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                 Text(
                     text = "播放器设置",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // 重置按钮
                     IconButton(onClick = { viewModel.resetPlayerSettings() }, modifier = Modifier.tvFocusBorder()) {
-                        Icon(Icons.Default.Refresh, contentDescription = "重置", tint = Color.White)
+                        Icon(Icons.Default.Refresh, contentDescription = "重置", tint = MaterialTheme.colorScheme.onSurface)
                     }
                     // 关闭按钮
                     IconButton(onClick = { viewModel.togglePlayerSettings() }, modifier = Modifier.tvFocusBorder().focusRequester(closeFocusRequester)) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -143,26 +143,29 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                     selected = currentPlayerType == PlayerType.MPV,
                     onClick = { viewModel.switchPlayerType(PlayerType.MPV) },
                     label = { Text("MPV（推荐）") },
-                    modifier = Modifier.tvFocusBorder()
+                    modifier = Modifier.tvFocusBorder(),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
                 )
                 FilterChip(
                     selected = currentPlayerType == PlayerType.EXO,
                     onClick = { viewModel.switchPlayerType(PlayerType.EXO) },
                     label = { Text("ExoPlayer") },
-                    modifier = Modifier.tvFocusBorder()
+                    modifier = Modifier.tvFocusBorder(),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
                 )
                 FilterChip(
                     selected = currentPlayerType == PlayerType.SYSTEM,
                     onClick = { viewModel.switchPlayerType(PlayerType.SYSTEM) },
                     label = { Text("系统解码") },
-                    modifier = Modifier.tvFocusBorder()
+                    modifier = Modifier.tvFocusBorder(),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
                 )
             }
 
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = currentPlayerType.description,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -205,7 +208,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
 
             // 画面锁定 + 开机自启动
             Surface(
-                color = Color(0xFF1E2720),
+                color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -221,13 +224,13 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "画面锁定（换源不黑屏）",
-                                color = Color(0xFF90CAF9),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 text = "切换频道时保持上一帧画面，避免黑屏闪烁",
-                                color = Color(0xFFB0BEC5),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp
                             )
                         }
@@ -248,13 +251,13 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "开机自启动",
-                                color = Color(0xFF90CAF9),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 text = "设备开机后自动启动应用",
-                                color = Color(0xFFB0BEC5),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp
                             )
                         }
@@ -275,13 +278,13 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "启动自动续播",
-                                color = Color(0xFF90CAF9),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 text = "打开应用时自动播放上次频道",
-                                color = Color(0xFFB0BEC5),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp
                             )
                         }
@@ -381,7 +384,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             Text(
                 text = voDesc,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -451,7 +454,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             Text(
                 text = hwdecDesc,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -499,7 +502,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                             "兼容性最好，支持更多编码格式，但 CPU 负载高、可能发热。" +
                             "适合硬解不兼容的 4K/HDR 流"
                     },
-                    color = Color(0xFFB0BEC5),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
@@ -543,7 +546,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             Text(
                 text = deinterlaceDesc,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -605,7 +608,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             Text(
                 text = hdrDesc,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -647,7 +650,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             Text(
                 text = rtspDesc,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -705,7 +708,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             Text(
                 text = logLevelDesc,
-                color = Color(0xFFB0BEC5),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -720,7 +723,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             }
             if (fallbackConfirmed) {
                 Surface(
-                    color = Color(0xFF1B5E20),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -731,7 +734,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "黑屏 fallback 已确认",
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -752,7 +755,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             // -----------------------------------------------------------------
             val perChannelEnabled by viewModel.perChannelSettingsEnabled.collectAsState()
             Surface(
-                color = Color(0xFF1E2720),
+                color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -767,7 +770,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "频道记忆",
-                            color = Color(0xFF90CAF9),
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -775,7 +778,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                         Text(
                             text = "开启后，每个频道会自动记忆各自的输出/解码/HDR 设置。" +
                                 "切换频道时自动应用，无需手动保存。在主菜单「清除频道专属设置」可重置当前频道。",
-                            color = Color(0xFFB0BEC5),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp,
                             lineHeight = 15.sp
                         )
@@ -794,14 +797,14 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
             // 提示
             // -----------------------------------------------------------------
             Surface(
-                color = Color(0xFF263238),
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
                         text = "使用说明",
-                        color = Color(0xFF90CAF9),
+                        color = MaterialTheme.colorScheme.primary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -812,7 +815,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                         "4. 点击右上角重置按钮可恢复默认值"
                     Text(
                         text = tips,
-                        color = Color(0xFFB0BEC5),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
                     )
@@ -827,7 +830,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
 private fun SectionTitle(text: String) {
     Text(
         text = text,
-        color = Color(0xFF4A9EFF),
+        color = MaterialTheme.colorScheme.primary,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold
     )
@@ -837,7 +840,7 @@ private fun SectionTitle(text: String) {
 private fun SectionDesc(text: String) {
     Text(
         text = text,
-        color = Color(0xFF888888),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 12.sp
     )
 }

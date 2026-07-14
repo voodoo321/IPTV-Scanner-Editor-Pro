@@ -105,7 +105,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Surface(
-        color = Color(0xF0121212),
+        color = Color.Transparent,
         modifier = Modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -126,7 +126,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                 Text(
                     text = "订阅源管理",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // 局域网管理按钮（用 Phonelink 图标：表示 TV 与手机连接管理，
@@ -135,7 +135,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                         Icon(
                             Icons.Default.Phonelink,
                             contentDescription = "局域网管理",
-                            tint = if (adminRunning) Color(0xFF4CAF50) else Color.White
+                            tint = if (adminRunning) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     // 二维码按钮（仅在服务器运行时显示）
@@ -144,7 +144,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                             Icon(
                                 Icons.Default.QrCode,
                                 contentDescription = "二维码",
-                                tint = if (showQrCode) Color(0xFF4A9EFF) else Color.White
+                                tint = if (showQrCode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -152,7 +152,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                     if (sourceLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
-                            color = Color(0xFF4A9EFF),
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -164,12 +164,12 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                                 viewModel.reloadEpgSources()
                             }
                         }, modifier = Modifier.tvFocusBorder()) {
-                            Icon(Icons.Default.Refresh, contentDescription = "重载", tint = Color.White)
+                            Icon(Icons.Default.Refresh, contentDescription = "重载", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                     // 关闭按钮
                     IconButton(onClick = { viewModel.toggleSourceManager() }, modifier = Modifier.tvFocusBorder().focusRequester(closeFocusRequester)) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -190,7 +190,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 // 启动提示卡片：可被遥控器焦点选中（tvFocusBorder + focusable）
                 Surface(
-                    color = Color(0xFF1A237E),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -208,7 +208,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                             Text(
                                 text = "启动局域网管理",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = "TV 端用遥控器输入不便，点击启动后用手机浏览器扫码管理",
@@ -338,7 +338,7 @@ private fun AddSourceRow(placeholder: String, onAdd: (url: String, name: String)
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
-            placeholder = { Text(placeholder, color = Color(0xFF888888)) },
+            placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
             modifier = Modifier.weight(1f).tvTextField(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -347,7 +347,7 @@ private fun AddSourceRow(placeholder: String, onAdd: (url: String, name: String)
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            placeholder = { Text("名称（可选）", color = Color(0xFF888888)) },
+            placeholder = { Text("名称（可选）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
             modifier = Modifier.width(120.dp).tvTextField(),
             singleLine = true,
             shape = RoundedCornerShape(8.dp)
@@ -362,7 +362,7 @@ private fun AddSourceRow(placeholder: String, onAdd: (url: String, name: String)
             },
             modifier = Modifier.tvFocusBorder()
         ) {
-            Icon(Icons.Default.Add, contentDescription = "添加", tint = Color(0xFF4A9EFF))
+            Icon(Icons.Default.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -378,7 +378,7 @@ private fun SourceItem(
     onDelete: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF1E1E1E),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -390,7 +390,7 @@ private fun SourceItem(
                 Text(
                     text = source.name.ifEmpty { "订阅源 ${index + 1}" },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -398,7 +398,7 @@ private fun SourceItem(
                 Text(
                     text = source.url,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -435,7 +435,7 @@ private fun EpgSourceItem(
     onDelete: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF1E1E1E),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -447,7 +447,7 @@ private fun EpgSourceItem(
                 Text(
                     text = source.name.ifEmpty { "EPG 源 ${index + 1}" },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -455,7 +455,7 @@ private fun EpgSourceItem(
                 Text(
                     text = source.url,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -483,7 +483,7 @@ private fun EmptyHint(text: String) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF888888)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -504,7 +504,7 @@ private fun AdminAutoStopToggle(viewModel: AppViewModel) {
         Icon(
             imageVector = Icons.Default.Timer,
             contentDescription = null,
-            tint = Color(0xFFAAAAAA),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(18.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -538,7 +538,7 @@ private fun LanAdminInfoBar(
 ) {
     Column {
         Surface(
-            color = Color(0xFF1B5E20),
+            color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -552,7 +552,7 @@ private fun LanAdminInfoBar(
                     Text(
                         text = "局域网管理已启动",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "$url/mobile/" + (if (token.isNotEmpty()) "?token=$token" else ""),
@@ -577,7 +577,7 @@ private fun LanAdminInfoBar(
                     Icon(
                         Icons.Default.QrCode,
                         contentDescription = "二维码",
-                        tint = if (showQrCode) Color(0xFF4A9EFF) else Color.White
+                        tint = if (showQrCode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -586,7 +586,7 @@ private fun LanAdminInfoBar(
         if (showQrCode) {
             Spacer(modifier = Modifier.height(12.dp))
             Surface(
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -679,7 +679,7 @@ private fun LanAdminTokenInput(viewModel: AppViewModel) {
             Text(
                 text = "访问令牌",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFAAAAAA),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
             if (adminToken.isNotEmpty()) {
@@ -709,7 +709,7 @@ private fun LanAdminTokenInput(viewModel: AppViewModel) {
                 OutlinedTextField(
                     value = tokenInput,
                     onValueChange = { tokenInput = it },
-                    placeholder = { Text("留空自动生成", color = Color(0xFF888888), fontSize = 12.sp) },
+                    placeholder = { Text("留空自动生成", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) },
                     modifier = Modifier.weight(1f).tvTextField(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
@@ -758,7 +758,7 @@ private fun BackupRestoreBar(viewModel: AppViewModel) {
     }
 
     Surface(
-        color = Color(0xFF263238),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -771,7 +771,7 @@ private fun BackupRestoreBar(viewModel: AppViewModel) {
                     Text(
                         text = "备份与恢复",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "导出配置到下载目录，重装/换机后可恢复",
@@ -789,7 +789,7 @@ private fun BackupRestoreBar(viewModel: AppViewModel) {
                     onClick = { viewModel.exportConfig() },
                     modifier = Modifier.weight(1f).tvFocusBorder()
                 ) {
-                    Icon(Icons.Default.Save, contentDescription = null, tint = Color(0xFF4A9EFF))
+                    Icon(Icons.Default.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("导出配置")
                 }
