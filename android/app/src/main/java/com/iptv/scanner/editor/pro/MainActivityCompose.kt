@@ -555,10 +555,20 @@ class MainActivityCompose : ComponentActivity() {
         if (isInPictureInPictureMode) {
             viewModel.closeAllPanels()
             viewModel.hideControls()
+            // 进入 PiP 时保持播放器不动，不要重载
             Log.i(TAG, "Entered PiP: panels closed, controls hidden")
         } else {
+            // 退出 PiP 时不要重载视频，只是恢复控制层
             viewModel.showControls()
             Log.i(TAG, "Exited PiP: controls shown")
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // 如果在 PiP 模式中被 stop，不要停止播放
+        if (!isInPictureInPictureMode) {
+            // 非画中画模式下离开应用时可以选择暂停（但保持视频状态）
         }
     }
 

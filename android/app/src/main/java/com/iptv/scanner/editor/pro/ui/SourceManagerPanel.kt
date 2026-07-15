@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -115,7 +116,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                 Modifier.fillMaxSize()
             }
         Column(
-            modifier = contentMod.focusGroup().verticalScroll(rememberScrollState()).systemBarsPadding().padding(16.dp)
+            modifier = contentMod.focusGroup().verticalScroll(rememberScrollState()).systemBarsPadding().imePadding().padding(16.dp)
         ) {
             // 标题栏
             Row(
@@ -330,16 +331,15 @@ private fun AddSourceRow(placeholder: String, onAdd: (url: String, name: String)
     var url by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
 
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
             placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-            modifier = Modifier.weight(1f).tvTextField(),
+            modifier = Modifier.fillMaxWidth().tvTextField(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             shape = RoundedCornerShape(8.dp)
@@ -348,21 +348,28 @@ private fun AddSourceRow(placeholder: String, onAdd: (url: String, name: String)
             value = name,
             onValueChange = { name = it },
             placeholder = { Text("名称（可选）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-            modifier = Modifier.width(120.dp).tvTextField(),
+            modifier = Modifier.fillMaxWidth().tvTextField(),
             singleLine = true,
             shape = RoundedCornerShape(8.dp)
         )
-        IconButton(
-            onClick = {
-                if (url.isNotBlank()) {
-                    onAdd(url.trim(), name.trim())
-                    url = ""
-                    name = ""
-                }
-            },
-            modifier = Modifier.tvFocusBorder()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
         ) {
-            Icon(Icons.Default.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.primary)
+            OutlinedButton(
+                onClick = {
+                    if (url.isNotBlank()) {
+                        onAdd(url.trim(), name.trim())
+                        url = ""
+                        name = ""
+                    }
+                },
+                modifier = Modifier.tvFocusBorder()
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "添加", tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("添加", color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }

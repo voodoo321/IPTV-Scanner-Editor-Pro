@@ -111,21 +111,11 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
     }
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = surfaceModifier
     ) {
         Column(modifier = Modifier.fillMaxSize().then(if (compact) Modifier else Modifier.systemBarsPadding())) {
-            // -----------------------------------------------------------------
-            // 标题栏（compact 模式不显示）
-            // -----------------------------------------------------------------
-            if (!compact) {
-                PanelHeader(
-                    title = "节目单",
-                    subtitle = currentChannel?.name ?: "未选择频道",
-                    onClose = { viewModel.toggleEpgPanel() },
-                    closeFocusRequester = closeFocusRequester
-                )
-            }
+            // 标题栏已移除（活动区域内显示不需要标题）
 
             // -----------------------------------------------------------------
             // 日期切换栏（±7 天）
@@ -165,30 +155,7 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                 }
             }
 
-            // -----------------------------------------------------------------
-            // 搜索框（compact 模式不显示）
-            // -----------------------------------------------------------------
-            if (!compact) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("搜索节目...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.tvFocusBorder()) {
-                                Icon(Icons.Default.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                    .tvTextField(),
-                shape = RoundedCornerShape(8.dp),
-                singleLine = true
-            )
-            }
+            // 搜索框已移除
 
             // -----------------------------------------------------------------
             // 节目列表

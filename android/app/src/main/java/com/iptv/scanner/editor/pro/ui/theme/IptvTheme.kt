@@ -175,8 +175,8 @@ fun rememberPlayerOverlayColors(): PlayerOverlayColors {
     return if (dark) {
         PlayerOverlayColors(
             scrim = Color(0x66000000),
-            topBarBg = Color(0xF0242838),      // TAB/控制栏：更亮的深蓝灰，比活动区域亮
-            infoBarBg = Color(0xF0242838),      // 与信息栏同色
+            topBarBg = Color(0xF0303548),      // TAB/控制栏：更亮的深蓝灰
+            infoBarBg = Color(0xD0181C28),      // 活动区域：更深，与 TAB 形成对比      // 与信息栏同色
             iconTint = Color.White,
             iconTintActive = Color(0xFFFFA500),
             textPrimary = Color.White,

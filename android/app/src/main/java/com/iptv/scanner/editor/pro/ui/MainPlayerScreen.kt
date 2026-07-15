@@ -424,28 +424,6 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                             .padding(bottom = 8.dp)
                     )
                 }
-                // EPG 节目单（活动区域百叶窗效果：点击图标后从右侧滑入，分组和频道列表向左收缩）
-                if (epgPanelOpen) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        // 左侧：收缩的分组+频道列表（窄列）
-                        Box(modifier = Modifier.width(48.dp)) {
-                            // 点击展开恢复
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color(0x44000000))
-                                    .clickable { viewModel.toggleEpgPanel() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.ChevronRight, contentDescription = "展开", tint = Color.White)
-                            }
-                        }
-                        // 右侧：EPG 面板占满剩余空间
-                        Box(modifier = Modifier.weight(1f)) {
-                            EpgPanel(viewModel = viewModel)
-                        }
-                    }
-                }
             } else {
                 // ---- 全屏模式（横屏 PHONE / TV / 多画面）----
                 if (multiViewState.active) {
@@ -1766,7 +1744,25 @@ private fun PortraitDynamicContent(viewModel: AppViewModel) {
         }
         // 内容区域
         Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-            when (portraitTab) {
+            val epgPanelOpen by viewModel.epgPanelOpen.collectAsState()
+            if (epgPanelOpen && portraitTab == AppViewModel.PortraitTab.CHANNELS) {
+                // EPG 在活动区域内显示：左侧窄列收缩 + 右侧 EPG
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .fillMaxHeight()
+                            .background(oc.divider.copy(alpha = 0.3f))
+                            .clickable { viewModel.toggleEpgPanel() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "展开", tint = oc.iconTint)
+                    }
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        EpgPanel(viewModel = viewModel)
+                    }
+                }
+            } else when (portraitTab) {
                 AppViewModel.PortraitTab.CHANNELS -> {
                     PortraitChannelList(viewModel = viewModel, showFavoritesOnly = false)
                 }

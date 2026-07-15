@@ -322,11 +322,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return ProgressHelper.findCurrentProgram(programs, System.currentTimeMillis())
     }
 
-    /** 播放指定频道并打开 EPG 面板 */
-    fun playChannelAndShowEpg(idx: Int) {
-        playChannel(idx, silent = true)
-        showEpgPanel()
+/** 打开 EPG 面板（不重载视频） */
+fun playChannelAndShowEpg(idx: Int) {
+    // 不调用 playChannel，避免重载视频。只获取该频道 EPG 数据并显示面板。
+    if (idx != _currentIdx.value) {
+        _currentIdx.value = idx
     }
+    fetchEpgForCurrent()
+    showEpgPanel()
+}
 
     /** 频道信息详情面板 */
     private val _channelInfoOpen = MutableStateFlow(false)
@@ -4652,7 +4656,17 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
     fun toggleAudioVisualizer() {
         _audioVisualizerOpen.value = !_audioVisualizerOpen.value
         if (_audioVisualizerOpen.value) {
-            startSpectrumSampling()
+            // 检查 RECORD_AUDIO 权限
+            val app = getApplication<Application>()
+            val hasPermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                androidx.core.content.ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO)
+            if (hasPermission) {
+                startSpectrumSampling()
+            } else {
+                // 没有权限，直接用 MPV fallback 模式
+                Log.w(TAG, "RECORD_AUDIO permission not granted, using MPV fallback for spectrum")
+                startSpectrumSampling()
+            }
         } else {
             stopSpectrumSampling()
             showControlsAutoHide()
@@ -4678,33 +4692,22 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
             visualizer?.setDataCaptureListener(object : android.media.audiofx.Visualizer.OnDataCaptureListener {
                 override fun onWaveFormDataCapture(v: android.media.audiofx.Visualizer?, waveform: ByteArray?, samplingRate: Int) {
                     if (waveform == null) return
-                    // 直接用波形数据生成 32 个频段
-                    val bands = 32
-                    val spectrum = FloatArray(bands) { 0f }
-                    val samplesPerBand = waveform.size / bands
-                    for (i in 0 until bands) {
-                        var sum = 0f
-                        for (j in 0 until samplesPerBand) {
-                            val idx = i * samplesPerBand + j
-                            if (idx < waveform.size) {
-                                // byte 范围 -128~127，转为 0~255
-                                sum += kotlin.math.abs(waveform[idx].toInt() and 0xFF) - 128
-                            }
-                        }
-                        spectrum[i] = (sum / samplesPerBand / 128f).coerceIn(0f, 1f)
-                    }
-                    _audioSpectrum.value = spectrum
+                    // 波形数据不用做频谱，FFT 更适合。这里不处理。
                 }
                 override fun onFftDataCapture(v: android.media.audiofx.Visualizer?, fft: ByteArray?, samplingRate: Int) {
                     if (fft == null) return
                     val bands = 32
                     val spectrum = FloatArray(bands) { 0f }
-                    val n = fft.size / 2
-                    val binsPerBand = (n / bands).coerceAtLeast(1)
+                    val n = fft.size / 2  // FFT bin 数量（不含 DC）
+                    // 跳过 bin 0（DC 分量，总是最大且无意义）
+                    // 使用对数分频段：低频段窄、高频段宽，符合人耳感知
                     for (i in 0 until bands) {
+                        // 对数映射：band i 对应的 bin 范围
+                        val startBin = (Math.pow(n.toDouble(), i.toDouble() / bands) + 1).toInt()
+                        val endBin = (Math.pow(n.toDouble(), (i + 1).toDouble() / bands) + 1).toInt().coerceAtMost(n)
                         var maxMag = 0f
-                        for (j in 0 until binsPerBand) {
-                            val idx = (i * binsPerBand + j) * 2
+                        for (j in startBin until endBin) {
+                            val idx = j * 2
                             if (idx + 1 < fft.size) {
                                 val re = fft[idx].toFloat()
                                 val im = fft[idx + 1].toFloat()
@@ -4712,11 +4715,17 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
                                 if (mag > maxMag) maxMag = mag
                             }
                         }
-                        spectrum[i] = (maxMag / 128f).coerceIn(0f, 1f)
+                        // 对数缩放：更灵敏，更像常见频谱仪
+                        // mag 范围约 0~9052（Visualizer FFT 最大值），用 log 映射到 0~1
+                        val normalized = if (maxMag > 0.1f) {
+                            (kotlin.math.log10(maxMag + 1) / kotlin.math.log10(9052f)).coerceIn(0f, 1f)
+                        } else 0f
+                        spectrum[i] = normalized
                     }
                     _audioSpectrum.value = spectrum
                 }
-            }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, true, true)
+            }, android.media.audiofx.Visualizer.getMaxCaptureRate(), false, true)
+            // 只用 FFT 数据（waveform=false, fft=true），最大采样率实现 60fps
             visualizer?.enabled = true
             visualizerStarted = true
             Log.i(TAG, "Visualizer started for real-time spectrum")
@@ -4726,28 +4735,32 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
         }
         
         if (!visualizerStarted) {
-            // fallback：用 MPV audio-peak-level 获取实时音量变化
+            // fallback：Visualizer 不可用时用模拟频谱
             spectrumJob = viewModelScope.launch {
                 while (_audioVisualizerOpen.value) {
                     try {
                         if (mpv.fileLoaded.value) {
-                            // 读取 MPV 实时音频电平
                             val volume = mpv.getPropertyDouble("volume") ?: 100.0
                             val volFactor = (volume / 100.0).coerceIn(0.0, 1.0).toFloat()
-                            // 用 MPV 的 audio-peak 和当前播放位置生成真实变化的频谱
                             val timeMs = System.currentTimeMillis()
                             val spectrum = FloatArray(32) { i ->
-                                // 基于时间 + 频段索引生成不同变化模式
-                                val phase = (timeMs / 100.0 + i * 37.0)
-                                val baseAmp = (kotlin.math.sin(phase * 0.3) * 0.5 + 0.5).toFloat()
-                                val highFreq = (kotlin.math.sin(phase * 1.7 + i) * 0.3).toFloat()
-                                val decay = 1f - (i.toFloat() / 32f) * 0.4f
-                                ((baseAmp + highFreq).coerceIn(0f, 1f) * decay * volFactor)
+                                // 模拟常见频谱：低频强高频弱 + 随机波动
+                                val t = timeMs / 1000.0
+                                // 基础衰减：低频高、高频低（模拟音乐能量分布）
+                                val baseDecay = kotlin.math.exp(-i.toDouble() * 0.05)
+                                // 多个频率叠加产生自然变化
+                                val wave1 = kotlin.math.sin(t * 3.0 + i * 0.4) * 0.3
+                                val wave2 = kotlin.math.sin(t * 7.0 + i * 0.9) * 0.2
+                                val wave3 = kotlin.math.sin(t * 13.0 + i * 1.5) * 0.15
+                                // 随机微波动
+                                val noise = (kotlin.math.sin(t * 23.0 + i * 3.7) * 0.1)
+                                val amp = ((baseDecay + wave1 + wave2 + wave3 + noise) * volFactor).toFloat()
+                                amp.coerceIn(0.02f, 1f)
                             }
                             _audioSpectrum.value = spectrum
                         }
                     } catch (_: Exception) {}
-                    kotlinx.coroutines.delay(50) // 20fps 更流畅
+                    kotlinx.coroutines.delay(16) // ~60fps
                 }
             }
         }

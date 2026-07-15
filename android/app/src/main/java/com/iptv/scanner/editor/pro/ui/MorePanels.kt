@@ -19,6 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -570,6 +571,7 @@ private fun parseTracks(trackListJson: String, type: String): List<Pair<Int, Str
  * - 音频延迟（-10~10s）
  * - EQ 预设（正常/低音/高音/人声/流行/古典）
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AudioSettingsPanel(viewModel: AppViewModel) {
     val mpv = viewModel.mpv
@@ -659,8 +661,8 @@ fun AudioSettingsPanel(viewModel: AppViewModel) {
             onReset = { audioDelay = 0.0; mpv.setAudioDelay(0.0) }
         )
 
-        SectionLabel("均衡器预设")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+SectionLabel("均衡器预设")
+FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf("normal" to "正常", "bass" to "低音", "treble" to "高音",
                 "vocal" to "人声", "pop" to "流行", "classic" to "古典").forEach { (key, label) ->
                 FilterChip(
@@ -705,6 +707,7 @@ fun AudioSettingsPanel(viewModel: AppViewModel) {
  * - 字幕位置（0~100）
  * - 加载外挂字幕（文件选择器）
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SubtitleSettingsPanel(viewModel: AppViewModel) {
     val mpv = viewModel.mpv
@@ -850,7 +853,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
         DescText("颜色/字体/边框/阴影高级设置")
 
         // 快速预设
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf(
                 "默认" to mapOf(
                     "font-size" to "55", "color" to "#FFFFFFFF",
@@ -1026,6 +1029,7 @@ fun SubtitleSettingsPanel(viewModel: AppViewModel) {
  * - 逐帧（前进/后退）
  * - 速度调节（0.25~4.0）
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun PlaybackPanel(viewModel: AppViewModel) {
     val mpv = viewModel.mpv
@@ -1113,9 +1117,9 @@ fun PlaybackPanel(viewModel: AppViewModel) {
             )
         }
 
-        SectionLabel("A/B 循环")
-        DescText("设置 A 点和 B 点后，在该区间内循环播放")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+SectionLabel("A/B 循环")
+DescText("设置 A 点和 B 点后，在该区间内循环播放")
+FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             OutlinedButton(
                 onClick = {
                     abLoopA = mpv.timePos.value
@@ -2558,6 +2562,7 @@ private fun SourceBadge(source: String) {
  *
  * 扫描完成后，有效频道会自动追加到频道列表（分组"扫描结果"），由后端 StandaloneScanner 处理。
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ScanPanel(viewModel: AppViewModel) {
     val scanStatus by viewModel.scanStatus.collectAsState()
@@ -2608,6 +2613,7 @@ fun ScanPanel(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val oc2 = rememberPlayerOverlayColors()
             Column(modifier = Modifier.weight(1f)) {
                 Text("超时: ${timeout}s", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 Slider(
@@ -2616,10 +2622,18 @@ fun ScanPanel(viewModel: AppViewModel) {
                     valueRange = 3f..30f,
                     enabled = !running,
                     modifier = Modifier.fillMaxWidth().tvFocusBorder(),
+                    thumb = {
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .background(oc2.accent, androidx.compose.foundation.shape.CircleShape)
+                                .then(Modifier.border(2.dp, oc2.accent.copy(alpha = 0.3f), androidx.compose.foundation.shape.CircleShape))
+                        )
+                    },
                     colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = Color(0xFF444444)
+                        thumbColor = oc2.accent,
+                        activeTrackColor = oc2.accent,
+                        inactiveTrackColor = oc2.trackInactive
                     )
                 )
             }
@@ -2631,10 +2645,18 @@ fun ScanPanel(viewModel: AppViewModel) {
                     valueRange = 1f..16f,
                     enabled = !running,
                     modifier = Modifier.fillMaxWidth().tvFocusBorder(),
+                    thumb = {
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .background(oc2.accent, androidx.compose.foundation.shape.CircleShape)
+                                .then(Modifier.border(2.dp, oc2.accent.copy(alpha = 0.3f), androidx.compose.foundation.shape.CircleShape))
+                        )
+                    },
                     colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = Color(0xFF444444)
+                        thumbColor = oc2.accent,
+                        activeTrackColor = oc2.accent,
+                        inactiveTrackColor = oc2.trackInactive
                     )
                 )
             }
