@@ -169,7 +169,7 @@ fun FileBrowserPanel(viewModel: AppViewModel) {
     val focusManager = LocalFocusManager.current
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxSize()
     ) {
 Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
@@ -192,12 +192,12 @@ Surface(
                                 AppViewModel.FileBrowserMode.MEDIA -> "选择音视频文件"
                             },
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = currentPath,
-                            color = Color(0xFF888888),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -209,7 +209,7 @@ Surface(
                             .tvFocusBorder()
                             .focusRequester(closeFocusRequester)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -285,10 +285,10 @@ Surface(
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回上一级",
-                        tint = Color(0xFFCCCCCC),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    Text("返回上一级", color = Color(0xFFCCCCCC), fontSize = 14.sp)
+                    Text("返回上一级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 }
             }
 
@@ -300,7 +300,7 @@ Surface(
                 ) {
                     Text(
                         text = "此目录为空或无法访问",
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp
                     )
                 }
@@ -377,7 +377,7 @@ Surface(
                             val iconTint = when {
                                 file.isDirectory -> Color(0xFF66BB6A)
                                 isTarget -> Color(0xFFFFB74D)
-                                else -> Color(0xFF666666)
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
                             Icon(
                                 imageVector = icon,
@@ -388,7 +388,7 @@ Surface(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = file.name,
-                                    color = if (isTarget) Color(0xFFFFB74D) else Color.White,
+                                    color = if (isTarget) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurface,
                                     fontSize = 14.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -404,7 +404,7 @@ Surface(
                                     }
                                     Text(
                                         text = sizeText,
-                                        color = Color(0xFF666666),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp
                                     )
                                 }

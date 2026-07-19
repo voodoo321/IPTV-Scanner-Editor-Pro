@@ -283,7 +283,7 @@ private fun SearchResultRow(
                     ) {
                         Text(
                             text = result.channel.group,
-                            color = Color(0xFF88AAFF),
+                            color = MaterialTheme.colorScheme.secondary,
                             fontSize = 10.sp,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             maxLines = 1

@@ -8,7 +8,7 @@ import org.json.JSONObject
 /**
  * 用户偏好持久化：收藏 / 历史 / 队列。
  *
- * 与 PC 端 user_settings.json 和 mobile storage（localStorage）对齐。
+ * 与 PC 端 user_settings.json 和 Web storage（localStorage）对齐。
  * 使用 SharedPreferences + JSON 简单存储，避免引入 Room/DataStore 等重依赖。
  *
  * 存储 key：

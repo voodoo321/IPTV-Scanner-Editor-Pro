@@ -186,6 +186,11 @@ def find_libmpv_paths():
     if is_android():
         possible_names = ['libmpv.so', 'libmpv.so.2', 'libmpv.so.1']
         paths = []
+        # 优先从 Kotlin 端传递的 nativeLibraryDir 搜索
+        native_lib_dir = os.environ.get('IPTV_NATIVE_LIB_DIR', '')
+        if native_lib_dir:
+            for name in possible_names:
+                paths.append(os.path.join(native_lib_dir, name))
         for name in possible_names:
             paths.append(os.path.join(mpv_dir, name))
         lib_dir = os.path.join(base_path, 'lib')

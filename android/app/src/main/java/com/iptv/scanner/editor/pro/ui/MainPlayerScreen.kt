@@ -9,10 +9,12 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -26,8 +28,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.blur
@@ -55,6 +59,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,6 +71,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,6 +81,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
@@ -117,6 +128,32 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Web
+import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.iptv.scanner.editor.pro.player.CatchupHelper
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import java.io.File
 
 /**
  * 主播放屏：MPVView + 透明控制层 + 面板抽屉 + OSD 浮层。
@@ -128,7 +165,7 @@ import androidx.compose.foundation.layout.PaddingValues
  * 4. 面板层（ChannelsPanel 右抽屉 / EpgPanel 左抽屉 / MainMenuPanel 全屏覆盖）
  * 5. OSD 浮层（顶部居中，3 秒自动隐藏，最顶层确保反馈可见）
  *
- * 与 PC 端 mobile/index.html 主框架对齐：
+ * 与 PC 端主框架对齐：
  * - 点击视频区域切换控制层
  * - 控制层显示时，顶部有 3 个面板入口（频道列表/EPG/菜单）
  * - 控制层底部是 ControlPanel（3 行布局）
@@ -181,6 +218,50 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
     val videoWidth by player.videoWidth.collectAsState()
     val videoHeight by player.videoHeight.collectAsState()
     val fileLoaded by player.fileLoaded.collectAsState()
+    val showHome by viewModel.showHome.collectAsState()
+    val portraitTab by viewModel.portraitTab.collectAsState()
+
+    // 系统返回键处理：播放页面→返回首页；首页→退出确认
+    BackHandler(enabled = true) {
+        when {
+            channelsPanelOpen || epgPanelOpen || menuPanelOpen || tvUnifiedPanelOpen ||
+            fileBrowserOpen || sourceManagerOpen || playerSettingsOpen || videoSettingsOpen ||
+            audioSettingsOpen || subtitleSettingsOpen || subtitleSearchOpen || playbackPanelOpen ||
+            screenshotPanelOpen || viewSettingsOpen || aboutPanelOpen || mappingPanelOpen ||
+            avSyncPanelOpen || networkPanelOpen || toolsPanelOpen || scanPanelOpen ||
+            reminderPanelOpen || resumePanelOpen || bookmarkPanelOpen || epgTimelineOpen ||
+            searchPanelOpen || streamQualityPanelOpen || recentPanelOpen || clipExportPanelOpen ||
+            audioVisualizerOpen || lyricsOpen || channelInfoOpen || openUrlDialogOpen -> {
+                viewModel.closeAllPanels()
+            }
+            !showHome -> {
+                // 播放页面：返回首页
+                viewModel.showHomeScreen()
+            }
+            else -> {
+                // 首页：显示退出确认
+                if (exitConfirmOpen) {
+                    viewModel.dismissExitConfirm()
+                } else {
+                    viewModel.showExitConfirm()
+                }
+            }
+        }
+    }
+
+    // SAF 文件选择器 —— 打开播放列表（M3U/M3U8）
+    val playlistLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.importPlaylist(uri)
+    }
+
+    // SAF 文件选择器 —— 打开本地视频/音频
+    val videoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.playLocalVideo(uri.toString())
+    }
 
     // 主题自适应覆盖颜色
     val oc = rememberPlayerOverlayColors()
@@ -301,11 +382,10 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
             // 创建新子 View 并 attach
             when (pType) {
                 PlayerType.MPV -> {
-                    val mpvView: MPVViewLike = if (portraitSplit) {
-                        MPVTextureView(ctx)
-                    } else {
-                        MPVView(ctx)
-                    }
+                    // 始终使用 SurfaceView（MPVView）。
+                    // TextureView 在部分设备上 GPU vo 无法渲染（如华为 LYA-AL00），
+                    // SurfaceView + mediacodec_embed 可以直接用 MediaCodec 渲染到 Surface。
+                    val mpvView: MPVViewLike = MPVView(ctx)
                     val configDir = ctx.getDir("mpv_config", Context.MODE_PRIVATE).absolutePath
                     val cacheDir = ctx.cacheDir.absolutePath
                     val userPrefs = UserPrefs.getInstance()
@@ -387,42 +467,77 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
             // TV 全屏：视频居中 + 统一面板（DPAD 导航）
             // -----------------------------------------------------------------
             if (portraitSplit) {
-                // ---- 竖屏新布局 V2：信息栏→分隔线→视频→参数行→控制栏→分隔线→动态内容 + 悬浮底部Tab ----
+                // ---- 竖屏布局 ----
+                // Tab 模式：不渲染播放器（省电，且避免 Surface 重建黑屏）
+                // 播放器模式：渲染播放器在视频区域
                 Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // 1. 固定信息栏
-                        PortraitInfoBarV2(viewModel = viewModel)
-                        // 分隔线
-                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(oc.divider))
-                        // 2. 固定视频区域 (16:9)
-                        PortraitVideoArea(
-                            primaryPlayer = primaryPlayer,
-                            aspectRatio = aspectRatio,
-                            anyPanelOpen = anyPanelOpen,
-                            viewModel = viewModel
-                        )
-                        // 2.5 视频参数行
-                        PortraitMediaInfoBar(viewModel = viewModel)
-                        // 3. 固定播放控制栏
-                        PortraitControlsV2(viewModel = viewModel)
-                        // 分隔线
-                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(oc.divider))
-                        // 4. 动态内容区域 (根据底部 Tab 切换)
-                        Box(
+                    if (showHome) {
+                        // ---- Tab 模式：不渲染播放器，直接显示 Tab UI ----
+                        Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
                         ) {
-                            PortraitDynamicContent(viewModel = viewModel)
+                            // 迷你播放器条
+                            val fileLoaded2 by viewModel.mpv.fileLoaded.collectAsState()
+                            val currentCh by viewModel.currentChannel.collectAsState()
+                            val paused2 by viewModel.mpv.paused.collectAsState()
+                            if (fileLoaded2 && currentCh != null) {
+                                MiniPlayerBar(
+                                    viewModel = viewModel,
+                                    channelName = currentCh!!.name,
+                                    channelLogo = currentCh!!.logo,
+                                    groupName = currentCh!!.group,
+                                    isPaused = paused2,
+                                    onClick = { viewModel.showPlayerScreen() },
+                                    onPlayPause = { viewModel.mpv.togglePause() }
+                                )
+                            }
+                            // 内容区域
+                            Box(modifier = Modifier.weight(1f)) {
+                                when (portraitTab) {
+                                    AppViewModel.PortraitTab.HOME -> PortraitHomeScreen(
+                                        viewModel = viewModel,
+                                        playlistLauncher = playlistLauncher,
+                                        videoLauncher = videoLauncher
+                                    )
+                                    AppViewModel.PortraitTab.LIST -> PortraitListScreen(
+                                        viewModel = viewModel,
+                                        playlistLauncher = playlistLauncher,
+                                        videoLauncher = videoLauncher
+                                    )
+                                    AppViewModel.PortraitTab.TOOLS -> PortraitToolsContent(viewModel = viewModel)
+                                    AppViewModel.PortraitTab.SETTINGS -> PortraitSettingsContent(viewModel = viewModel)
+                                }
+                            }
+                            PortraitBottomTabBar(viewModel = viewModel)
+                        }
+                    } else {
+                        // ---- 播放器模式：渲染播放器 ----
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            PortraitInfoBarV2(viewModel = viewModel)
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(oc.divider))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f)
+                                    .background(Color.Black)
+                            ) {
+                                primaryPlayer()
+                            }
+                            PortraitMediaInfoBar(viewModel = viewModel)
+                            PortraitControlsV2(viewModel = viewModel)
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(oc.divider))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .background(MaterialTheme.colorScheme.background)
+                            ) {
+                                PortraitPlayerDynamicContent(viewModel = viewModel)
+                            }
                         }
                     }
-                    // 5. 悬浮底部 Tab 栏（与屏幕底边留 8dp 间距）
-                    PortraitBottomTabBar(
-                        viewModel = viewModel,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 8.dp)
-                    )
                 }
             } else {
                 // ---- 全屏模式（横屏 PHONE / TV / 多画面）----
@@ -1275,7 +1390,7 @@ private fun OsdView(
     extra: String
 ) {
     Surface(
-        color = Color(0xE6000000),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier
             .statusBarsPadding()
@@ -1288,7 +1403,7 @@ private fun OsdView(
         ) {
             Text(
                 text = title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -1296,7 +1411,7 @@ private fun OsdView(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    color = Color(0xFFCCCCCC),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
             }
@@ -1304,7 +1419,7 @@ private fun OsdView(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = extra,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
             }
@@ -1361,7 +1476,7 @@ private fun ReminderPopup(
                 // 标题
                 Text(
                     text = "节目即将开始",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -1376,7 +1491,7 @@ private fun ReminderPopup(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
                             text = reminder.programTitle.ifBlank { "（未命名节目）" },
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
                             maxLines = 2
@@ -1385,7 +1500,7 @@ private fun ReminderPopup(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "频道: ${reminder.channelName}",
-                                color = Color(0xFFAAAAAA),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp
                             )
                         }
@@ -1397,7 +1512,7 @@ private fun ReminderPopup(
                             ).format(java.util.Date(reminder.startTs))
                             Text(
                                 text = "开始: $timeStr",
-                                color = Color(0xFFAAAAAA),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp
                             )
                         }
@@ -1415,16 +1530,16 @@ private fun ReminderPopup(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("稍后", color = Color(0xFFCCCCCC))
+                        Text("稍后", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Button(
                         onClick = onAccept,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4A9EFF)
+                            containerColor = MaterialTheme.colorScheme.secondary
                         ),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("切换频道", color = Color.White)
+                        Text("切换频道", color = MaterialTheme.colorScheme.onSecondary)
                     }
                 }
             }
@@ -1694,90 +1809,1705 @@ private fun PortraitToolbar(viewModel: AppViewModel) {
     }
 }
 
+// -----------------------------------------------------------------
+// 竖屏首页（Home Screen）
+// -----------------------------------------------------------------
+
 /**
- * 竖屏动态内容区域：根据底部 Tab 切换内容
+ * 竖屏首页：用户打开 App 首先看到的界面。
+ *
+ * 布局：
+ * 1. 顶部 App 标题栏（logo + 菜单按钮）
+ * 2. 快捷入口网格（频道列表 / 打开本地文件 / 打开播放列表 / 网络流 / 订阅源 / 扫描整理）
+ * 3. 正在播放卡片（如果有视频在播放，显示迷你播放器条，点击返回播放器）
+ * 4. 最近播放（水平滚动频道卡片）
+ * 5. 收藏频道（水平滚动频道卡片）
  */
 @Composable
-private fun PortraitDynamicContent(viewModel: AppViewModel) {
-    val portraitTab by viewModel.portraitTab.collectAsState()
+private fun PortraitHomeScreen(
+    viewModel: AppViewModel,
+    playlistLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+    videoLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>
+) {
     val oc = rememberPlayerOverlayColors()
-    val channelsTab by viewModel.channelsTab.collectAsState()
+    val channels by viewModel.channels.collectAsState()
+    val history by viewModel.history.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
+    val currentChannel by viewModel.currentChannel.collectAsState()
+    val fileLoaded by viewModel.mpv.fileLoaded.collectAsState()
+    val paused by viewModel.mpv.paused.collectAsState()
 
-    // 磨砂玻璃背景：半透明色
-    val glassBg = oc.infoBarBg.copy(alpha = 0.80f)
+    val recentChannels = remember(history, channels) {
+        history.mapNotNull { idx -> channels.getOrNull(idx) }.take(20)
+    }
+    val favChannels = remember(favorites, channels) {
+        favorites.mapNotNull { idx -> channels.getOrNull(idx) }.take(20)
+    }
+
+    // 通过 URL 查找频道索引（比 indexOf 更稳健，避免频道属性变更后匹配失败）
+    fun findChannelIdx(channel: IptvChannel): Int = channels.indexOfFirst { it.url == channel.url }
+
+    val bgColor = MaterialTheme.colorScheme.background
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(glassBg)
-            .padding(bottom = 60.dp)  // 为悬浮底部Tab栏留出空间
+            .background(bgColor)
     ) {
-        // 频道列表上方显示订阅/本地/收藏 Tab（仅频道和收藏 Tab 时显示）
-        if (portraitTab == AppViewModel.PortraitTab.CHANNELS || portraitTab == AppViewModel.PortraitTab.FAV) {
+        // 1. App 标题栏（无菜单按钮，功能入口在工具和设置页）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "ISEP",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "IPTV Studio",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 72.dp)
+        ) {
+            // 2. 快捷入口网格
+            item {
+                QuickActionGrid(
+                    viewModel = viewModel,
+                    playlistLauncher = playlistLauncher,
+                    videoLauncher = videoLauncher
+                )
+            }
+
+            // 3. 正在播放卡片
+            if (fileLoaded && currentChannel != null) {
+                item {
+                    MiniPlayerCard(
+                        viewModel = viewModel,
+                        channelName = currentChannel!!.name,
+                        channelLogo = currentChannel!!.logo,
+                        groupName = currentChannel!!.group,
+                        isPaused = paused,
+                        oc = oc,
+                        onClick = { viewModel.showPlayerScreen() },
+                        onPlayPause = { viewModel.mpv.togglePause() }
+                    )
+                }
+            }
+
+            // 4. 最近播放
+            if (recentChannels.isNotEmpty()) {
+                item {
+                    HomeSectionHeader(title = "最近播放", oc = oc)
+                }
+                item {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(recentChannels) { channel ->
+                            HomeChannelCard(
+                                channel = channel,
+                                oc = oc,
+                                onClick = {
+                                    val idx = findChannelIdx(channel)
+                                    if (idx >= 0) viewModel.playChannel(idx)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5. 收藏频道
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                HomeSectionHeader(title = "收藏频道", oc = oc)
+            }
+            if (favChannels.isNotEmpty()) {
+                item {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(favChannels) { channel ->
+                            HomeChannelCard(
+                                channel = channel,
+                                oc = oc,
+                                onClick = {
+                                    val idx = findChannelIdx(channel)
+                                    if (idx >= 0) viewModel.playChannel(idx)
+                                }
+                            )
+                        }
+                    }
+                }
+            } else {
+                // 无收藏时显示空状态提示
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.FavoriteBorder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "暂无收藏频道",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "在频道列表中长按频道可添加收藏",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 空状态提示
+            if (recentChannels.isEmpty() && favChannels.isEmpty() && channels.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.VideoLibrary,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "暂无频道",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "点击「打开播放列表」或「订阅源管理」添加频道",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 快捷入口网格：3列2行 */
+@Composable
+private fun QuickActionGrid(
+    viewModel: AppViewModel,
+    playlistLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+    videoLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>
+) {
+    val oc = rememberPlayerOverlayColors()
+    val actions = listOf(
+        QuickAction(Icons.Default.VideoLibrary, "频道列表", "浏览所有频道") {
+            viewModel.setPortraitTab(AppViewModel.PortraitTab.LIST)
+        },
+        QuickAction(Icons.Default.Movie, "本地文件", "播放视频/音频") {
+            if (!viewModel.isSafAvailable()) {
+                viewModel.showMediaFileBrowser()
+            } else {
+                videoLauncher.launch(arrayOf("video/*", "audio/*", "application/x-matroska", "application/octet-stream"))
+            }
+        },
+        QuickAction(Icons.Default.FileOpen, "播放列表", "导入 M3U/M3U8") {
+            if (!viewModel.isSafAvailable()) {
+                viewModel.showFileBrowser()
+            } else {
+                playlistLauncher.launch(arrayOf(
+                    "application/x-mpegurl", "application/vnd.apple.mpegurl",
+                    "audio/x-mpegurl", "video/x-mpegurl",
+                    "text/plain", "application/octet-stream"
+                ))
+            }
+        },
+        QuickAction(Icons.Default.Link, "网络流", "输入 URL 播放") {
+            viewModel.toggleOpenUrlDialog()
+        },
+        QuickAction(Icons.Default.Web, "订阅源", "管理 M3U 订阅") {
+            viewModel.setSourceTab(AppViewModel.SourceTab.PLAYLIST)
+            viewModel.toggleSourceManager()
+        },
+        QuickAction(Icons.Default.Radar, "扫描整理", "URL 范围扫描") {
+            viewModel.toggleScanPanel()
+        }
+    )
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        actions.chunked(3).forEach { rowActions ->
             Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowActions.forEach { action ->
+                    QuickActionCard(action = action, oc = oc, modifier = Modifier.weight(1f))
+                }
+                repeat(3 - rowActions.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+    }
+}
+
+private data class QuickAction(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val title: String,
+    val subtitle: String,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun QuickActionCard(
+    action: QuickAction,
+    oc: PlayerOverlayColors,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier
+            .height(108.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = action.onClick)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = action.icon,
+                    contentDescription = action.title,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = action.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = action.subtitle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+/** 首页分组标题 */
+@Composable
+private fun HomeSectionHeader(title: String, oc: PlayerOverlayColors) {
+    Text(
+        text = title,
+        color = MaterialTheme.colorScheme.onBackground,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+    )
+}
+
+/** 正在播放迷你卡片（含节目名 + 媒体信息标识） */
+@Composable
+private fun MiniPlayerCard(
+    viewModel: AppViewModel,
+    channelName: String,
+    channelLogo: String,
+    groupName: String,
+    isPaused: Boolean,
+    oc: PlayerOverlayColors,
+    onClick: () -> Unit,
+    onPlayPause: () -> Unit
+) {
+    val currentIdx by viewModel.currentIdx.collectAsState()
+    val epgCacheVersion by viewModel.epgCacheVersion.collectAsState()
+    val player = viewModel.mpv
+    val videoWidth by player.videoWidth.collectAsState()
+    val videoHeight by player.videoHeight.collectAsState()
+
+    // 获取当前节目
+    val currentProgram = remember(currentIdx, epgCacheVersion) {
+        if (currentIdx >= 0) viewModel.getCachedCurrentProgram(currentIdx) else null
+    }
+
+    // 获取媒体信息
+    var mediaInfo by remember { mutableStateOf(emptyMap<String, String?>()) }
+    LaunchedEffect(videoWidth, videoHeight) {
+        if (videoWidth > 0) {
+            mediaInfo = player.getMediaInfo()
+        }
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 频道 logo（带自适应背景色）
+                if (channelLogo.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = channelLogo,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize().padding(2.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                } else {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+                // 频道名 + 分组 + 节目名
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = channelName,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (groupName.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(3.dp)
+                            ) {
+                                Text(
+                                    text = groupName,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                    // 当前节目名（无 EPG 时显示「精彩节目」占位）
+                    val progTitle = currentProgram?.title?.ifEmpty { null } ?: "精彩节目"
+                    Text(
+                        text = progTitle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // 媒体信息标识行
+                    if (mediaInfo.isNotEmpty() || videoWidth > 0) {
+                        Row(
+                            modifier = Modifier.padding(top = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 视频编码
+                            mediaInfo["videoCodec"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { codec ->
+                                val cleanCodec = codec.removePrefix("video/").removePrefix("audio/").uppercase()
+                                MiniBadge(cleanCodec)
+                            }
+                            // 分辨率
+                            if (videoWidth > 0 && videoHeight > 0) {
+                                val resLabel = if (videoHeight >= 2160) "4K"
+                                    else if (videoHeight >= 1080) "1080P"
+                                    else if (videoHeight >= 720) "720P"
+                                    else if (videoHeight >= 480) "480P"
+                                    else "${videoHeight}P"
+                                MiniBadge(resLabel)
+                            }
+                            // 音频编码
+                            mediaInfo["audioCodec"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { codec ->
+                                val cleanCodec = codec.removePrefix("audio/").uppercase()
+                                MiniBadge(cleanCodec)
+                            }
+                            // FPS
+                            mediaInfo["fps"]?.takeIf { it.isNotEmpty() && it != "null" && it != "0" && it != "0.000" }?.let { fps ->
+                                val fpsVal = fps.toFloatOrNull()
+                                MiniBadge(if (fpsVal != null) "${fpsVal.toInt()}fps" else "${fps}fps")
+                            }
+                        }
+                    }
+                }
+                // 播放/暂停按钮
+                IconButton(onClick = onPlayPause, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        contentDescription = if (isPaused) "播放" else "暂停",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 迷你播放器条：在所有 Tab 页面顶部显示的简洁播放器条。
+ * 点击进入播放器模式，右侧有播放/暂停按钮。
+ * 显示频道名 + 当前节目名（无 EPG 时显示「精彩节目」）。
+ */
+@Composable
+private fun MiniPlayerBar(
+    viewModel: AppViewModel,
+    channelName: String,
+    channelLogo: String,
+    groupName: String,
+    isPaused: Boolean,
+    onClick: () -> Unit,
+    onPlayPause: () -> Unit
+) {
+    val currentIdx by viewModel.currentIdx.collectAsState()
+    val epgCacheVersion by viewModel.epgCacheVersion.collectAsState()
+
+    // 获取当前节目
+    val currentProgram = remember(currentIdx, epgCacheVersion) {
+        if (currentIdx >= 0) viewModel.getCachedCurrentProgram(currentIdx) else null
+    }
+    val progTitle = currentProgram?.title?.ifEmpty { null } ?: "精彩节目"
+
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 播放/暂停按钮
+            IconButton(onClick = onPlayPause, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    contentDescription = if (isPaused) "播放" else "暂停",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            // 频道 logo（带自适应背景色，确保浅色台标在浅色模式下可见）
+            if (channelLogo.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = channelLogo,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().padding(2.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            // 频道名 + 节目名
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = channelName,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = progTitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            // 分组标签
+            if (groupName.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(3.dp)
+                ) {
+                    Text(
+                        text = groupName,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        maxLines = 1
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "进入播放器",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(18.dp)
+                    .rotate(180f)  // 箭头朝右，表示"进入"
+            )
+        }
+    }
+}
+
+/** 迷你信息标签 */
+@Composable
+private fun MiniBadge(label: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+        shape = RoundedCornerShape(3.dp)
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.primary,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+            maxLines = 1
+        )
+    }
+}
+
+/** 首页频道卡片（水平滚动列表中的单个卡片） */
+@Composable
+private fun HomeChannelCard(
+    channel: IptvChannel,
+    oc: PlayerOverlayColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier
+            .width(120.dp)
+            .height(72.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (channel.logo.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = channel.logo,
+                        contentDescription = channel.name,
+                        modifier = Modifier.fillMaxSize().padding(2.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(
+                text = channel.name,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/**
+ * 竖屏列表页：左右分栏布局（左=分组列表，右=频道列表），支持多订阅切换、回看标识、列表/缩略图模式
+ */
+@Composable
+private fun PortraitListScreen(
+    viewModel: AppViewModel,
+    playlistLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+    videoLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>
+) {
+    val channels by viewModel.channels.collectAsState()
+    val currentIdx by viewModel.currentIdx.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
+    val selectedGroup by viewModel.selectedGroup.collectAsState()
+    val listSourceTab by viewModel.listSourceTab.collectAsState()
+    val viewMode by viewModel.listViewMode.collectAsState()
+    val epgCacheVersion by viewModel.epgCacheVersion.collectAsState()
+    val history by viewModel.history.collectAsState()
+    val sources by viewModel.sources.collectAsState()
+    val selectedSource by viewModel.selectedSource.collectAsState()
+    val thumbnailPaths by viewModel.thumbnailPaths.collectAsState()
+
+    // 预加载 EPG 和缩略图
+    LaunchedEffect(channels.size) {
+        if (channels.isNotEmpty()) {
+            viewModel.preloadEpgForAllChannels()
+            viewModel.loadThumbnailPaths()
+        }
+    }
+
+    // 根据数据源 + 订阅源过滤频道
+    val filteredChannels = remember(channels, listSourceTab, selectedSource) {
+        when (listSourceTab) {
+            AppViewModel.ListSourceTab.SUBSCRIPTION -> {
+                val sub = channels.filter { it.source.isNotEmpty() }
+                if (selectedSource.isNotEmpty()) sub.filter { it.source == selectedSource } else sub
+            }
+            AppViewModel.ListSourceTab.LOCAL -> channels.filter { it.source.isEmpty() }
+        }
+    }
+
+    // 分组（含频道数量）
+    val groupList = remember(filteredChannels) {
+        val map = filteredChannels.groupingBy { it.group.ifEmpty { "未分组" } }.eachCount()
+        map.entries.sortedBy { it.key }.map { it.key to it.value }
+    }
+
+    // 当前分组下的频道
+    val displayChannels = remember(filteredChannels, selectedGroup) {
+        if (selectedGroup.isEmpty()) filteredChannels
+        else filteredChannels.filter { it.group == selectedGroup }
+    }
+
+    // 缩略图模式下自动生成缺失的缩略图
+    LaunchedEffect(viewMode, displayChannels.size) {
+        if (viewMode == AppViewModel.ListViewMode.THUMBNAIL && displayChannels.isNotEmpty()) {
+            viewModel.generateMissingThumbnails(displayChannels)
+        }
+    }
+
+    // 本地文件历史
+    val localHistory = remember(history, channels) {
+        history.mapNotNull { idx -> channels.getOrNull(idx) }
+            .filter { it.source.isEmpty() }
+            .take(20)
+    }
+
+    // 订阅源名称映射
+    val sourceDisplayName = remember(sources, selectedSource) {
+        if (selectedSource.isEmpty()) "全部订阅"
+        else sources.find { it.url == selectedSource }?.name?.ifEmpty { selectedSource.substringAfterLast("/").take(20) }
+            ?: selectedSource.substringAfterLast("/").take(20)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 顶部标题栏：标题 + 视图切换
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "频道列表",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // 数据源切换
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(
+                    AppViewModel.ListSourceTab.SUBSCRIPTION to "订阅",
+                    AppViewModel.ListSourceTab.LOCAL to "本地"
+                ).forEach { (tab, label) ->
+                    FilterChip(
+                        selected = listSourceTab == tab,
+                        onClick = { viewModel.setListSourceTab(tab) },
+                        label = { Text(label, fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // 视图模式切换按钮
+            IconButton(onClick = {
+                viewModel.setListViewMode(
+                    if (viewMode == AppViewModel.ListViewMode.LIST) AppViewModel.ListViewMode.THUMBNAIL
+                    else AppViewModel.ListViewMode.LIST
+                )
+            }) {
+                Icon(
+                    imageVector = if (viewMode == AppViewModel.ListViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
+                    contentDescription = "切换视图",
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+
+        // 订阅源横向滚动标签（仅订阅模式且多订阅源时显示）
+        if (listSourceTab == AppViewModel.ListSourceTab.SUBSCRIPTION && sources.size > 1) {
+            LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val tabs = if (portraitTab == AppViewModel.PortraitTab.FAV) {
-                    listOf(ChannelTab.FAV to "收藏")
-                } else {
-                    listOf(ChannelTab.SUB to "订阅", ChannelTab.LOCAL to "本地")
-                }
-                tabs.forEach { (tab, label) ->
-                    val isSelected = channelsTab == tab
+                // 「全部」标签
+                item {
                     FilterChip(
-                        selected = isSelected,
-                        onClick = { viewModel.setChannelsTab(tab) },
-                        label = { Text(label, fontSize = 12.sp) },
-                        modifier = Modifier.weight(1f),
-                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = oc.accent,
-                            selectedLabelColor = Color.White,
-                            containerColor = Color.Transparent,
-                            labelColor = oc.textSecondary
+                        selected = selectedSource.isEmpty(),
+                        onClick = { viewModel.setSelectedSource("") },
+                        label = { Text("全部", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+                items(sources) { src ->
+                    val name = src.name.ifEmpty { src.url.substringAfterLast("/").take(15) }
+                    FilterChip(
+                        selected = selectedSource == src.url,
+                        onClick = { viewModel.setSelectedSource(src.url) },
+                        label = { Text(name, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
                 }
             }
         }
-        // 内容区域
-        Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-            val epgPanelOpen by viewModel.epgPanelOpen.collectAsState()
-            if (epgPanelOpen && portraitTab == AppViewModel.PortraitTab.CHANNELS) {
-                // EPG 在活动区域内显示：左侧窄列收缩 + 右侧 EPG
-                Row(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier = Modifier
-                            .width(40.dp)
-                            .fillMaxHeight()
-                            .background(oc.divider.copy(alpha = 0.3f))
-                            .clickable { viewModel.toggleEpgPanel() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "展开", tint = oc.iconTint)
+
+        // 本地列表为空时显示快捷入口
+        if (listSourceTab == AppViewModel.ListSourceTab.LOCAL && filteredChannels.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(32.dp))
+                if (localHistory.isNotEmpty()) {
+                    Text(
+                        text = "最近播放",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    localHistory.forEach { channel ->
+                        val idx = channels.indexOfFirst { it.url == channel.url }
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp)
+                                .clickable { if (idx >= 0) viewModel.playChannel(idx) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = channel.name,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        EpgPanel(viewModel = viewModel)
-                    }
                 }
-            } else when (portraitTab) {
-                AppViewModel.PortraitTab.CHANNELS -> {
-                    PortraitChannelList(viewModel = viewModel, showFavoritesOnly = false)
-                }
-                AppViewModel.PortraitTab.FAV -> {
-                    PortraitChannelList(viewModel = viewModel, showFavoritesOnly = true)
-                }
-                AppViewModel.PortraitTab.TOOLS -> {
-                    PortraitToolsContent(viewModel = viewModel)
-                }
-                AppViewModel.PortraitTab.SETTINGS -> {
-                    PortraitSettingsContent(viewModel = viewModel)
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("暂无本地文件\n点击下方按钮打开本地视频/音乐", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = {
+                    if (!viewModel.isSafAvailable()) viewModel.showMediaFileBrowser()
+                    else videoLauncher.launch(arrayOf("video/*", "audio/*", "application/x-matroska", "application/octet-stream"))
+                }) { Text("打开本地文件") }
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(onClick = {
+                    if (!viewModel.isSafAvailable()) viewModel.showFileBrowser()
+                    else playlistLauncher.launch(arrayOf(
+                        "application/x-mpegurl", "application/vnd.apple.mpegurl",
+                        "audio/x-mpegurl", "video/x-mpegurl",
+                        "text/plain", "application/octet-stream"
+                    ))
+                }) { Text("导入播放列表") }
+            }
+            return
+        }
+
+        if (displayChannels.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("暂无频道", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+            }
+            return
+        }
+
+        // ---- 左右分栏布局 ----
+        Row(modifier = Modifier.fillMaxSize()) {
+            // 左侧：分组列表（固定宽度，可滚动）
+            GroupSidebar(
+                groupList = groupList,
+                selectedGroup = selectedGroup,
+                onSelect = { viewModel.setSelectedGroup(it) },
+                modifier = Modifier.width(100.dp)
+            )
+            // 分隔线
+            Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
+            // 右侧：频道列表
+            Box(modifier = Modifier.weight(1f)) {
+                if (viewMode == AppViewModel.ListViewMode.LIST) {
+                    ChannelListPanel(
+                        displayChannels = displayChannels,
+                        channels = channels,
+                        currentIdx = currentIdx,
+                        favorites = favorites,
+                        epgCacheVersion = epgCacheVersion,
+                        thumbnailPaths = thumbnailPaths,
+                        viewModel = viewModel
+                    )
+                } else {
+                    ChannelThumbnailPanel(
+                        displayChannels = displayChannels,
+                        channels = channels,
+                        currentIdx = currentIdx,
+                        favorites = favorites,
+                        thumbnailPaths = thumbnailPaths,
+                        viewModel = viewModel
+                    )
                 }
             }
         }
     }
+}
+
+/** 订阅源选择器（下拉菜单） */
+@Composable
+private fun SourceSelectorBox(
+    label: String,
+    sources: List<com.iptv.scanner.editor.pro.data.IptvSource>,
+    selectedSource: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.clickable { expanded = true }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Web,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = label,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 80.dp)
+                )
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("全部订阅", fontSize = 13.sp) },
+                onClick = { onSelect(""); expanded = false }
+            )
+            sources.forEach { src ->
+                DropdownMenuItem(
+                    text = { Text(src.name.ifEmpty { src.url.substringAfterLast("/").take(30) }, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    onClick = { onSelect(src.url); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+/** 左侧分组侧栏 */
+@Composable
+private fun GroupSidebar(
+    groupList: List<Pair<String, Int>>,
+    selectedGroup: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surface),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        item {
+            val isSelected = selectedGroup.isEmpty()
+            Surface(
+                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                shape = RoundedCornerShape(0.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelect("") }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "全部",
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = "${groupList.sumOf { it.second }}",
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+        items(groupList) { (group, count) ->
+            val isSelected = selectedGroup == group
+            Surface(
+                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelect(if (group == "未分组") "" else group) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = group,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "$count",
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 右侧频道列表（列表模式） */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ChannelListPanel(
+    displayChannels: List<IptvChannel>,
+    channels: List<IptvChannel>,
+    currentIdx: Int,
+    favorites: Set<Int>,
+    epgCacheVersion: Int,
+    thumbnailPaths: Map<String, String>,
+    viewModel: AppViewModel
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 72.dp, top = 4.dp)
+    ) {
+        items(displayChannels) { channel ->
+            val idx = channels.indexOf(channel)
+            val isCurrent = idx == currentIdx
+            val isFav = favorites.contains(idx)
+            val canCatchup = CatchupHelper.isCatchupEnabled(channel)
+            val currentProgram = if (idx >= 0) {
+                remember(epgCacheVersion, idx) { viewModel.getCachedCurrentProgram(idx) }
+            } else null
+
+            Surface(
+                color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .combinedClickable(
+                        onClick = { if (idx >= 0) viewModel.playChannel(idx) },
+                        onLongClick = {
+                            if (idx >= 0) {
+                                viewModel.toggleFavoriteByIndex(idx)
+                            }
+                        }
+                    )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 台标（带自适应背景色，确保浅色台标在浅色模式下可见）
+                    if (channel.logo.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = channel.logo,
+                                contentDescription = channel.name,
+                                modifier = Modifier.fillMaxSize().padding(2.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    // 频道名 + 节目
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = channel.name,
+                            color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        currentProgram?.let { prog ->
+                            if (prog.title.isNotEmpty()) {
+                                Text(
+                                    text = prog.title,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            } else {
+                                Text(
+                                    text = "精彩节目",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontSize = 10.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        } ?: run {
+                            // 无 EPG 数据时显示「精彩节目」占位
+                            Text(
+                                text = "精彩节目",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                fontSize = 10.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    // 回看标识
+                    if (canCatchup) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = "可回看",
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    // 收藏标识
+                    if (isFav) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = "已收藏",
+                            tint = Color(0xFFFFC107),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 右侧频道列表（缩略图模式） */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ChannelThumbnailPanel(
+    displayChannels: List<IptvChannel>,
+    channels: List<IptvChannel>,
+    currentIdx: Int,
+    favorites: Set<Int>,
+    thumbnailPaths: Map<String, String>,
+    viewModel: AppViewModel
+) {
+    val thumbnailGenProgress by viewModel.thumbnailGenProgress.collectAsState()
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 80.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // 缩略图生成进度提示
+        if (thumbnailGenProgress != null) {
+            item(span = { GridItemSpan(2) }) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "正在生成缩略图 ${thumbnailGenProgress!!.first}/${thumbnailGenProgress!!.second}",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+        gridItems(displayChannels) { channel ->
+            val idx = channels.indexOf(channel)
+            val isCurrent = idx == currentIdx
+            val isFav = favorites.contains(idx)
+            val canCatchup = CatchupHelper.isCatchupEnabled(channel)
+            // 只使用频道画面截图，不回退到台标
+            val thumbPath = thumbnailPaths[channel.url]
+            val hasThumb = thumbPath != null && File(thumbPath).exists()
+
+            Surface(
+                color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .aspectRatio(16f / 9f)
+                    .combinedClickable(
+                        onClick = { if (idx >= 0) viewModel.playChannel(idx) },
+                        onLongClick = {
+                            if (idx >= 0) {
+                                viewModel.toggleFavoriteByIndex(idx)
+                            }
+                        }
+                    )
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 频道画面截图
+                    if (hasThumb) {
+                        AsyncImage(
+                            model = thumbPath,
+                            contentDescription = channel.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        // 无截图时显示占位符（等待缩略图生成）
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                    }
+                    // 底部渐变遮罩 + 频道名
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .background(
+                                Color.Black.copy(alpha = 0.55f)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (canCatchup) {
+                                Icon(
+                                    Icons.Default.History,
+                                    contentDescription = "可回看",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                            }
+                            Text(
+                                text = channel.name,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isFav) {
+                                Icon(
+                                    Icons.Default.Favorite,
+                                    contentDescription = "已收藏",
+                                    tint = Color(0xFFFFC107),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                    // 当前播放标识
+                    if (isCurrent) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("播放中", color = MaterialTheme.colorScheme.onPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 播放器模式动态内容：订阅频道显示节目单，本地文件显示文件信息
+ */
+@Composable
+private fun PortraitPlayerDynamicContent(viewModel: AppViewModel) {
+    val currentIdx by viewModel.currentIdx.collectAsState()
+    val currentChannel by viewModel.currentChannel.collectAsState()
+    val player = viewModel.mpv
+    val fileLoaded by player.fileLoaded.collectAsState()
+    val videoWidth by player.videoWidth.collectAsState()
+    val videoHeight by player.videoHeight.collectAsState()
+    val duration by player.duration.collectAsState()
+    val timePos by player.timePos.collectAsState()
+
+    // 判断是订阅频道还是本地文件
+    val isLocalFile = currentChannel == null || currentIdx < 0
+
+    if (!fileLoaded) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "未播放",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp
+            )
+        }
+        return
+    }
+
+    if (isLocalFile) {
+        // 本地文件：显示文件信息 + 播放进度 + 最近文件
+        PortraitLocalFileInfo(
+            viewModel = viewModel,
+            duration = duration,
+            timePos = timePos,
+            videoWidth = videoWidth,
+            videoHeight = videoHeight
+        )
+    } else {
+        // 订阅频道：显示节目单（EPG）
+        PortraitEpgContent(viewModel = viewModel)
+    }
+}
+
+/** 本地文件信息面板 */
+@Composable
+private fun PortraitLocalFileInfo(
+    viewModel: AppViewModel,
+    duration: Double,
+    timePos: Double,
+    videoWidth: Int,
+    videoHeight: Int
+) {
+    val player = viewModel.mpv
+    val channels by viewModel.channels.collectAsState()
+    val history by viewModel.history.collectAsState()
+
+    // 获取媒体信息
+    var tick by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            tick = System.currentTimeMillis()
+            delay(2000L)
+        }
+    }
+    val mediaInfo = remember(tick) { player.getMediaInfo() }
+
+    // 最近播放的本地文件
+    val recentLocal = remember(history, channels) {
+        history.mapNotNull { idx -> channels.getOrNull(idx) }
+            .filter { it.source.isEmpty() }
+            .take(10)
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp)
+    ) {
+        // 文件信息卡片
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "文件信息",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 媒体信息标识行
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        mediaInfo["videoCodec"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { codec ->
+                            val cleanCodec = codec.removePrefix("video/").removePrefix("audio/").uppercase()
+                            MiniBadge(cleanCodec)
+                        }
+                        if (videoWidth > 0 && videoHeight > 0) {
+                            val resLabel = if (videoHeight >= 2160) "4K"
+                                else if (videoHeight >= 1080) "1080P"
+                                else if (videoHeight >= 720) "720P"
+                                else if (videoHeight >= 480) "480P"
+                                else "${videoHeight}P"
+                            MiniBadge(resLabel)
+                            MiniBadge("${videoWidth}×${videoHeight}")
+                        }
+                        mediaInfo["audioCodec"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { codec ->
+                            MiniBadge(codec.removePrefix("audio/").uppercase())
+                        }
+                        mediaInfo["fps"]?.takeIf { it.isNotEmpty() && it != "null" && it != "0" && it != "0.000" }?.let { fps ->
+                            val fpsVal = fps.toFloatOrNull()
+                            MiniBadge(if (fpsVal != null) "${fpsVal.toInt()}fps" else "${fps}fps")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 播放进度
+                    if (duration > 0) {
+                        val progress = (timePos / duration * 100).coerceIn(0.0, 100.0)
+                        Text(
+                            text = "播放进度",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { (progress / 100).toFloat() },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = formatTime(timePos),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = formatTime(duration),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 文件路径
+                    mediaInfo["fileFormat"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { fmt ->
+                        InfoRow("容器格式", fmt.uppercase())
+                    }
+                    mediaInfo["bitrate"]?.takeIf { it.isNotEmpty() && it != "null" && it != "0" }?.let { br ->
+                        val brVal = br.toLongOrNull() ?: 0L
+                        InfoRow("比特率", if (brVal > 1000000) "${brVal / 1000000} Mbps" else "${brVal / 1000} kbps")
+                    }
+                }
+            }
+        }
+
+        // 音轨/字幕快速切换
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "音轨与字幕",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextButton(
+                            onClick = { viewModel.toggleAudioSettings() },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("音轨设置") }
+                        TextButton(
+                            onClick = { viewModel.toggleSubtitleSettings() },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("字幕设置") }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextButton(
+                            onClick = { viewModel.togglePlaybackPanel() },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("播放速度") }
+                        TextButton(
+                            onClick = { viewModel.toggleBookmarkPanel() },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("书签管理") }
+                    }
+                }
+            }
+        }
+
+        // 最近播放的本地文件
+        if (recentLocal.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "最近播放",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            items(recentLocal) { channel ->
+                val idx = channels.indexOfFirst { it.url == channel.url }
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp)
+                        .clickable { if (idx >= 0) viewModel.playChannel(idx) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = channel.name,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "播放",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 信息行 */
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        Text(text = value, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** 时间格式化 */
+private fun formatTime(seconds: Double): String {
+    if (seconds <= 0) return "00:00"
+    val totalSec = seconds.toLong()
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
 }
 
 // -----------------------------------------------------------------
@@ -1971,7 +3701,52 @@ private fun PortraitToolsContent(viewModel: AppViewModel) {
     val playerType by viewModel.playerType.collectAsState()
     val isMpv = playerType == PlayerType.MPV
 
+    // SAF 文件选择器 —— 打开播放列表
+    val playlistLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.importPlaylist(uri)
+    }
+
+    // SAF 文件选择器 —— 打开本地视频/音频
+    val videoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.playLocalVideo(uri.toString())
+    }
+
     LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item { PortraitSectionHeader("文件", oc) }
+        item {
+            PortraitListRow("打开本地文件", "播放设备上的视频/音频文件", oc) {
+                if (!viewModel.isSafAvailable()) {
+                    viewModel.showMediaFileBrowser()
+                } else {
+                    videoLauncher.launch(arrayOf("video/*", "audio/*", "application/x-matroska", "application/octet-stream"))
+                }
+            }
+        }
+        item {
+            PortraitListRow("打开播放列表", "导入 M3U/M3U8 文件", oc) {
+                if (!viewModel.isSafAvailable()) {
+                    viewModel.showFileBrowser()
+                } else {
+                    playlistLauncher.launch(arrayOf(
+                        "application/x-mpegurl", "application/vnd.apple.mpegurl",
+                        "audio/x-mpegurl", "video/x-mpegurl",
+                        "text/plain", "application/octet-stream"
+                    ))
+                }
+            }
+        }
+        item {
+            PortraitListRow("打开网络流", "输入 URL 播放", oc) {
+                viewModel.toggleOpenUrlDialog()
+            }
+        }
+        item {
+            PortraitListRow("最近打开", "最近播放的文件", oc) { viewModel.toggleRecentPanel() }
+        }
         item { PortraitSectionHeader("工具", oc) }
         item {
             PortraitListRow("截图", "截取当前画面", oc, disabled = !isMpv) { viewModel.takeScreenshot("video") }
@@ -1993,9 +3768,6 @@ private fun PortraitToolsContent(viewModel: AppViewModel) {
         }
         item {
             PortraitListRow("另存为 M3U", "导出频道列表到下载目录", oc) { viewModel.saveAsM3u() }
-        }
-        item {
-            PortraitListRow("最近打开", "最近播放的文件", oc) { viewModel.toggleRecentPanel() }
         }
         item { PortraitSectionHeader("高级工具", oc) }
         item {
@@ -2079,118 +3851,95 @@ private fun PortraitBottomTabBar(
     modifier: Modifier = Modifier
 ) {
     val portraitTab by viewModel.portraitTab.collectAsState()
-    val oc = rememberPlayerOverlayColors()
-
-    // 悬浮底部 Tab：圆角 + 阴影
-    val glassBg = oc.topBarBg.copy(alpha = 0.80f)
+    val bgColor = MaterialTheme.colorScheme.surface
+    val accentColor = MaterialTheme.colorScheme.primary
     val tabShape = RoundedCornerShape(20.dp)
     val isAndroid12Plus = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
 
+    val tabItems = listOf(
+        Triple(Icons.Default.Home, "首页", AppViewModel.PortraitTab.HOME),
+        Triple(Icons.Default.VideoLibrary, "列表", AppViewModel.PortraitTab.LIST),
+        Triple(Icons.Default.Build, "工具", AppViewModel.PortraitTab.TOOLS),
+        Triple(Icons.Default.Settings, "设置", AppViewModel.PortraitTab.SETTINGS)
+    )
+
+    val tabContent: @Composable RowScope.() -> Unit = {
+        tabItems.forEach { (icon, label, tab) ->
+            val isSelected = portraitTab == tab
+            val tint = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .then(if (isSelected) Modifier.border(1.dp, accentColor.copy(alpha = 0.50f), RoundedCornerShape(10.dp)) else Modifier)
+                    .clickable {
+                        viewModel.setPortraitTab(tab)
+                        if (tab == AppViewModel.PortraitTab.HOME) {
+                            viewModel.showHomeScreen()
+                        }
+                    }
+                    .padding(horizontal = 18.dp, vertical = 4.dp)
+            ) {
+                Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = label,
+                    color = tint,
+                    fontSize = 10.sp,
+                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                )
+            }
+        }
+    }
+
     if (isAndroid12Plus) {
-        // Android 12+：双层模糊背景
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .navigationBarsPadding()
                 .height(56.dp)
                 .shadow(8.dp, tabShape)
         ) {
-            // 底层：模糊背景
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .blur(20.dp)
-                    .background(oc.topBarBg.copy(alpha = 0.50f), tabShape)
+                    .background(bgColor.copy(alpha = 0.50f), tabShape)
             )
-            // 上层：半透明色 + 边框 + 内容
             Surface(
-                color = oc.topBarBg.copy(alpha = 0.30f),
+                color = bgColor.copy(alpha = 0.85f),
                 shape = tabShape,
-                border = androidx.compose.foundation.BorderStroke(1.dp, oc.accent.copy(alpha = 0.35f)),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.20f)),
                 modifier = Modifier.matchParentSize()
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    PortraitTabItem(
-                        icon = Icons.Default.VideoLibrary,
-                        label = "视频",
-                        isSelected = portraitTab == AppViewModel.PortraitTab.CHANNELS,
-                        oc = oc,
-                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.CHANNELS) }
-                    )
-                    PortraitTabItem(
-                        icon = Icons.Default.Favorite,
-                        label = "收藏",
-                        isSelected = portraitTab == AppViewModel.PortraitTab.FAV,
-                        oc = oc,
-                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.FAV) }
-                    )
-                    PortraitTabItem(
-                        icon = Icons.Default.Build,
-                        label = "工具",
-                        isSelected = portraitTab == AppViewModel.PortraitTab.TOOLS,
-                        oc = oc,
-                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.TOOLS) }
-                    )
-                    PortraitTabItem(
-                        icon = Icons.Default.Settings,
-                        label = "设置",
-                        isSelected = portraitTab == AppViewModel.PortraitTab.SETTINGS,
-                        oc = oc,
-                        onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.SETTINGS) }
-                    )
-                }
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = tabContent
+                )
             }
         }
     } else {
-        // Android 12 以下：简单半透明背景
         Surface(
-            color = glassBg,
+            color = bgColor.copy(alpha = 0.90f),
             shape = tabShape,
-            border = androidx.compose.foundation.BorderStroke(1.dp, oc.accent.copy(alpha = 0.35f)),
+            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.20f)),
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .navigationBarsPadding()
                 .height(56.dp)
                 .shadow(8.dp, tabShape)
         ) {
             Row(
                 modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PortraitTabItem(
-                    icon = Icons.Default.VideoLibrary,
-                    label = "视频",
-                    isSelected = portraitTab == AppViewModel.PortraitTab.CHANNELS,
-                    oc = oc,
-                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.CHANNELS) }
-                )
-                PortraitTabItem(
-                    icon = Icons.Default.Favorite,
-                    label = "收藏",
-                    isSelected = portraitTab == AppViewModel.PortraitTab.FAV,
-                    oc = oc,
-                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.FAV) }
-                )
-                PortraitTabItem(
-                    icon = Icons.Default.Build,
-                    label = "工具",
-                    isSelected = portraitTab == AppViewModel.PortraitTab.TOOLS,
-                    oc = oc,
-                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.TOOLS) }
-                )
-                PortraitTabItem(
-                    icon = Icons.Default.Settings,
-                    label = "设置",
-                    isSelected = portraitTab == AppViewModel.PortraitTab.SETTINGS,
-                    oc = oc,
-                    onClick = { viewModel.setPortraitTab(AppViewModel.PortraitTab.SETTINGS) }
-                )
-            }
+                verticalAlignment = Alignment.CenterVertically,
+                content = tabContent
+            )
         }
     }
 }
@@ -2324,10 +4073,21 @@ private fun PortraitInfoBarV2(viewModel: AppViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // 左侧：返回首页按钮
+            IconButton(
+                onClick = { viewModel.showHomeScreen() },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回首页",
+                    tint = oc.iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             // 居中：台标 + 频道名 + 分类
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2444,6 +4204,25 @@ private fun PortraitControlsV2(viewModel: AppViewModel) {
                     contentDescription = "停止",
                     tint = oc.iconTint,
                     modifier = Modifier.size(24.dp)
+                )
+            }
+            // 播放器设置按钮（VO/HWDEC 切换）
+            var showPlayerSettings by remember { mutableStateOf(false) }
+            IconButton(
+                onClick = { showPlayerSettings = true },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "播放器设置",
+                    tint = oc.iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            if (showPlayerSettings) {
+                PlayerSettingsDialog(
+                    viewModel = viewModel,
+                    onDismiss = { showPlayerSettings = false }
                 )
             }
             // 时间标签 - 开始
@@ -2954,7 +4733,7 @@ if (ch.catchup.isNotEmpty() && ch.catchup != "none") {
                 onClick = { viewModel.toggleChannelInfo() },
                 colors = ButtonDefaults.buttonColors(containerColor = oc.accent)
             ) {
-                Text("关闭", color = Color.White)
+                Text("关闭", color = MaterialTheme.colorScheme.onSecondary)
             }
         }
     )
@@ -3009,7 +4788,15 @@ private fun PortraitMediaInfoBar(viewModel: AppViewModel) {
     }
 
     val mediaInfo = remember(tick, fileLoaded, videoWidth, videoHeight) {
-        if (fileLoaded) player.getMediaInfo() else emptyMap()
+        // 只有在文件已加载且视频尺寸有效时才获取媒体信息
+        // 停止状态（fileLoaded=false）不显示任何媒体信息
+        if (fileLoaded && (videoWidth > 0 || videoHeight > 0)) player.getMediaInfo() else emptyMap()
+    }
+
+    // 停止状态（未加载文件）不显示媒体信息栏
+    if (!fileLoaded) {
+        Box(modifier = Modifier.fillMaxWidth().height(0.dp))
+        return
     }
 
     Surface(
@@ -3069,7 +4856,7 @@ private fun PortraitMediaInfoBar(viewModel: AppViewModel) {
                 }
             }
         } else {
-            // 无文件时显示播放器类型
+            // 文件已加载但视频尺寸未知（纯音频流），显示播放器类型
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3159,4 +4946,82 @@ fun PortraitPanelDialog(
             }
         }
     }
+}
+
+/**
+ * 播放器设置对话框（VO/HWDEC 切换）
+ */
+@Composable
+private fun PlayerSettingsDialog(
+    viewModel: AppViewModel,
+    onDismiss: () -> Unit
+) {
+    val userPrefs = remember { com.iptv.scanner.editor.pro.data.UserPrefs.getInstance() }
+    var currentVo by remember { mutableStateOf(userPrefs.getVo()) }
+    var currentHwdec by remember { mutableStateOf(userPrefs.getHwdec()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("播放器设置", fontSize = 16.sp) },
+        text = {
+            Column {
+                Text("视频输出 (VO)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                val voOptions = listOf("gpu", "gpu-next", "mediacodec_embed")
+                voOptions.forEach { vo ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                currentVo = vo
+                                userPrefs.setVo(vo)
+                                viewModel.showOsd("播放器设置", "VO=$vo\n切换中...")
+                                viewModel.applyVoChange(vo)
+                                onDismiss()
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentVo == vo,
+                            onClick = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(vo, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("硬件解码", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                val hwdecOptions = listOf("auto-copy" to "自动（软解输出）", "auto" to "自动（硬解输出）", "no" to "关闭（纯软解）")
+                hwdecOptions.forEach { (value, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                currentHwdec = value
+                                userPrefs.setHwdec(value)
+                                viewModel.setHardwareDecode(value != "no")
+                                onDismiss()
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentHwdec == value,
+                            onClick = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(label, fontSize = 13.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        }
+    )
 }

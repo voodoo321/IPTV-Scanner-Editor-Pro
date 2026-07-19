@@ -49,7 +49,7 @@ data class CatchupProgram(
  * 播放状态容器：封装 playMode + originalChannel + catchupProgram + liveTimeshiftSeconds。
  *
  * 与 PC 端 `CatchupController._original_channel` + `_catchup_program` + `window._live_timeshift_seconds` 对齐。
- * 与 mobile index.html `state.playMode/originalChannel/catchupProgram/liveTimeshiftSeconds` 对齐。
+ * 与 PC 端 `state.playMode/originalChannel/catchupProgram/liveTimeshiftSeconds` 对齐。
  *
  * @param mode 当前播放模式
  * @param originalChannel 进入回看/时移前的原始频道（用于退出回看后恢复直播）

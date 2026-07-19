@@ -19,12 +19,11 @@ import androidx.compose.ui.unit.dp
 /**
  * IPTV 应用主题。支持深色/浅色/跟随系统三种模式。
  *
- * 颜色对应（colors.xml → Compose）：
- * - primary #1a1a2e → 深紫蓝（背景）
- * - surface #16213e → 表面色
- * - accent #4CAF50 → 主强调色（成功/激活）
- * - text_primary #E0E0E0 → 主文字色
- * - text_secondary #9E9E9E → 次要文字色
+ * 统一主色调为蓝色（Blue），绿色仅用于语义性的「成功/有效」状态。
+ *
+ * - primary → 蓝色 #4A9EFF（深色）/ #1A73E8（浅色）
+ * - surface → 深色 #16213E / 浅色 #F5F5F5
+ * - success → 绿色 #4CAF50（仅语义状态，非主色调）
  * - error #F44336 → 错误色
  * - warning #FF9800 → 警告色
  */
@@ -32,8 +31,8 @@ import androidx.compose.ui.unit.dp
 // 主色板（深色）
 private val DarkPrimary = Color(0xFF1A1A2E)
 private val DarkPrimaryDark = Color(0xFF0F0F1E)
-private val DarkSurface = Color(0xFF16213E)
-private val DarkSurfaceVariant = Color(0xFF1F2D4D)
+private val DarkSurface = Color(0xFF121220)       // 与 background 接近，避免页面间色差
+private val DarkSurfaceVariant = Color(0xFF1A1A2E)  // 略亮，用于卡片/列表项背景
 private val DarkBackground = Color(0xFF0A0A14)
 
 // 主色板（浅色）
@@ -43,10 +42,15 @@ private val LightSurface = Color(0xFFF5F5F5)
 private val LightSurfaceVariant = Color(0xFFEEEEEE)
 private val LightBackground = Color(0xFFFAFAFA)
 
-// 强调色
-private val Accent = Color(0xFF4CAF50)        // 绿色（激活/成功）
-private val AccentDim = Color(0xFF2E7D32)    // 暗绿
+// 主强调色 — 统一蓝色，区分深/浅色模式
+private val AccentDark = Color(0xFF4A9EFF)     // 深色模式主色
+private val AccentLight = Color(0xFF1A73E8)    // 浅色模式主色
+private val AccentDimDark = Color(0xFF1565C0)  // 深色模式 primaryContainer
+private val AccentDimLight = Color(0xFF1565C0) // 浅色模式 primaryContainer
 private val OnAccent = Color(0xFFFFFFFF)
+
+// 语义色 — 绿色仅用于「成功/有效」状态
+private val SuccessColor = Color(0xFF4CAF50)
 
 // 文字色（深色）
 private val DarkTextPrimary = Color(0xFFE0E0E0)
@@ -61,17 +65,17 @@ private val ErrorColor = Color(0xFFF44336)
 private val WarningColor = Color(0xFFFF9800)
 private val InfoColor = Color(0xFF4A9EFF)
 
-// 播放器专用色
+// 播放器专用色 — accent 统一使用 colorScheme.primary
 val PlayerScrim = Color(0xAA000000)          // 控制层半透明背景
 val PlayerScrimSolid = Color(0xF0000000)      // 控制层不透明背景
-val PlayerAccent = Color(0xFF4A9EFF)          // 进度条/激活按钮色
 val PlayerBadgeLive = Color(0xFFE53935)       // 直播 LIVE 徽章
 val PlayerBadgeCatchup = Color(0xFFFF9800)    // 回看徽章
+val SuccessGreen = Color(0xFF4CAF50)          // 语义色：成功/有效
 
 private val IptvDarkColorScheme = darkColorScheme(
-    primary = Accent,
+    primary = AccentDark,
     onPrimary = OnAccent,
-    primaryContainer = AccentDim,
+    primaryContainer = AccentDimDark,
     onPrimaryContainer = OnAccent,
     secondary = InfoColor,
     onSecondary = OnAccent,
@@ -91,9 +95,9 @@ private val IptvDarkColorScheme = darkColorScheme(
 )
 
 private val IptvLightColorScheme = lightColorScheme(
-    primary = Accent,
+    primary = AccentLight,
     onPrimary = OnAccent,
-    primaryContainer = AccentDim,
+    primaryContainer = AccentDimLight,
     onPrimaryContainer = OnAccent,
     secondary = InfoColor,
     onSecondary = OnAccent,
@@ -181,9 +185,9 @@ fun rememberPlayerOverlayColors(): PlayerOverlayColors {
             iconTintActive = Color(0xFFFFA500),
             textPrimary = Color.White,
             textSecondary = Color(0xFFAAAAAA),
-            accent = Color(0xFF4A9EFF),
+            accent = AccentDark,  // 与 colorScheme.primary 一致
             trackInactive = Color(0xFF3A3A5C),
-            badgeBg = Color(0xFF4A9EFF).copy(alpha = 0.15f),
+            badgeBg = AccentDark.copy(alpha = 0.15f),
             badgeText = Color(0xFF8AB4F8),
             divider = Color(0xFF2A2A4E),
         )
@@ -196,9 +200,9 @@ fun rememberPlayerOverlayColors(): PlayerOverlayColors {
             iconTintActive = Color(0xFFE65100),
             textPrimary = Color(0xFF212121),
             textSecondary = Color(0xFF666666),
-            accent = Color(0xFF1A73E8),
+            accent = AccentLight,  // 与 colorScheme.primary 一致
             trackInactive = Color(0xFFCCCCCC),
-            badgeBg = Color(0xFF757575).copy(alpha = 0.12f),
+            badgeBg = AccentLight.copy(alpha = 0.12f),
             badgeText = Color(0xFF616161),
             divider = Color(0xFFBDBDBD),         // 更深的分隔线，浅色模式下可见
         )

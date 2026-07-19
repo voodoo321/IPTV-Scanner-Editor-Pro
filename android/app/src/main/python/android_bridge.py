@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import sys
 import time
 import secrets
@@ -34,7 +33,7 @@ def _log(msg, level='I'):
     _ab_logger.log(py_level, msg)
 
 
-def _setup_android_paths(ext_files_dir='', files_dir=''):
+def _setup_android_paths(ext_files_dir='', files_dir='', native_lib_dir=''):
     """设置 Android 数据目录路径（IPTV_DATA_DIR 环境变量）。
 
     数据目录优先级（覆盖安装/卸载重装均不丢失）：
@@ -113,6 +112,23 @@ def _setup_android_paths(ext_files_dir='', files_dir=''):
 
     if target_dir:
         os.environ['IPTV_DATA_DIR'] = target_dir
+
+    # 保存 native 库目录路径（供 mpv_common 加载 libmpv.so 使用）
+    if native_lib_dir:
+        os.environ['IPTV_NATIVE_LIB_DIR'] = native_lib_dir
+        _log(f'_setup_android_paths: native_lib_dir={native_lib_dir}')
+    else:
+        # 尝试通过 jnius 获取
+        try:
+            from jnius import autoclass  # type: ignore
+            Python = autoclass('com.chaquo.python.Python')
+            app = Python.getPlatform().getApplication()
+            app_info = app.getApplicationInfo()
+            native_lib_dir = str(app_info.nativeLibraryDir)
+            os.environ['IPTV_NATIVE_LIB_DIR'] = native_lib_dir
+            _log(f'_setup_android_paths: native_lib_dir (jnius)={native_lib_dir}')
+        except Exception as e:
+            _log(f'_setup_android_paths: native_lib_dir not available ({e})')
         # 迁移旧数据
         if files_dir:
             _migrate_old_data(None, files_dir, target_dir)
@@ -315,19 +331,19 @@ def set_log_level(level_str='info'):
     return 'OK'
 
 
-def _find_mobile_dir():
+def _find_admin_dir():
     try:
         import server
         server_dir = os.path.dirname(os.path.abspath(server.__file__))
-        mobile_dir = os.path.join(server_dir, 'mobile')
-        if os.path.isdir(mobile_dir):
-            return mobile_dir
+        admin_dir = os.path.join(server_dir, 'admin')
+        if os.path.isdir(admin_dir):
+            return admin_dir
     except Exception:
         pass
     this_dir = os.path.dirname(os.path.abspath(__file__))
     for candidate in [
-        os.path.join(this_dir, 'server', 'mobile'),
-        os.path.join(this_dir, 'mobile'),
+        os.path.join(this_dir, 'server', 'admin'),
+        os.path.join(this_dir, 'admin'),
     ]:
         if os.path.isdir(candidate):
             return candidate
@@ -377,14 +393,14 @@ def start_server(host='0.0.0.0', port=8080):
     app = create_app()
     _log('app created')
 
-    mobile_dir = _find_mobile_dir()
-    if mobile_dir:
-        _register_mobile_routes(app, mobile_dir)
-        logger.info(f'Mobile UI served from: {mobile_dir}')
-        _log(f'mobile UI registered from: {mobile_dir}')
+    admin_dir = _find_admin_dir()
+    if admin_dir:
+        _register_admin_routes_fallback(app, admin_dir)
+        logger.info(f'Admin UI served from: {admin_dir}')
+        _log(f'admin UI registered from: {admin_dir}')
     else:
-        logger.warning('Mobile UI directory not found, /mobile/ will not be available')
-        _log('Mobile UI directory not found!', 'W')
+        logger.warning('Admin UI directory not found, /admin/ will not be available')
+        _log('Admin UI directory not found!', 'W')
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -457,58 +473,11 @@ _MIME_TYPES = {
 }
 
 
-def _register_mobile_routes(app, base_dir):
-    async def _handle_mobile(request):
-        from aiohttp import web
-        rel_path = request.match_info.get('path', 'index.html')
-        if not rel_path or rel_path.endswith('/'):
-            rel_path += 'index.html'
-        # 安全：防止路径穿越（../../../etc/passwd 等）
-        # 使用 realpath 解析符号链接和 .. 后，确认仍在 base_dir 内
-        file_path = os.path.realpath(os.path.join(base_dir, rel_path))
-        base_real = os.path.realpath(base_dir)
-        if not file_path.startswith(base_real + os.sep):
-            return web.Response(text='403: Forbidden', status=403)
-        if not os.path.isfile(file_path):
-            return web.Response(text='404: Not Found', status=404)
-        ext = os.path.splitext(rel_path)[1].lower()
-        content_type = _MIME_TYPES.get(ext, 'application/octet-stream')
-        with open(file_path, 'rb') as f:
-            content = f.read()
-        # 对 index.html 动态注入版本信息（替代硬编码的 APP_VERSION / BUILD_DATE）
-        if rel_path == 'index.html':
-            try:
-                html = content.decode('utf-8')
-                html = re.sub(
-                    r"const APP_VERSION='[^']*';",
-                    f"const APP_VERSION='{_app_version}';",
-                    html
-                )
-                html = re.sub(
-                    r"const BUILD_DATE='[^']*';",
-                    f"const BUILD_DATE='{_app_build_date}';",
-                    html
-                )
-                content = html.encode('utf-8')
-            except Exception as e:
-                _log(f'_handle_mobile: version injection failed: {e}', 'W')
-        return web.Response(
-            body=content, content_type=content_type,
-            headers={
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0',
-            })
-
-    app.router.add_get('/mobile/', _handle_mobile)
-    app.router.add_get('/mobile/{path:.*}', _handle_mobile)
-
+def _register_admin_routes_fallback(app, admin_dir):
     # 注册管理后台路由（局域网 Web 管理页面）
     # 注意：routes.py 中的 _register_admin_routes 在 Android 上可能找不到目录
     # 因为 Chaquopy 打包后 server.__file__ 可能指向非标准路径
-    # 这里用 _find_mobile_dir 找到的 server_dir 来定位 admin 目录
-    server_dir = os.path.dirname(base_dir)
-    admin_dir = os.path.join(server_dir, 'admin')
+    # 这里通过 _find_admin_dir 找到的 admin_dir 来注册路由
     if os.path.isdir(admin_dir):
         async def _handle_admin(request):
             from aiohttp import web
@@ -578,8 +547,7 @@ def _err(message, **extra):
 def set_app_info(version='', build_date=''):
     """设置应用版本信息（由 Kotlin 端通过 Chaquopy callAttr 调用）。
 
-    版本信息会在服务 mobile/index.html 时动态注入到 HTML 中，
-    替代硬编码的 APP_VERSION / BUILD_DATE 常量。
+    版本信息存储在全局变量中，供 API 端点和管理界面使用。
 
     参数：
         version: 应用版本号（如 '48.2.0.2'），来自 PackageManager.versionName
@@ -594,7 +562,7 @@ def set_app_info(version='', build_date=''):
     return 'OK'
 
 
-def init_context(ext_files_dir='', files_dir='', log_level='info'):
+def init_context(ext_files_dir='', files_dir='', log_level='info', native_lib_dir=''):
     """初始化 Python 环境 + ServerContext 单例，立即返回（不阻塞）。
 
     参数 ext_files_dir / files_dir 由 Kotlin 端通过 Chaquopy callAttr 传入，
@@ -609,7 +577,7 @@ def init_context(ext_files_dir='', files_dir='', log_level='info'):
         if _inited:
             return 'OK'
         try:
-            _setup_android_paths(ext_files_dir, files_dir)
+            _setup_android_paths(ext_files_dir, files_dir, native_lib_dir)
             # 在设置日志前先应用 Kotlin 端传入的日志等级
             if log_level:
                 set_log_level(log_level)
@@ -1234,13 +1202,20 @@ def get_epg_channels_json():
 # 扫描（URL 范围扫描）
 # -------------------------------------------------------------------
 
-def start_scan(base_url, timeout=10, threads=4):
+def start_scan(base_url, timeout=10, threads=4, engine='requests', retry=False, append=False):
     """启动 URL 范围扫描（异步）。base_url 支持 [1-255] 范围表达式。
     命名变量同步：[1-255:n] 定义变量 n，{n} 引用（两处 n 同步变化）。
+
+    Args:
+        engine: 扫描引擎 ('requests' / 'ffprobe' / 'mpv')。
+        standalone 模式下始终使用 requests（ffprobe/mpv 不可用）。
+        retry: 是否启用智能重试（失败 URL 用 2x 超时重试）
+        append: 是否追加模式（不清空已有扫描结果，不覆盖已有频道）
     返回 {started} 或 {error}
     """
     try:
-        _log(f'start_scan: base_url={base_url}, timeout={timeout}, threads={threads}')
+        _log(f'start_scan: base_url={base_url}, timeout={timeout}, '
+             f'threads={threads}, engine={engine}, retry={retry}, append={append}')
         ctx = _get_ctx()
         if ctx is None:
             return _err('not inited')
@@ -1251,6 +1226,9 @@ def start_scan(base_url, timeout=10, threads=4):
             base_url=str(base_url),
             timeout=int(timeout),
             threads=int(threads),
+            engine=str(engine) if engine else 'requests',
+            retry=bool(retry),
+            append=bool(append),
         )
         _log(f'start_scan: started={result}')
         return _ok({'started': bool(result)})
@@ -1300,6 +1278,164 @@ def get_scan_results_json():
             return _err('no scanner')
         results = scanner.get_results() or []
         return _ok(results)
+    except Exception as e:
+        return _err(str(e))
+
+
+def start_validate(timeout=10, threads=4):
+    """开始验证所有频道的 URL 可达性（异步）。
+
+    与 PC 端 scanner_service.validate_channels 和
+    routes.handle_scan_validate 对齐。
+    更新频道的 valid/status 字段并持久化。
+    """
+    try:
+        _log(f'start_validate: timeout={timeout}, threads={threads}')
+        ctx = _get_ctx()
+        if ctx is None:
+            return _err('not inited')
+        scanner = ctx.get_standalone_scanner()
+        if scanner is None:
+            return _err('no scanner')
+        result = scanner.start_validate(
+            timeout=int(timeout),
+            threads=int(threads),
+        )
+        _log(f'start_validate: started={result}')
+        return _ok({'started': bool(result)})
+    except Exception as e:
+        return _err(str(e))
+
+
+def batch_edit_channels(action, options_json='{}'):
+    """批量编辑频道。
+
+    与 routes.handle_channels_batch 对齐。
+    action 取值：
+    - auto_classify: {overwrite: bool} 按省份/规则自动分组
+    - clean_names: {rules: {...}} 清理频道名
+    - match_logo: {overwrite: bool} 匹配台标
+    - assign_fields: {action_key, only_empty} 字段赋值
+    - clear_params: {fields: [...]} 清除参数
+    - sort_by_group: 按分组排序
+
+    返回 {changed, total} 或 {error}
+    """
+    try:
+        import json
+        _log(f'batch_edit_channels: action={action}')
+        ctx = _get_ctx()
+        if ctx is None:
+            return _err('not inited')
+        channels = getattr(ctx, '_channels', None)
+        if not channels:
+            return _err('暂无频道数据')
+        options = json.loads(options_json) if options_json else {}
+
+        changed = 0
+        total = len(channels)
+
+        if action == 'auto_classify':
+            try:
+                from services.channel_classifier import ChannelClassifier
+            except ImportError:
+                return _err('分类模块不可用')
+            overwrite = bool(options.get('overwrite', False))
+            classifier = ChannelClassifier()
+            results = classifier.classify_all(
+                [{**ch, '_index': i} for i, ch in enumerate(channels)],
+                overwrite=overwrite,
+            )
+            for r in results:
+                if r['changed']:
+                    idx = r['index']
+                    if 0 <= idx < len(channels):
+                        channels[idx]['group'] = r['new_group']
+                        channels[idx]['_groups'] = [r['new_group']]
+                        changed += 1
+
+        elif action == 'clean_names':
+            try:
+                from services.channel_cleaner import ChannelCleaner
+            except ImportError:
+                return _err('清理模块不可用')
+            rules = options.get('rules', {})
+            cleaner = ChannelCleaner()
+            for i, ch in enumerate(channels):
+                old_name = ch.get('name', '')
+                new_name = cleaner.clean(old_name, rules)
+                if new_name != old_name and new_name:
+                    channels[i]['name'] = new_name
+                    changed += 1
+
+        elif action == 'match_logo':
+            try:
+                from services.logo_matcher import LogoMatcher
+            except ImportError:
+                return _err('台标匹配模块不可用')
+            overwrite = bool(options.get('overwrite', False))
+            matcher = LogoMatcher()
+            for i, ch in enumerate(channels):
+                if not overwrite and ch.get('logo'):
+                    continue
+                logo = matcher.match(ch.get('name', ''))
+                if logo:
+                    channels[i]['logo'] = logo
+                    changed += 1
+
+        elif action == 'assign_fields':
+            action_key = options.get('action_key', '')
+            only_empty = bool(options.get('only_empty', True))
+            if not action_key:
+                return _err('action_key 不能为空')
+            try:
+                from services.logo_matcher import LogoMatcher
+                matcher = LogoMatcher()
+            except ImportError:
+                matcher = None
+            for i, ch in enumerate(channels):
+                name = ch.get('name', '')
+                if action_key == 'logo' and matcher:
+                    if only_empty and ch.get('logo'):
+                        continue
+                    logo = matcher.match(name)
+                    if logo:
+                        channels[i]['logo'] = logo
+                        changed += 1
+                elif action_key == 'tvg_name':
+                    if only_empty and ch.get('tvg_name'):
+                        continue
+                    channels[i]['tvg_name'] = name
+                    changed += 1
+                elif action_key == 'tvg_id':
+                    if only_empty and ch.get('tvg_id'):
+                        continue
+                    channels[i]['tvg_id'] = name
+                    changed += 1
+
+        elif action == 'clear_params':
+            fields = options.get('fields', [])
+            if not fields:
+                return _err('fields 不能为空')
+            for i, ch in enumerate(channels):
+                for f in fields:
+                    if ch.get(f):
+                        channels[i][f] = ''
+                        changed += 1
+
+        elif action == 'sort_by_group':
+            channels.sort(key=lambda c: (c.get('group', '未分组'), c.get('name', '')))
+            changed = total
+
+        else:
+            return _err(f'未知操作: {action}')
+
+        # 持久化
+        if hasattr(ctx, '_save_channels_to_cache'):
+            ctx._save_channels_to_cache()
+
+        _log(f'batch_edit_channels: action={action}, changed={changed}/{total}')
+        return _ok({'changed': changed, 'total': total})
     except Exception as e:
         return _err(str(e))
 
@@ -1466,6 +1602,214 @@ def clear_cache(cache_type='all'):
         return _err(str(e))
 
 
+def get_thumbnail_paths(urls_json='[]'):
+    """批量获取频道缩略图文件路径。
+    urls_json: JSON 数组，包含频道 URL 列表
+    返回 {ok: true, paths: {url: file_path, ...}}
+    """
+    try:
+        import os
+        import json
+        import hashlib
+
+        data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
+        app_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
+        thumb_dir = os.path.join(app_dir, 'cache', 'thumbnails')
+        thumb_cache_dir = os.path.join(app_dir, 'cache', 'thumb_cache')
+
+        urls = json.loads(urls_json) if isinstance(urls_json, str) else urls_json
+        paths = {}
+        for url in urls:
+            if not url:
+                continue
+            url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+            # 检查两个可能的缩略图目录
+            for d in [thumb_dir, thumb_cache_dir]:
+                p = os.path.join(d, f'{url_hash}.png')
+                if os.path.exists(p):
+                    paths[url] = p
+                    break
+        return _ok({'paths': paths})
+    except Exception as e:
+        return _err(str(e))
+
+
+def capture_thumbnail(url, file_path):
+    """保存指定文件路径的截图作为频道缩略图（由 Kotlin 调用 mpv screenshotToFile 后调用）。
+    将截图文件复制到缩略图缓存目录。
+    """
+    try:
+        import os
+        import shutil
+        import hashlib
+
+        if not url or not os.path.exists(file_path):
+            return _err('invalid url or file not found')
+
+        data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
+        app_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
+        thumb_dir = os.path.join(app_dir, 'cache', 'thumbnails')
+        os.makedirs(thumb_dir, exist_ok=True)
+
+        url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+        dest = os.path.join(thumb_dir, f'{url_hash}.png')
+        shutil.copy2(file_path, dest)
+        return _ok({'path': dest})
+    except Exception as e:
+        return _err(str(e))
+
+
+def generate_thumbnail_bg(url):
+    """后台生成频道缩略图（使用独立 libmpv handle，不影响前台播放器）。
+
+    通过 ctypes 加载 libmpv.so，创建一个独立的 mpv 实例：
+    - vo=null（不需要显示 surface，Android 上无需窗口）
+    - ao=null（不需要音频输出）
+    - 截取解码后的视频帧保存为 PNG
+
+    Returns:
+        {ok: true, path: thumbnail_path} 或 {ok: false, error: msg}
+    """
+    try:
+        import os
+        import hashlib
+        import time
+
+        _log(f'generate_thumbnail_bg: url={url}')
+
+        if not url:
+            return _err('empty url')
+
+        # 缩略图保存路径
+        data_dir = os.environ.get('IPTV_DATA_DIR', os.path.expanduser('~'))
+        app_dir = data_dir if os.path.basename(data_dir) == 'ISEP' else os.path.join(data_dir, 'ISEP')
+        thumb_dir = os.path.join(app_dir, 'cache', 'thumbnails')
+        os.makedirs(thumb_dir, exist_ok=True)
+        url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+        thumb_path = os.path.join(thumb_dir, f'{url_hash}.png')
+
+        # 已存在则跳过
+        if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            _log(f'generate_thumbnail_bg: already exists for {url}')
+            return _ok({'path': thumb_path, 'cached': True})
+
+        # 尝试加载 libmpv
+        # 如果 IPTV_NATIVE_LIB_DIR 未设置，尝试通过 jnius 获取
+        if not os.environ.get('IPTV_NATIVE_LIB_DIR'):
+            try:
+                from jnius import autoclass  # type: ignore
+                Python = autoclass('com.chaquo.python.Python')
+                app = Python.getPlatform().getApplication()
+                app_info = app.getApplicationInfo()
+                native_lib_dir = str(app_info.nativeLibraryDir)
+                os.environ['IPTV_NATIVE_LIB_DIR'] = native_lib_dir
+                _log(f'generate_thumbnail_bg: set IPTV_NATIVE_LIB_DIR={native_lib_dir} via jnius')
+            except Exception as e:
+                _log(f'generate_thumbnail_bg: jnius get nativeLibraryDir failed: {e}')
+
+        # 强制重置 mpv_common 的加载状态（之前可能因找不到 libmpv 而标记为已加载）
+        try:
+            import services.mpv_common as _mpv_common
+            if not _mpv_common.MPV_AVAILABLE and _mpv_common._mpv_loaded:
+                _mpv_common._mpv_loaded = False
+                _log('generate_thumbnail_bg: reset mpv_common._mpv_loaded for retry')
+        except Exception:
+            pass
+
+        try:
+            from services.mpv_common import (
+                create_mpv_handle,
+                initialize_mpv,
+                destroy_mpv,
+                set_option_string as _mpv_set_option_string,
+                send_command as _mpv_send_command,
+                wait_for_specific_event,
+                _is_mpv_available,
+                MPV_EVENT_FILE_LOADED,
+                MPV_EVENT_END_FILE,
+            )
+        except Exception as e:
+            _log(f'generate_thumbnail_bg: cannot import mpv_common: {e}')
+            return _err(f'mpv not available: {e}')
+
+        if not _is_mpv_available():
+            _log('generate_thumbnail_bg: libmpv not available')
+            return _err('libmpv not available')
+
+        handle = None
+        try:
+            handle = create_mpv_handle()
+            if not handle:
+                return _err('failed to create mpv handle')
+
+            # 配置：无显示、无音频、无窗口
+            _mpv_set_option_string(handle, 'vo', 'null')
+            _mpv_set_option_string(handle, 'ao', 'null')
+            _mpv_set_option_string(handle, 'osc', 'no')
+            _mpv_set_option_string(handle, 'osd-bar', 'no')
+            _mpv_set_option_string(handle, 'idle', 'yes')
+            _mpv_set_option_string(handle, 'ytdl', 'no')
+            _mpv_set_option_string(handle, 'keep-open', 'yes')
+            _mpv_set_option_string(handle, 'log-level', 'error')
+            _mpv_set_option_string(handle, 'config', 'no')
+            _mpv_set_option_string(handle, 'force-window', 'no')
+
+            # RTSP 传输方式
+            u = url.lower()
+            if u.startswith('rtsp://'):
+                _mpv_set_option_string(handle, 'rtsp-transport', 'tcp')
+            elif '/rtp/' in u or u.endswith('.ts') or u.startswith('udp://'):
+                _mpv_set_option_string(handle, 'demuxer-lavf-format', 'mpegts')
+
+            # HTTP headers
+            try:
+                from services.ffprobe_validator_service import FfprobeStreamValidator
+                headers = FfprobeStreamValidator.get_headers()
+                if headers:
+                    import json
+                    headers_json = json.dumps(headers).encode('utf-8')
+                    _mpv_set_option_string(handle, 'http-header-fields', headers_json)
+            except Exception:
+                pass
+
+            if not initialize_mpv(handle):
+                destroy_mpv(handle)
+                return _err('failed to initialize mpv')
+
+            # 加载 URL
+            _mpv_send_command(handle, ['loadfile', url])
+
+            # 等待文件加载或结束（最多 10 秒）
+            event_id, _, _ = wait_for_specific_event(handle, 10, {MPV_EVENT_FILE_LOADED, MPV_EVENT_END_FILE})
+
+            if event_id == MPV_EVENT_FILE_LOADED:
+                # 等待解码器产出帧
+                time.sleep(1.0)
+
+                # 截图
+                _mpv_send_command(handle, ['screenshot-to-file', thumb_path, 'video'])
+                time.sleep(0.5)
+
+                if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+                    _log(f'generate_thumbnail_bg: success for {url}')
+                    return _ok({'path': thumb_path})
+                else:
+                    _log(f'generate_thumbnail_bg: screenshot file not created for {url}')
+                    return _err('screenshot not created')
+            else:
+                _log(f'generate_thumbnail_bg: file not loaded for {url} (event={event_id})')
+                return _err('file load timeout or failed')
+        finally:
+            if handle:
+                try:
+                    destroy_mpv(handle)
+                except Exception:
+                    pass
+    except Exception as e:
+        _log(f'generate_thumbnail_bg: error: {e}')
+        return _err(str(e))
+
+
 # -------------------------------------------------------------------
 # 阶段 0 spike 兼容入口（保持 ComposeSpikeActivity 不破坏）
 # 真正的入口已改名为 init_context / get_status_json / get_channels_json
@@ -1523,8 +1867,8 @@ def set_admin_token(token=''):
 def start_admin_server(port=8080):
     """在后台线程启动 HTTP 管理服务器，返回局域网 URL。
 
-    复用 create_app() + _register_mobile_routes()，暴露 /api/ 和 /mobile/ 路由。
-    其他设备通过浏览器访问 http://<设备IP>:<port>/mobile/ 即可管理。
+    复用 create_app() + _register_admin_routes_fallback()，暴露 /api/ 和 /admin/ 路由。
+    其他设备通过浏览器访问 http://<设备IP>:<port>/admin/ 即可管理。
     """
     global _admin_server_thread, _admin_server_url, _admin_server_port
     global _admin_server_running, _admin_loop, _admin_server_error, _admin_server_task
@@ -1583,7 +1927,7 @@ def start_admin_server(port=8080):
             app = create_app()
 
             # 注册认证中间件：所有 /api/ 路由需要携带有效 token
-            # 静态文件路由（/mobile/ /admin/ /）免认证，页面加载后由前端 JS 在 API 请求中携带 token
+            # 静态文件路由（/admin/ /）免认证，页面加载后由前端 JS 在 API 请求中携带 token
 
             @web.middleware
             async def _auth_middleware(request, handler):
@@ -1591,9 +1935,9 @@ def start_admin_server(port=8080):
                 # 健康检查端点不需要认证
                 if path == '/api/status':
                     return await handler(request)
-                # 静态文件路由（/mobile/ /admin/ /）免认证，让页面可以加载
+                # 静态文件路由（/admin/ /）免认证，让页面可以加载
                 # 前端 JS 从 URL ?token=xxx 提取令牌后在 API 请求中携带
-                if path == '/' or path.startswith('/mobile') or path.startswith('/admin'):
+                if path == '/' or path.startswith('/admin'):
                     return await handler(request)
                 # 从 Header 或 query 参数获取 token
                 token = request.headers.get('X-Auth-Token', '') or request.query.get('token', '')
@@ -1605,12 +1949,12 @@ def start_admin_server(port=8080):
                 return await handler(request)
             app.middlewares.insert(0, _auth_middleware)
 
-            mobile_dir = _find_mobile_dir()
-            if mobile_dir:
-                _register_mobile_routes(app, mobile_dir)
-                _log(f'Admin server mobile routes from: {mobile_dir}')
+            admin_dir = _find_admin_dir()
+            if admin_dir:
+                _register_admin_routes_fallback(app, admin_dir)
+                _log(f'Admin server admin routes from: {admin_dir}')
             else:
-                _log('Admin server: mobile dir not found', 'W')
+                _log('Admin server: admin dir not found', 'W')
 
             # 注册虚拟遥控器路由
             async def _handle_remote(request):
@@ -1664,7 +2008,7 @@ def start_admin_server(port=8080):
             app.router.add_get('/api/logcat/view', _handle_logcat_view)
             _log('Admin server logcat view route registered')
 
-            # 注册音量控制路由（供 mobile 页面通过 HTTP 控制音量）
+            # 注册音量控制路由（供 admin 遥控器页面通过 HTTP 控制音量）
             async def _handle_set_volume(request):
                 data = await request.json()
                 vol = int(data.get('volume', 100))
@@ -1877,3 +2221,61 @@ def set_player_status(json_str):
 def get_player_status():
     """获取当前播放状态（供 HTTP 路由调用）"""
     return _player_status.copy()
+
+
+# -------------------------------------------------------------------
+# 每文件播放设置持久化（#24）
+# -------------------------------------------------------------------
+
+_playback_settings_store = None
+
+
+def _get_settings_store():
+    global _playback_settings_store
+    if _playback_settings_store is None:
+        ctx = _get_ctx()
+        if ctx is None:
+            return None
+        config = ctx.get_config() if hasattr(ctx, 'get_config') else None
+        config_dir = ''
+        if config and hasattr(config, 'config_dir'):
+            config_dir = config.config_dir
+        if not config_dir:
+            config_dir = getattr(ctx, '_files_dir', '') or ''
+        if not config_dir:
+            return None
+        from core.playback_settings_store import PlaybackSettingsStore
+        _playback_settings_store = PlaybackSettingsStore(config_dir)
+    return _playback_settings_store
+
+
+def load_playback_settings(url):
+    """读取指定 URL 的播放设置（音轨/字幕轨/音量/比例等）。
+
+    返回 {settings: {...}} 或 {error}
+    """
+    try:
+        store = _get_settings_store()
+        if store is None:
+            return _ok({'settings': {}})
+        settings = store.load_settings(url or '')
+        return _ok({'settings': settings})
+    except Exception as e:
+        return _err(str(e))
+
+
+def save_playback_settings(url, settings_json, name=''):
+    """保存指定 URL 的播放设置。
+
+    settings_json 是 JSON 字符串，包含音轨/字幕轨/音量/比例等。
+    """
+    try:
+        import json
+        store = _get_settings_store()
+        if store is None:
+            return _err('settings store not available')
+        settings = json.loads(settings_json) if settings_json else {}
+        store.save_settings(url or '', settings, name or '')
+        return _ok({'ok': True})
+    except Exception as e:
+        return _err(str(e))

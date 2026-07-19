@@ -68,7 +68,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * EPG 节目单面板：与 PC 端 mobile/index.html panelEPG 对齐。
+ * EPG 节目单面板：与 PC 端 panelEPG 对齐。
  *
  * - 节目列表渲染（时间、标题、副标题、描述）
  * - LIVE badge 当前节目（红色脉冲动画）
@@ -135,7 +135,7 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                         contentDescription = "前一天",
-                        tint = if (epgDateOffset > -7) MaterialTheme.colorScheme.onSurface else Color(0xFF555555)
+                        tint = if (epgDateOffset > -7) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Text(
@@ -151,7 +151,7 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = "后一天",
-                        tint = if (epgDateOffset < 7) MaterialTheme.colorScheme.onSurface else Color(0xFF555555)
+                        tint = if (epgDateOffset < 7) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -358,7 +358,7 @@ private fun EpgItem(
                 }
                 Text(
                     text = timeText,
-                    color = if (isCurrent) MaterialTheme.colorScheme.onSurface else Color(0xFFCCCCCC),
+                    color = if (isCurrent) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
                 if (isCurrent) {
@@ -381,7 +381,7 @@ private fun EpgItem(
             // 节目标题
             Text(
                 text = program.title,
-                color = if (isCurrent) MaterialTheme.colorScheme.onSurface else Color(0xFFEEEEEE),
+                color = if (isCurrent) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp,
                 fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 2,
@@ -461,7 +461,7 @@ private fun LiveBadge() {
  */
 @Composable
 private fun CatchupBadge(isCurrent: Boolean) {
-    val bgColor = if (isCurrent) MaterialTheme.colorScheme.primary else Color(0xFF9C27B0)
+    val bgColor = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
     val text = if (isCurrent) "可时移" else "可回放"
     Surface(
         color = bgColor.copy(alpha = 0.15f),

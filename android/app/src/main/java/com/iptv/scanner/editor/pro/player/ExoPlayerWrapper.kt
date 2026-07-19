@@ -270,6 +270,10 @@ class ExoPlayerWrapper(
         }
     }
 
+    override fun refreshSurface() {
+        // ExoPlayer 不需要手动刷新 Surface
+    }
+
     override fun togglePause() {
         val p = player ?: return
         p.playWhenReady = !p.playWhenReady

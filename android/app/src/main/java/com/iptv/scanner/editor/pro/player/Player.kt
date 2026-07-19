@@ -147,6 +147,9 @@ interface Player {
     /** 停止播放 */
     fun stop()
 
+    /** 刷新 Surface（从覆盖层返回后画面黑屏时调用） */
+    fun refreshSurface()
+
     /** 切换暂停/播放 */
     fun togglePause()
 

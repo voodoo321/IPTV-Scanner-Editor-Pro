@@ -222,11 +222,8 @@ _I18N = {
         'quick_status': '运行状态',
         'quick_epg': '节目单',
         'quick_admin': '管理后台',
-        'quick_mobile': '移动播放器',
         'nav_admin': '管理后台',
         'nav_admin_desc': '完整的频道/订阅源/EPG/扫描/映射/日志管理界面',
-        'nav_mobile': '移动播放器',
-        'nav_mobile_desc': '手机/平板浏览器播放器（支持遥控器触控）',
         'no_data': '暂无频道数据',
     },
     'en': {
@@ -279,11 +276,8 @@ _I18N = {
         'quick_status': 'Status',
         'quick_epg': 'EPG',
         'quick_admin': 'Admin Panel',
-        'quick_mobile': 'Mobile Player',
         'nav_admin': 'Admin Panel',
         'nav_admin_desc': 'Full management UI for channels/sources/EPG/scan/mappings/logs',
-        'nav_mobile': 'Mobile Player',
-        'nav_mobile_desc': 'Phone/tablet browser player with touch & remote control',
         'no_data': 'No channel data',
     }
 }
@@ -315,6 +309,7 @@ def create_app() -> web.Application:
     app.router.add_delete('/api/channels/{id}', handle_channel_delete)
     app.router.add_post('/api/channels', handle_channel_add)
     app.router.add_post('/api/channels/import', handle_channels_import)
+    app.router.add_post('/api/channels/batch', handle_channels_batch)
     app.router.add_get('/api/sources', handle_sources_list)
     app.router.add_post('/api/sources', handle_sources_add)
     app.router.add_put('/api/sources/{id}', handle_sources_update)
@@ -330,6 +325,7 @@ def create_app() -> web.Application:
     app.router.add_get('/api/scan/status', handle_scan_status)
     app.router.add_post('/api/scan/range', handle_scan_range)
     app.router.add_get('/api/scan/results', handle_scan_results)
+    app.router.add_post('/api/scan/validate', handle_scan_validate)
     app.router.add_get('/api/mappings', handle_mappings_list)
     app.router.add_post('/api/mappings', handle_mappings_add)
     app.router.add_delete('/api/mappings/{id}', handle_mappings_delete)
@@ -356,7 +352,7 @@ def create_app() -> web.Application:
 
 
 # 允许通过认证的路由前缀（非 /api/ 的只读路由不需要认证）
-_AUTH_EXEMPT_PREFIXES = ('/', '/mobile', '/admin', '/stream/')
+_AUTH_EXEMPT_PREFIXES = ('/', '/admin', '/stream/')
 
 
 def _is_auth_required(request):
@@ -655,8 +651,6 @@ body {{ background:#1a1a2e; color:#E0E0E0;
     <div class="quick-links">
         <a class="quick-link" href="{base_url}/admin/" target="_blank" style="border-color:rgba(74,126,255,.3);background:rgba(74,126,255,.08)">
             &#128736; {_t(lang, 'quick_admin')} <span class="path">/admin/</span></a>
-        <a class="quick-link" href="{base_url}/mobile/" target="_blank" style="border-color:rgba(156,39,176,.3);background:rgba(156,39,176,.08)">
-            &#128241; {_t(lang, 'quick_mobile')} <span class="path">/mobile/</span></a>
         <a class="quick-link" href="{base_url}/api/m3u" target="_blank">
             &#9654; {_t(lang, 'quick_m3u')} <span class="path">/api/m3u</span></a>
         <a class="quick-link" href="{base_url}/api/channels" target="_blank">
@@ -933,6 +927,163 @@ async def handle_channels_import(request):
         return _json_success(imported=len(channels))
     except Exception as e:
         return _json_error(f'解析失败: {e}', 500)
+
+
+async def handle_channels_batch(request):
+    """批量编辑频道
+
+    body: {action, ...options}
+    action 取值：
+      - auto_classify: {overwrite: bool} 按省份/规则自动分组
+      - clean_names: {rules: {remove_hd, remove_brackets, ...}} 清理频道名
+      - match_logo: {overwrite: bool} 匹配台标
+      - assign_fields: {action_key, only_empty} 字段赋值
+      - clear_params: {fields: [tvg_id, logo, ...]} 清除参数
+      - sort_by_group: 按分组排序
+    """
+    ctx = get_context()
+    if not ctx:
+        return _json_error('上下文未初始化', 503)
+    data = await request.json()
+    action = data.get('action', '')
+    channels = _get_all_channels()
+    if not channels:
+        return _json_error('暂无频道数据')
+
+    model = get_channel_model() if ctx else None
+
+    def _persist():
+        """持久化修改到模型或缓存"""
+        if model:
+            model.layoutAboutToBeChanged.emit()
+            model.layoutChanged.emit()
+        if ctx and hasattr(ctx, '_channels'):
+            with getattr(ctx, '_channels_lock', _noop_lock):
+                ctx._save_channels_to_cache()
+
+    if action == 'auto_classify':
+        try:
+            from services.channel_classifier import ChannelClassifier
+        except ImportError:
+            return _json_error('分类模块不可用')
+        overwrite = bool(data.get('overwrite', False))
+        classifier = ChannelClassifier()
+        results = classifier.classify_all(
+            [{**ch, '_index': i} for i, ch in enumerate(channels)],
+            overwrite=overwrite,
+        )
+        changed = 0
+        for r in results:
+            if r['changed']:
+                idx = r['index']
+                if 0 <= idx < len(channels):
+                    channels[idx]['group'] = r['new_group']
+                    channels[idx]['_groups'] = [r['new_group']]
+                    changed += 1
+        _persist()
+        return _json_success(changed=changed, total=len(channels))
+
+    elif action == 'clean_names':
+        try:
+            from services.channel_cleaner import ChannelCleaner
+        except ImportError:
+            return _json_error('清理模块不可用')
+        rules = data.get('rules', {})
+        cleaner = ChannelCleaner()
+        changed = 0
+        for i, ch in enumerate(channels):
+            old_name = ch.get('name', '')
+            new_name = cleaner.clean(old_name, rules)
+            if new_name != old_name and new_name:
+                channels[i]['name'] = new_name
+                changed += 1
+        _persist()
+        return _json_success(changed=changed, total=len(channels))
+
+    elif action == 'match_logo':
+        try:
+            from services.logo_matcher import LogoMatcher
+        except ImportError:
+            return _json_error('台标匹配模块不可用')
+        overwrite = bool(data.get('overwrite', False))
+        matcher = LogoMatcher()
+        matched = 0
+        for i, ch in enumerate(channels):
+            if not overwrite and ch.get('logo'):
+                continue
+            logo = matcher.match(ch.get('name', ''))
+            if logo:
+                channels[i]['logo'] = logo
+                matched += 1
+        _persist()
+        return _json_success(matched=matched, total=len(channels))
+
+    elif action == 'assign_fields':
+        action_key = data.get('action_key', 'name2tvg_id')
+        only_empty = bool(data.get('only_empty', True))
+        changed = 0
+        for i, ch in enumerate(channels):
+            if action_key == 'name2tvg_id':
+                if not (only_empty and ch.get('tvg_id')):
+                    ch['tvg_id'] = ch.get('name', '')
+                    changed += 1
+            elif action_key == 'tvg_id2name':
+                if ch.get('tvg_id') and not (only_empty and ch.get('name')):
+                    ch['name'] = ch.get('tvg_id', '')
+                    changed += 1
+            elif action_key == 'tvg_name2name':
+                tvg_name = ch.get('tvg_name', '')
+                if tvg_name and not (only_empty and ch.get('name')):
+                    ch['name'] = tvg_name
+                    changed += 1
+            elif action_key == 'tvg_id2tvg_chno':
+                if ch.get('tvg_id') and not (only_empty and ch.get('tvg_chno')):
+                    ch['tvg_chno'] = ch.get('tvg_id', '')
+                    changed += 1
+        _persist()
+        return _json_success(changed=changed, total=len(channels))
+
+    elif action == 'clear_params':
+        fields = data.get('fields', [])
+        if not fields:
+            return _json_error('未选择要清除的字段')
+        changed = 0
+        for i, ch in enumerate(channels):
+            modified = False
+            for field in fields:
+                if field in ch and ch[field]:
+                    ch[field] = ''
+                    modified = True
+            if modified:
+                changed += 1
+        _persist()
+        return _json_success(changed=changed, total=len(channels))
+
+    elif action == 'sort_by_group':
+        try:
+            from services.channel_classifier import ChannelClassifier
+            classifier = ChannelClassifier()
+            category_order = classifier.get_category_order()
+        except ImportError:
+            category_order = []
+
+        def _sort_key(ch):
+            group = ch.get('group', '')
+            if category_order:
+                cat_idx = (category_order.index(group)
+                           if group in category_order else 99)
+            else:
+                cat_idx = 0
+            return (cat_idx, ch.get('name', ''))
+
+        sorted_channels = sorted(channels, key=_sort_key)
+        # 原地替换列表内容
+        channels[:] = sorted_channels
+        _persist()
+        return _json_success(total=len(channels))
+
+    else:
+        return _json_error(f'未知的批量操作: {action}')
 
 
 async def handle_sources_list(request):
@@ -1269,9 +1420,12 @@ async def handle_scan_status(request):
 async def handle_scan_range(request):
     """URL 范围扫描（PC 端"扫描整理"功能）
 
-    body: {url, timeout?, threads?}
+    body: {url, timeout?, threads?, engine?, retry?, append?}
     url 支持 [1-255] / [1,5,10] / [1-10,20-30] 等方括号范围表达式
     命名变量同步：[1-255:n] 定义变量 n，{n} 引用（两处 n 同步变化）
+    engine: 扫描引擎 ('requests'/'ffprobe'/'mpv')，standalone 模式下始终使用 requests
+    retry: 是否启用智能重试
+    append: 是否追加模式
     """
     ctx = get_context()
     if not ctx:
@@ -1295,7 +1449,10 @@ async def handle_scan_range(request):
     threads = int(data.get('threads', 4) or 4)
     timeout = max(1, min(timeout, 60))
     threads = max(1, min(threads, 64))
-    if scanner.start_range_scan(base_url, timeout, threads):
+    engine = data.get('engine', 'requests') or 'requests'
+    retry = bool(data.get('retry', False))
+    append = bool(data.get('append', False))
+    if scanner.start_range_scan(base_url, timeout, threads, engine, retry, append):
         return _json_success(message='URL 范围扫描已开始')
     return _json_error('启动扫描失败', 500)
 
@@ -1311,6 +1468,34 @@ async def handle_scan_results(request):
     if not scanner:
         return _json_success(results=[])
     return _json_success(results=scanner.get_results())
+
+
+async def handle_scan_validate(request):
+    """验证所有频道的 URL 可达性
+
+    body: {timeout?, threads?}
+    更新频道的 valid/status 字段并持久化。
+    """
+    ctx = get_context()
+    if not ctx:
+        return _json_error('上下文未初始化', 503)
+    if not ctx.is_standalone():
+        return _json_error('当前环境不支持频道验证（仅独立模式可用）', 503)
+    scanner = ctx.get_standalone_scanner()
+    if not scanner:
+        return _json_error('扫描器未初始化', 503)
+    if scanner.is_scanning():
+        return _json_error('扫描/验证已在进行中', 409)
+    data = {}
+    try:
+        data = await request.json()
+    except (ValueError, TypeError):
+        pass
+    timeout = max(1, min(int(data.get('timeout', 10) or 10), 60))
+    threads = max(1, min(int(data.get('threads', 4) or 4), 32))
+    if scanner.start_validate(timeout, threads):
+        return _json_success(message='频道验证已开始')
+    return _json_error('启动验证失败', 500)
 
 
 def _get_mapping_manager():

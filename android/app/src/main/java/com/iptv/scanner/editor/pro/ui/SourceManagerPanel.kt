@@ -136,7 +136,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                         Icon(
                             Icons.Default.Phonelink,
                             contentDescription = "局域网管理",
-                            tint = if (adminRunning) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface
+                            tint = if (adminRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     // 二维码按钮（仅在服务器运行时显示）
@@ -203,7 +203,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Phonelink, contentDescription = null, tint = Color(0xFF90CAF9))
+                        Icon(Icons.Default.Phonelink, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
@@ -214,7 +214,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                             Text(
                                 text = "TV 端用遥控器输入不便，点击启动后用手机浏览器扫码管理",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF90CAF9)
+                                color = MaterialTheme.colorScheme.secondary
                             )
                         }
                     }
@@ -252,7 +252,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                 Text(
                     text = sourceMessage,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFCCCCCC),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -413,7 +413,7 @@ private fun SourceItem(
                     Text(
                         text = "更新: ${source.lastUpdate}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF666666)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -470,7 +470,7 @@ private fun EpgSourceItem(
                     Text(
                         text = "更新: ${source.lastUpdate}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF666666)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -518,7 +518,7 @@ private fun AdminAutoStopToggle(viewModel: AppViewModel) {
         Text(
             text = "5 分钟自动关闭",
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFFCCCCCC),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
         )
         Switch(
@@ -553,7 +553,7 @@ private fun LanAdminInfoBar(
                 modifier = Modifier.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Phonelink, contentDescription = null, tint = Color(0xFFA5D6A7))
+                Icon(Icons.Default.Phonelink, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -562,9 +562,9 @@ private fun LanAdminInfoBar(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "$url/mobile/" + (if (token.isNotEmpty()) "?token=$token" else ""),
+                        text = "$url/admin/" + (if (token.isNotEmpty()) "?token=$token" else ""),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA5D6A7),
+                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -576,7 +576,7 @@ private fun LanAdminInfoBar(
                     Text(
                         text = "%d:%02d".format(mm, ss),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFFFCC80),
+                        color = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.padding(end = 4.dp)
                     )
                 }
@@ -604,11 +604,11 @@ private fun LanAdminInfoBar(
                     Text(
                         text = "扫码管理",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.Black
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     // 生成二维码（包含 token，扫码后前端 JS 提取 token 用于 API 认证）
-                    val qrUrl = "$url/mobile/" + (if (token.isNotEmpty()) "?token=$token" else "")
+                    val qrUrl = "$url/admin/" + (if (token.isNotEmpty()) "?token=$token" else "")
                     val qrBitmap = remember(url, token) { QrCodeUtil.generate(qrUrl, 512) }
                     if (qrBitmap != null) {
                         Image(
@@ -627,13 +627,13 @@ private fun LanAdminInfoBar(
                     Text(
                         text = "手机浏览器扫码或输入上方地址",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF666666)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     // 显示访问令牌（PC 浏览器用户需手动输入）
                     if (token.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Surface(
-                            color = Color(0xFFF5F5F5),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -644,20 +644,20 @@ private fun LanAdminInfoBar(
                                 Text(
                                     text = "访问令牌",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF999999)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = token,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = Color.Black,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = "PC 浏览器打开地址后输入此令牌",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF999999)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -693,7 +693,7 @@ private fun LanAdminTokenInput(viewModel: AppViewModel) {
                 Text(
                     text = if (showInput) "" else adminToken,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4CAF50),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -736,7 +736,7 @@ private fun LanAdminTokenInput(viewModel: AppViewModel) {
             Text(
                 text = "留空则自动生成 4 位数字令牌，也可自定义",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF666666),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
@@ -772,7 +772,7 @@ private fun BackupRestoreBar(viewModel: AppViewModel) {
         Column(modifier = Modifier.padding(12.dp)) {
             // 标题行：图标 + 标题 + 说明
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Save, contentDescription = null, tint = Color(0xFF90CAF9))
+                Icon(Icons.Default.Save, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -783,7 +783,7 @@ private fun BackupRestoreBar(viewModel: AppViewModel) {
                     Text(
                         text = "导出配置到下载目录，重装/换机后可恢复",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFB0BEC5)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -807,7 +807,7 @@ private fun BackupRestoreBar(viewModel: AppViewModel) {
                     Icon(
                         Icons.Default.SettingsBackupRestore,
                         contentDescription = null,
-                        tint = Color(0xFF66BB6A)
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("恢复配置")

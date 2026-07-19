@@ -209,7 +209,7 @@ fun TvUnifiedPanel(viewModel: AppViewModel) {
     }
 
     Surface(
-        color = Color(0xE6000000),
+        color = MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
         modifier = Modifier.fillMaxSize()
     ) {
 Row(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
@@ -505,13 +505,13 @@ private fun ModeIconButton(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (isSelected) Color(0xFF4A9EFF) else Color(0xFF888888),
+            tint = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(28.dp)
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
-            color = if (isSelected) Color(0xFF4A9EFF) else Color(0xFF888888),
+            color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 10.sp
         )
     }
@@ -529,14 +529,14 @@ private fun GroupColumn(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxHeight()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // 标题
             Text(
                 text = "分组",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -550,7 +550,7 @@ private fun GroupColumn(
                 ) {
                     Text(
                         text = "暂无分组",
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
                         lineHeight = 20.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -592,7 +592,7 @@ private fun GroupItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) Color(0x304A9EFF) else Color.Transparent)
+            .background(if (selected) MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f) else Color.Transparent)
             .tvFocusBorder()
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -603,12 +603,12 @@ private fun GroupItemRow(
             modifier = Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(if (selected) Color(0xFF4A9EFF) else Color(0xFF444444))
+                .background(if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = label,
-            color = if (selected) Color(0xFF6A9EFF) else Color.White,
+            color = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
@@ -673,14 +673,14 @@ private fun ChannelsColumn(
     }
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxHeight()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // 标题
             Text(
                 text = "频道列表",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -700,7 +700,7 @@ private fun ChannelsColumn(
                             ChannelTab.LOCAL -> "暂无本地频道"
                             else -> "未找到匹配频道"
                         },
-                        color = Color(0xFF888888),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
                         lineHeight = 20.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -778,8 +778,8 @@ private fun TvGroupChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val bg = if (selected) Color(0xFF4A9EFF) else MaterialTheme.colorScheme.surfaceVariant
-    val fg = if (selected) Color.White else Color(0xFFAAAAAA)
+    val bg = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant
+    val fg = if (selected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
@@ -831,7 +831,7 @@ private fun TvChannelItem(
                 modifier = Modifier
                     .size(8.dp)
                     .clip(CircleShape)
-                    .background(if (isPlaying) Color(0xFF4A9EFF) else Color(0xFF444444))
+                    .background(if (isPlaying) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline)
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
@@ -839,7 +839,7 @@ private fun TvChannelItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = channel.name,
-                color = if (isPlaying) Color(0xFF6A9EFF) else Color.White,
+                color = if (isPlaying) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = if (isPlaying) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -848,7 +848,7 @@ private fun TvChannelItem(
             if (channel.group.isNotEmpty()) {
                 Text(
                     text = channel.group,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -978,13 +978,13 @@ private fun MenuColumn(
     }
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxHeight()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Text(
                 text = "主菜单",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -1027,14 +1027,14 @@ private fun TvMenuItemRow(item: TvMenuItem) {
         Icon(
             imageVector = item.icon,
             contentDescription = null,
-            tint = if (item.highlight) Color(0xFF4A9EFF) else Color(0xFFCCCCCC),
+            tint = if (item.highlight) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                color = if (item.highlight) Color(0xFF6A9EFF) else Color.White,
+                color = if (item.highlight) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = if (item.highlight) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -1042,7 +1042,7 @@ private fun TvMenuItemRow(item: TvMenuItem) {
             )
             Text(
                 text = item.subtitle,
-                color = Color(0xFF888888),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1101,7 +1101,7 @@ private fun EpgListColumn(
     }
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxHeight()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1113,20 +1113,20 @@ private fun EpgListColumn(
                 Icon(
                     imageVector = Icons.Default.VideoLibrary,
                     contentDescription = null,
-                    tint = Color(0xFF4A9EFF),
+                    tint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "节目单",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = channel.name,
-                    color = Color(0xFF888888),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1142,7 +1142,7 @@ private fun EpgListColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("加载节目单...", color = Color(0xFF888888), fontSize = 13.sp)
+                        Text("加载节目单...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                 }
                 epg.isEmpty() -> {
@@ -1150,7 +1150,7 @@ private fun EpgListColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("暂无节目单数据", color = Color(0xFF888888), fontSize = 13.sp)
+                        Text("暂无节目单数据", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                 }
                 else -> {
@@ -1193,7 +1193,7 @@ private fun TvEpgItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isCurrent) Color(0x304A9EFF) else Color.Transparent)
+            .background(if (isCurrent) MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f) else Color.Transparent)
             .tvFocusBorder()
             .clickable {
                 onSelect()
@@ -1208,7 +1208,7 @@ private fun TvEpgItem(
                 modifier = Modifier
                     .width(3.dp)
                     .height(36.dp)
-                    .background(Color(0xFF4A9EFF))
+                    .background(MaterialTheme.colorScheme.secondary)
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -1218,7 +1218,7 @@ private fun TvEpgItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "${formatTime(program.start)} - ${formatTime(program.stop)}",
-                    color = if (isPast) Color(0xFF666666) else Color(0xFFAAAAAA),
+                    color = if (isPast) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
                 if (isCurrent) {
@@ -1243,9 +1243,9 @@ private fun TvEpgItem(
             Text(
                 text = program.title,
                 color = when {
-                    isPast -> Color(0xFF666666)
-                    isCurrent -> Color(0xFF6A9EFF)
-                    else -> Color.White
+                    isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+                    isCurrent -> MaterialTheme.colorScheme.secondary
+                    else -> MaterialTheme.colorScheme.onSurface
                 },
                 fontSize = 13.sp,
                 fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
@@ -1267,7 +1267,7 @@ private fun EpgDescColumn(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxHeight()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1279,13 +1279,13 @@ private fun EpgDescColumn(
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = null,
-                    tint = Color(0xFF4A9EFF),
+                    tint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "节目描述",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -1315,7 +1315,7 @@ private fun EpgDescColumn(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = currentProg.title,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 2,
@@ -1335,13 +1335,13 @@ private fun EpgDescColumn(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "${formatTime(currentProg.start)} - ${formatTime(currentProg.stop)}",
-                            color = Color(0xFF4A9EFF),
+                            color = MaterialTheme.colorScheme.secondary,
                             fontSize = 12.sp
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = currentProg.desc.ifEmpty { "暂无节目描述" },
-                            color = Color(0xFFCCCCCC),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
                             maxLines = 4,
@@ -1351,7 +1351,7 @@ private fun EpgDescColumn(
                 } else {
                     Text(
                         text = "暂无节目信息",
-                        color = Color(0xFF666666),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
                     )

@@ -368,6 +368,17 @@ data class StartedResponse(
 )
 
 @Serializable
+data class BatchEditResponse(
+    @SerialName("changed") val changed: Int = 0,
+    @SerialName("total") val total: Int = 0,
+)
+
+@Serializable
+data class PlaybackSettingsResponse(
+    @SerialName("settings") val settings: Map<String, String> = emptyMap(),
+)
+
+@Serializable
 data class PathResponse(
     @SerialName("path") val path: String = "",
 )
@@ -376,6 +387,19 @@ data class PathResponse(
 data class ClearCacheResponse(
     @SerialName("ok") val ok: Boolean = false,
     @SerialName("deleted_count") val deletedCount: Int = 0,
+)
+
+@Serializable
+data class ThumbnailPathsResponse(
+    @SerialName("ok") val ok: Boolean = false,
+    @SerialName("paths") val paths: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class GenerateThumbnailBgResponse(
+    @SerialName("ok") val ok: Boolean = false,
+    @SerialName("path") val path: String = "",
+    @SerialName("cached") val cached: Boolean = false,
 )
 
 @Serializable

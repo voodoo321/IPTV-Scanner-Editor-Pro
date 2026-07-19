@@ -306,13 +306,70 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // -----------------------------------------------------------------
     enum class ChannelTab { SUB, LOCAL, FAV, HIST }
 
-    /** 竖屏底部 Tab（频道/收藏/工具/设置） */
-    enum class PortraitTab { CHANNELS, FAV, TOOLS, SETTINGS }
+/** 竖屏底部 Tab（首页/列表/工具/设置） */
+enum class PortraitTab { HOME, LIST, TOOLS, SETTINGS }
 
-    private val _portraitTab = MutableStateFlow(PortraitTab.CHANNELS)
-    val portraitTab: StateFlow<PortraitTab> = _portraitTab.asStateFlow()
+/** 列表页视图模式 */
+enum class ListViewMode { LIST, THUMBNAIL }
 
-    fun setPortraitTab(tab: PortraitTab) {
+/** 列表页数据源 */
+enum class ListSourceTab { SUBSCRIPTION, LOCAL }
+
+private val _portraitTab = MutableStateFlow(PortraitTab.HOME)
+val portraitTab: StateFlow<PortraitTab> = _portraitTab.asStateFlow()
+
+/** 列表页视图模式：列表 / 缩略图 */
+private val _listViewMode = MutableStateFlow(ListViewMode.LIST)
+val listViewMode: StateFlow<ListViewMode> = _listViewMode.asStateFlow()
+
+/** 列表页数据源：订阅 / 本地 */
+private val _listSourceTab = MutableStateFlow(ListSourceTab.SUBSCRIPTION)
+val listSourceTab: StateFlow<ListSourceTab> = _listSourceTab.asStateFlow()
+
+/** 竖屏首页/播放器模式切换：true=首页（浏览），false=播放器界面 */
+private val _showHome = MutableStateFlow(true)
+val showHome: StateFlow<Boolean> = _showHome.asStateFlow()
+
+/** 切换到播放器界面（选择频道/打开文件后调用） */
+fun showPlayerScreen() {
+    _showHome.value = false
+    // 播放器 Surface 重新创建后，需要重新加载当前频道
+    val idx = _currentIdx.value
+    val url = currentPlaybackUrl
+    if (idx >= 0 && url.isNotEmpty()) {
+        viewModelScope.launch {
+            delay(200)  // 等 Surface 创建完成
+            if (mpv.fileLoaded.value) {
+                // 已在播放，刷新 Surface
+                mpv.refreshSurface()
+            } else {
+                // 重新加载频道
+                mpv.playFile(url)
+            }
+            Log.i(TAG, "showPlayerScreen: restored playback for $url")
+        }
+    }
+}
+
+/** 切换回首页（播放器界面的返回按钮调用，视频继续播放） */
+fun showHomeScreen() {
+    _showHome.value = true
+    // 播放器被移除渲染，需要暂停播放（避免后台播放占用资源）
+    // 如果需要后台继续播放音频，注释掉这行
+    // mpv.setPause(true)
+}
+
+/** 切换列表视图模式 */
+fun setListViewMode(mode: ListViewMode) {
+    _listViewMode.value = mode
+}
+
+/** 切换列表数据源 */
+fun setListSourceTab(tab: ListSourceTab) {
+    _listSourceTab.value = tab
+}
+
+fun setPortraitTab(tab: PortraitTab) {
         _portraitTab.value = tab
     }
 
@@ -410,6 +467,27 @@ private var switchPlayJob: Job? = null
     /** 倍速双步进配置 */
     private val _speedConfig = MutableStateFlow(userPrefs.getSpeedConfig())
     val speedConfig: StateFlow<SpeedConfig> = _speedConfig.asStateFlow()
+
+    // -----------------------------------------------------------------
+    // 时移 URL 重建冷却（与 PC 端 catchup_controller.URL_REBUILD_COOLDOWN 对齐）
+    // -----------------------------------------------------------------
+    /** URL 重建冷却时间（秒），防止频繁重建导致服务器拒绝 */
+    private val urlRebuildCooldown = 3.0
+
+    /** 上次 URL 重建的时间戳（System.nanoTime 转秒） */
+    private var lastUrlRebuildTime: Double = 0.0
+
+    /** 是否有待执行的冷却后 seek */
+    private var urlRebuildPending: Boolean = false
+
+    /** 冷却后待执行的 seek 百分比（0-100） */
+    private var pendingSeekAfterCooldown: Double? = null
+
+    /** 冷却定时器 Job */
+    private var cooldownJob: Job? = null
+
+    /** 时移续播 Job */
+    private var continueTimeshiftJob: Job? = null
 
     // -----------------------------------------------------------------
     // Shuffle 模式（与 PC 端 FileQueueController.toggle_shuffle 对齐）
@@ -533,6 +611,18 @@ data class LyricsLine(val time: Long, val text: String)
     private val _sourceTab = MutableStateFlow(SourceTab.PLAYLIST)
     val sourceTab: StateFlow<SourceTab> = _sourceTab.asStateFlow()
 
+    /** 频道缩略图路径缓存：url -> file_path */
+    private val _thumbnailPaths = MutableStateFlow<Map<String, String>>(emptyMap())
+    val thumbnailPaths: StateFlow<Map<String, String>> = _thumbnailPaths.asStateFlow()
+
+    /** 缩略图生成进度：null=未在生成, Pair(current, total)=正在生成 */
+    private val _thumbnailGenProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val thumbnailGenProgress: StateFlow<Pair<Int, Int>?> = _thumbnailGenProgress.asStateFlow()
+
+    /** 当前选中的订阅源 URL（空=全部） */
+    private val _selectedSource = MutableStateFlow("")
+    val selectedSource: StateFlow<String> = _selectedSource.asStateFlow()
+
     // 播放器设置面板（主菜单 → 设置 → 播放器设置）
     // 兜底方案：当黑屏检测不可靠时（如 estimated-vfps 仍有值但渲染黑屏），
     // 用户可手动切换 vo（gpu / mediacodec_embed），立即生效并持久化
@@ -574,6 +664,18 @@ Log.i(TAG, "onVoFallback: UI updated vo=$vo, hwdec=$hwdec (session only)")
 // 注册文件加载错误回调：当 mpv 报告文件加载失败时换源，
 // 添加短暂延迟避免坏流导致 mpv 核心状态未清理就加载下一个流。
 mpvSingleton.onFileError = {
+// 回看/时移模式下不自动换源，避免 catchup URL 失败后跳到下一个频道
+if (_playbackState.value.mode.isCatchup || _playbackState.value.mode.isTimeshift) {
+Log.w(TAG, "onFileError: in catchup/timeshift mode, skipping auto-switch")
+showOsd("回看失败", "该节目可能无法回看或已过期")
+// 回到直播模式
+_playbackState.value = PlaybackState(mode = PlayMode.LIVE)
+val curIdx = _currentIdx.value
+if (curIdx >= 0) {
+val ch = _channels.value.getOrNull(curIdx)
+if (ch != null) mpv.playFile(ch.url)
+}
+} else {
 Log.w(TAG, "onFileError: file failed to load, triggering switch after delay")
 timeoutSwitchJob?.cancel()
 fileErrorSwitchJob?.cancel()
@@ -607,6 +709,27 @@ nextChannel()
 }
 }
 }
+    }
+
+    init {
+    // 时移 EOF 自动续播：监听 mpv eofReached，在时移模式下自动重建 URL 续播
+    // （与 PC 端 catchup_controller.continue_timeshift 对齐）
+    viewModelScope.launch {
+        mpvSingleton.eofReached.collect { eof ->
+            if (eof && _playbackState.value.mode.isTimeshift) {
+                Log.i(TAG, "eofReached in timeshift mode, triggering continueTimeshift")
+                continueTimeshiftJob?.cancel()
+                continueTimeshiftJob = viewModelScope.launch {
+                    delay(500) // 短暂延迟避免与 end-file 事件竞态
+                    if (_playbackState.value.mode.isTimeshift) {
+                        continueTimeshift()
+                    }
+                }
+            }
+        }
+    }
+    }
+
     val hardwareDecode: StateFlow<Boolean> = _hardwareDecode.asStateFlow()
 
     // 局域网管理服务器
@@ -1032,9 +1155,10 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
                 val app = getApplication<Application>()
                 val extFilesDir = app.getExternalFilesDir(null)?.absolutePath ?: ""
                 val filesDir = app.filesDir.absolutePath
+                val nativeLibDir = app.applicationInfo.nativeLibraryDir
                 val logLevel = userPrefs.getLogLevel()
                 val initResult = withContext(Dispatchers.IO) {
-                    repository.initContext(extFilesDir, filesDir, logLevel)
+                    repository.initContext(extFilesDir, filesDir, logLevel, nativeLibDir)
                 }
                 if (initResult.isFailure) {
                     val msg = initResult.exceptionOrNull()?.message ?: "初始化失败"
@@ -1044,7 +1168,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
                 }
                 Log.i(TAG, "initContext OK, start polling status")
 
-                // 1.5 设置应用版本信息（供 mobile Web 界面动态注入）
+                // 1.5 设置应用版本信息（供 Web 界面使用）
                 val version = getCurrentVersion()
                 val buildDate = getBuildDate()
                 withContext(Dispatchers.IO) {
@@ -1285,7 +1409,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
     /**
      * 播放指定频道（按索引）。
      *
-     * 与 PC 端 playChannel 和 mobile index.html playChannel 对齐：
+     * 与 PC 端 playChannel 对齐：
      * 1. 重置 catchup/timeshift 状态（清空 originalChannel/catchupProgram/liveTimeshiftSeconds）
      * 2. 隐藏退出 catchup 按钮
      * 3. 设置 playMode='live'
@@ -1340,8 +1464,19 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         // 应用频道级播放器设置（如果开启"频道记忆"且该频道有保存设置）
         applyChannelSettingsIfNeeded(idx)
 
+        // 加载按 URL 持久化的播放设置（#24：音轨/字幕/音量/比例等）
+        loadPlaybackSettingsFromStore(playUrl)
+
         // MPV 支持全部协议，直接播放
-        mpv.playFile(playUrl)
+        // 如果播放器不在 Compose 树中（Tab 模式），先缓存 URL，等 attach 后自动播放
+        if (_showHome.value) {
+            // Tab 模式：播放器未渲染，缓存 URL，先切换到播放器界面
+            _pendingSwitchPlayUrl.value = playUrl
+            _showHome.value = false
+        } else {
+            // 播放器模式：直接播放
+            mpv.playFile(playUrl)
+        }
 
         // 启动超时换源定时器（与酷9 LIVE_CONNECT_TIMEOUT 对齐）
         startTimeoutSwitchSource(idx)
@@ -1356,6 +1491,9 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             closeAllPanels()
         }
 
+        // 切换到播放器界面（竖屏模式下从首页切换到播放器）
+        _showHome.value = false
+
         // 加入历史
         userPrefs.addToHistory(idx)
         _history.value = userPrefs.getHistory()
@@ -1369,6 +1507,9 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         // 预取相邻频道的 DNS/TCP 连接（与 PC 端 _prefetch_adjacent_channels 对齐）
         // 在后台协程中预解析下一/上一频道的域名，减少切台时的 DNS 查询延迟
         prefetchAdjacentChannels(idx)
+
+        // 自动截取频道缩略图（延迟几秒让画面加载，用于列表页缩略图模式）
+        captureChannelThumbnail()
     }
 
     /**
@@ -1774,6 +1915,92 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         )
         userPrefs.setChannelSettings(idx, settings)
         Log.i(TAG, "autoSaveCurrentSettingsToChannel: idx=$idx, settings=$settings")
+
+        // 同时保存到 PlaybackSettingsStore（按 URL 持久化，#24）
+        savePlaybackSettingsToStore(idx)
+    }
+
+    /**
+     * 保存当前播放设置到 PlaybackSettingsStore（按 URL 持久化）。
+     * 与 PC 端 playback_settings_store.save_settings 对齐。
+     */
+    private fun savePlaybackSettingsToStore(idx: Int) {
+        val channel = _channels.value.getOrNull(idx) ?: return
+        val url = channel.url.ifEmpty { return }
+        val settings = mutableMapOf<String, String>()
+        // 音轨
+        val aid = mpv.getPropertyString("aid") ?: ""
+        if (aid.isNotEmpty()) settings["aid"] = aid
+        // 字幕轨
+        val sid = mpv.getPropertyString("sid") ?: ""
+        if (sid.isNotEmpty()) settings["sid"] = sid
+        // 音量
+        settings["volume"] = mpv.volume.value.toInt().toString()
+        // 画面比例
+        val aspect = mpv.getPropertyString("video-aspect") ?: ""
+        if (aspect.isNotEmpty()) settings["video-aspect"] = aspect
+        // 翻转
+        val flip = mpv.getPropertyString("vf") ?: ""
+        if (flip.isNotEmpty()) settings["vf"] = flip
+        // 旋转
+        val rotate = mpv.getPropertyString("video-rotate") ?: ""
+        if (rotate.isNotEmpty() && rotate != "0") settings["video-rotate"] = rotate
+        // 倍速
+        val speed = mpv.speed.value
+        if (speed != 1.0) settings["speed"] = speed.toString()
+
+        if (settings.isNotEmpty()) {
+            viewModelScope.launch {
+                val jsonStr = buildJsonObject {
+                    settings.forEach { (k, v) -> put(k, JsonPrimitive(v)) }
+                }.toString()
+                repository.savePlaybackSettings(url, jsonStr, channel.name)
+                Log.d(TAG, "savePlaybackSettingsToStore: url=$url, settings=$settings")
+            }
+        }
+    }
+
+    /**
+     * 从 PlaybackSettingsStore 加载并应用播放设置（按 URL 持久化，#24）。
+     * 与 PC 端 playback_settings_store.load_settings 对齐。
+     */
+    private fun loadPlaybackSettingsFromStore(url: String) {
+        if (url.isEmpty()) return
+        viewModelScope.launch {
+            val result = repository.loadPlaybackSettings(url)
+            result.onSuccess { resp ->
+                val settings = resp.settings
+                if (settings.isEmpty()) return@onSuccess
+                Log.d(TAG, "loadPlaybackSettingsFromStore: url=$url, settings=$settings")
+                // 等待文件加载后再应用轨道设置
+                settings["aid"]?.let { aid ->
+                    if (aid.isNotEmpty()) {
+                        kotlinx.coroutines.delay(500)
+                        mpv.setPropertyString("aid", aid)
+                    }
+                }
+                settings["sid"]?.let { sid ->
+                    if (sid.isNotEmpty()) {
+                        kotlinx.coroutines.delay(500)
+                        mpv.setPropertyString("sid", sid)
+                    }
+                }
+                settings["volume"]?.toIntOrNull()?.let { vol ->
+                    mpv.setVolume(vol)
+                }
+                settings["video-aspect"]?.let { aspect ->
+                    if (aspect.isNotEmpty()) mpv.setPropertyString("video-aspect", aspect)
+                }
+                settings["video-rotate"]?.toIntOrNull()?.let { rotate ->
+                    if (rotate != 0) mpv.setPropertyString("video-rotate", rotate.toString())
+                }
+                settings["speed"]?.toDoubleOrNull()?.let { speed ->
+                    if (speed != 1.0) mpv.setSpeed(speed)
+                }
+            }.onFailure { e ->
+                Log.w(TAG, "loadPlaybackSettingsFromStore failed: ${e.message}")
+            }
+        }
     }
 
     /** 清除指定频道的专属播放器设置 */
@@ -2209,12 +2436,23 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         val catchupProgram = CatchupProgram(program, startMs, endMs)
         _playbackState.value = _playbackState.value.enterCatchup(channel, catchupProgram, PlayMode.CATCHUP)
 
+        // 关键：取消所有延迟换源/超时定时器，避免 catchup URL 加载期间被干扰
+        // 1. fileErrorSwitchJob：onFileError 延迟换源（已在 onFileError 中通过 isCatchup 判断跳过，双保险）
+        fileErrorSwitchJob?.cancel()
+        fileErrorSwitchJob = null
+        // 2. timeoutSwitchJob：直播频道的超时换源定时器仍在运行！
+        //    场景：用户在直播频道上点击过去节目 → startCatchup 播放 catchup URL →
+        //    catchup URL 加载需要时间 → 直播频道的 timeoutSwitchJob 到期 →
+        //    检查 fileLoaded=false（catchup 还没加载完）→ 调用 nextChannel() 切到下一个直播频道。
+        //    这就是"点击回看后视频断了一下又接着直播播放"的根因。
+        timeoutSwitchJob?.cancel()
+        timeoutSwitchJob = null
+
         // 播放 catchup URL
         mpv.playFile(catchupUrl)
 
-        // 显示 OSD + 关闭面板
+        // 显示 OSD（不调用 closeAllPanels，避免干扰播放器模式下的动态内容区域）
         showOsd("回看", program.title.ifEmpty { channel.name })
-        closeAllPanels()
 
         Log.i(TAG, "startCatchup: ${program.title} ($startMs-$endMs) → $catchupUrl")
     }
@@ -2281,6 +2519,12 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         _playbackState.value = _playbackState.value.enterCatchup(channel, catchupProgram, PlayMode.TIMESHIFT)
             .copy(liveTimeshiftSeconds = offsetSec)
 
+        // 取消所有延迟换源/超时定时器（与 startCatchup 一致）
+        fileErrorSwitchJob?.cancel()
+        fileErrorSwitchJob = null
+        timeoutSwitchJob?.cancel()
+        timeoutSwitchJob = null
+
         // 播放 timeshift URL
         mpv.playFile(catchupUrl)
 
@@ -2325,7 +2569,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
 
     /**
      * 进度条 seek 处理。
-     * 与 PC 端 controllers/playback_controller.seek_live 和 mobile handleProgressSeek 对齐。
+     * 与 PC 端 controllers/playback_controller.seek_live 对齐。
      *
      * @param percent 进度条百分比（0-100）
      */
@@ -2400,13 +2644,123 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             }
             showOsd("时移", "落后 ${offsetSec} 秒")
         } else {
-            // 目标超出缓冲区：调用 startLiveTimeshift 重建 catchup URL
+            // 目标超出缓冲区：需要重建 catchup URL
             if (!CatchupHelper.isCatchupEnabled(channel)) {
                 showOsd("提示", "该频道不支持时移回看")
                 return
             }
+
+            // URL 重建冷却检查（与 PC 端 catchup_controller.seek_catchup 对齐）
+            val nowSec = System.nanoTime() / 1_000_000_000.0
+            if (urlRebuildPending) {
+                val elapsed = nowSec - lastUrlRebuildTime
+                if (elapsed < urlRebuildCooldown) {
+                    // 冷却中：保存待执行的 seek 百分比，等冷却结束后执行
+                    pendingSeekAfterCooldown = percent.toDouble()
+                    Log.i(TAG, "时移seek延迟: URL重建后冷却中(${"%.1f".format(elapsed)}s/${urlRebuildCooldown}s)")
+                    ensureCooldownTimer()
+                    showOsd("时移", "冷却中，请稍候...")
+                    return
+                } else {
+                    urlRebuildPending = false
+                }
+            }
+
             startLiveTimeshift(sliderSec.toDouble())
+
+            // 记录重建时间，设置 pending 标记
+            lastUrlRebuildTime = System.nanoTime() / 1_000_000_000.0
+            urlRebuildPending = true
+            pendingSeekAfterCooldown = null
+            cooldownJob?.cancel()
+            cooldownJob = null
         }
+    }
+
+    /**
+     * 确保冷却定时器在运行（冷却结束后执行待定的 seek）。
+     * 与 PC 端 catchup_controller._ensure_cooldown_timer 对齐。
+     */
+    private fun ensureCooldownTimer() {
+        if (cooldownJob?.isActive == true) return
+        val nowSec = System.nanoTime() / 1_000_000_000.0
+        val remaining = ((urlRebuildCooldown - (nowSec - lastUrlRebuildTime)) * 1000).toLong().coerceAtLeast(200)
+        cooldownJob = viewModelScope.launch {
+            delay(remaining)
+            cooldownJob = null
+            val pos = pendingSeekAfterCooldown
+            pendingSeekAfterCooldown = null
+            if (pos != null) {
+                val elapsed = System.nanoTime() / 1_000_000_000.0 - lastUrlRebuildTime
+                if (elapsed < urlRebuildCooldown) {
+                    ensureCooldownTimer()
+                    return@launch
+                }
+                Log.i(TAG, "冷却期结束，执行延迟的时移seek: percent=${"%.1f".format(pos)}")
+                seekProgress(pos.toFloat())
+            }
+        }
+    }
+
+    /**
+     * 时移流播放到终点后自动续播（与 PC 端 catchup_controller.continue_timeshift 对齐）。
+     * 从当前播放位置重建时移 URL，实现无缝续播。
+     */
+    fun continueTimeshift() {
+        val state = _playbackState.value
+        if (!state.mode.isTimeshift) {
+            Log.d(TAG, "continueTimeshift: not in timeshift mode, skipping")
+            return
+        }
+        val program = state.catchupProgram ?: run {
+            Log.w(TAG, "时移续播失败: 缺少节目信息")
+            return
+        }
+        val channel = state.originalChannel ?: currentChannel.value ?: run {
+            Log.w(TAG, "时移续播失败: 缺少频道信息")
+            return
+        }
+
+        val programStartMs = program.startMs
+        val programEndMs = program.endMs
+        val now = System.currentTimeMillis()
+
+        // 计算新的起始时间：基于上次的 catchupStartProgressSec + 实际播放时长
+        val elapsedSinceStart = state.catchupStartProgressSec
+        val newStartMs = if (elapsedSinceStart > 0) {
+            val elapsedReal = now - state.catchupStartMs
+            programStartMs + (elapsedSinceStart * 1000).toLong() + elapsedReal
+        } else {
+            now - 5_000L
+        }
+
+        var adjustedStartMs = newStartMs.coerceAtLeast(programStartMs)
+        if (adjustedStartMs >= now) {
+            adjustedStartMs = now - 5_000L
+        }
+
+        val endMs = if (programEndMs > now) programEndMs else now + 30 * 60 * 1000L
+
+        val catchupUrl = CatchupHelper.buildCatchupUrl(channel, adjustedStartMs, endMs)
+        if (catchupUrl.isNullOrEmpty()) {
+            Log.w(TAG, "时移续播: 无法构建 URL")
+            showOsd("时移", "续播失败")
+            return
+        }
+
+        Log.i(TAG, "时移续播 -> new_start=$adjustedStartMs, end=$endMs, url=$catchupUrl")
+
+        // 更新冷却状态
+        lastUrlRebuildTime = System.nanoTime() / 1_000_000_000.0
+        urlRebuildPending = true
+
+        // 更新 playback state
+        _playbackState.value = state.copy(
+            catchupStartMs = System.currentTimeMillis(),
+            catchupStartProgressSec = 0.0
+        )
+
+        mpv.playFile(catchupUrl)
     }
 
     /**
@@ -2502,14 +2856,41 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             result.fold(
                 onSuccess = { epgList ->
                     val programs = epgList.programmes
-epgCache[idx] = programs
-_epgCacheVersion.value++
-_currentEpg.value = programs
-Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
+                    if (programs.isEmpty()) {
+                        // EPG 数据可能还在后台加载，3秒后重试一次
+                        Log.w(TAG, "fetchEpgForCurrent: empty programs, will retry in 3s")
+                        delay(3000)
+                        val retry = withContext(Dispatchers.IO) {
+                            repository.getEpg(channel.name, channel.tvgId, channel.tvgName, channel.name)
+                        }
+                        val retryPrograms = retry.getOrNull()?.programmes ?: emptyList()
+                        epgCache[idx] = retryPrograms
+                        _epgCacheVersion.value++
+                        _currentEpg.value = retryPrograms
+                        Log.i(TAG, "fetchEpgForCurrent (retry): ${retryPrograms.size} programs for ${channel.name}")
+                    } else {
+                        epgCache[idx] = programs
+                        _epgCacheVersion.value++
+                        _currentEpg.value = programs
+                        Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
+                    }
                 },
                 onFailure = { e ->
                     Log.w(TAG, "fetchEpgForCurrent failed: ${e.message}")
-                    _currentEpg.value = emptyList()
+                    // EPG 服务器可能还没准备好，3秒后重试
+                    delay(3000)
+                    try {
+                        val retry = withContext(Dispatchers.IO) {
+                            repository.getEpg(channel.name, channel.tvgId, channel.tvgName, channel.name)
+                        }
+                        val retryPrograms = retry.getOrNull()?.programmes ?: emptyList()
+                        epgCache[idx] = retryPrograms
+                        _epgCacheVersion.value++
+                        _currentEpg.value = retryPrograms
+                        Log.i(TAG, "fetchEpgForCurrent (retry after fail): ${retryPrograms.size} programs for ${channel.name}")
+                    } catch (e2: Exception) {
+                        _currentEpg.value = emptyList()
+                    }
                 }
             )
             _epgLoading.value = false
@@ -3131,17 +3512,31 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
         Log.i(TAG, "downloadAndInstallApk: starting download, url=$url, target=${apkFile.absolutePath}")
 
         // 构建下载请求
-        val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("ISEP 更新")
-            setDescription("正在下载最新版 APK...")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            setDestinationUri(Uri.fromFile(apkFile))
-            // 允许在移动网络和漫游下下载（更新包通常不大，且用户主动触发）
-            setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
-            setAllowedOverRoaming(true)
+        val request = try {
+            DownloadManager.Request(Uri.parse(url)).apply {
+                setTitle("ISEP 更新")
+                setDescription("正在下载最新版 APK...")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                setDestinationUri(Uri.fromFile(apkFile))
+                // 允许在移动网络和漫游下下载（更新包通常不大，且用户主动触发）
+                setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
+                setAllowedOverRoaming(true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "downloadAndInstallApk: create request failed", e)
+            _apkDownloadState.value = ApkDownloadState.Error("创建下载请求失败：${e.message}")
+            unregisterApkDownloadReceiver(app)
+            return
         }
 
-        apkDownloadId = downloadManager.enqueue(request)
+        try {
+            apkDownloadId = downloadManager.enqueue(request)
+        } catch (e: Exception) {
+            Log.e(TAG, "downloadAndInstallApk: enqueue failed", e)
+            _apkDownloadState.value = ApkDownloadState.Error("下载服务异常：${e.message}")
+            unregisterApkDownloadReceiver(app)
+            return
+        }
         _apkDownloadState.value = ApkDownloadState.Downloading(0)
         showOsd("应用更新", "开始下载 APK...")
 
@@ -3207,6 +3602,26 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            // Android 8+ 需要检查未知来源安装权限
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+                !app.packageManager.canRequestPackageInstalls()
+            ) {
+                Log.w(TAG, "installDownloadedApk: no install permission, opening settings")
+                _apkDownloadState.value = ApkDownloadState.Error("请先允许「安装未知应用」权限")
+                // 引导用户到设置页面授权
+                val settingsIntent = Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${app.packageName}")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                try {
+                    app.startActivity(settingsIntent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "installDownloadedApk: cannot open unknown sources settings", e)
+                }
+                return
             }
             app.startActivity(intent)
             Log.i(TAG, "installDownloadedApk: install intent launched, uri=$uri")
@@ -3470,7 +3885,10 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
      * 启动 URL 范围扫描。baseUrl 支持 [1-255] 范围表达式
      * （如 http://192.168.1.[1-255]:8080）。启动成功后开始轮询状态。
      */
-    fun startScan(baseUrl: String, timeout: Int = 10, threads: Int = 4) {
+    fun startScan(
+        baseUrl: String, timeout: Int = 10, threads: Int = 4,
+        engine: String = "requests", retry: Boolean = false, append: Boolean = false
+    ) {
         if (baseUrl.isBlank()) {
             showOsd("扫描", "请输入基础 URL")
             return
@@ -3478,8 +3896,8 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
         viewModelScope.launch {
             _scanLoading.value = true
             _scanError.value = ""
-            _scanResults.value = emptyList()
-            val result = repository.startScan(baseUrl, timeout, threads)
+            if (!append) _scanResults.value = emptyList()
+            val result = repository.startScan(baseUrl, timeout, threads, engine, retry, append)
             _scanLoading.value = false
             result.onSuccess { started ->
                 if (started) {
@@ -3523,7 +3941,7 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
         }
     }
 
-    /** 启动扫描状态轮询（800ms 间隔，扫描结束后自动加载结果并停止轮询） */
+    /** 启动扫描状态轮询（800ms 间隔，扫描中实时加载结果，扫描结束后自动停止轮询） */
     private fun startScanPolling() {
         scanPollJob?.cancel()
         scanPollJob = viewModelScope.launch {
@@ -3536,9 +3954,10 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
                     break
                 }
                 _scanStatus.value = status
+                // 每次轮询都获取最新结果（实时显示，不需等扫描结束）
+                repository.getScanResults().onSuccess { _scanResults.value = it }
                 if (!status.running) {
-                    // 扫描结束，加载结果
-                    repository.getScanResults().onSuccess { _scanResults.value = it }
+                    // 扫描结束
                     showOsd("扫描", "完成: 共 ${status.total}，有效 ${status.valid}，无效 ${status.invalid}")
                     break
                 }
@@ -3565,18 +3984,91 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
         _scanResults.value = emptyList()
     }
 
+    // -----------------------------------------------------------------
+    // 频道网络验证（#5）
+    // -----------------------------------------------------------------
+
+    /** 启动频道网络验证 */
+    fun startValidate(timeout: Int = 10, threads: Int = 4) {
+        viewModelScope.launch {
+            _scanLoading.value = true
+            _scanError.value = ""
+            val result = repository.startValidate(timeout, threads)
+            _scanLoading.value = false
+            result.onSuccess { started ->
+                if (started) {
+                    showOsd("验证", "已启动频道验证")
+                    startScanPolling()
+                } else {
+                    _scanError.value = "扫描/验证已在进行中"
+                    showOsd("验证", "扫描/验证已在进行中")
+                }
+            }.onFailure { e ->
+                _scanError.value = e.message ?: "启动失败"
+                showOsd("验证", "启动失败: ${e.message}")
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 批量编辑（#4）
+    // -----------------------------------------------------------------
+
+    /** 批量编辑频道，成功后刷新频道列表 */
+    fun batchEditChannels(action: String, optionsJson: String = "{}") {
+        viewModelScope.launch {
+            val result = repository.batchEditChannels(action, optionsJson)
+            result.onSuccess { resp ->
+                showOsd("批量编辑", "已修改 ${resp.changed}/${resp.total} 条")
+                loadChannels()
+            }.onFailure { e ->
+                showOsd("批量编辑", "失败: ${e.message}")
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 单条频道编辑（#6）
+    // -----------------------------------------------------------------
+
+    /** 更新单条频道字段，成功后刷新频道列表 */
+    fun updateChannel(idx: Int, fields: Map<String, String>) {
+        viewModelScope.launch {
+            val result = repository.updateChannel(idx, fields)
+            result.onSuccess {
+                showOsd("编辑", "已保存")
+                loadChannels()
+            }.onFailure { e ->
+                showOsd("编辑", "保存失败: ${e.message}")
+            }
+        }
+    }
+
     /**
      * 将扫描结果中的有效频道导出为 M3U 文件，保存到 Downloads 目录。
      * 调用后端 get_m3u_text(group="扫描结果", validOnly=true) 获取 M3U 文本。
      */
     fun exportScanResultsAsM3u() {
+        val validResults = _scanResults.value.filter { it.valid }
+        if (validResults.isEmpty()) {
+            showOsd("导出", "无有效频道可导出")
+            return
+        }
+
         viewModelScope.launch {
             try {
-                val resp = repository.getM3uText(group = "扫描结果", validOnly = true).getOrNull()
-                if (resp == null || resp.text.isEmpty()) {
-                    showOsd("导出", "无有效频道可导出")
-                    return@launch
+                // 直接从前端 scanResults 构造 M3U 内容，不依赖后端 getM3uText
+                val m3uText = buildString {
+                    appendLine("#EXTM3U")
+                    for (result in validResults) {
+                        val name = result.name.ifBlank { result.url }
+                        val group = result.group.ifBlank { "扫描结果" }
+                        appendLine("#EXTINF:-1 tvg-name=\"$name\" group-title=\"$group\",$name")
+                        appendLine(result.url)
+                    }
                 }
+                val channelCount = validResults.size
+
                 val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.CHINA)
                     .format(java.util.Date())
                 val filename = "scan_$ts.m3u"
@@ -3591,25 +4083,69 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
                     val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     if (uri == null) false
                     else {
-                        resolver.openOutputStream(uri)?.use { it.write(resp.text.toByteArray()) } ?: false
+                        resolver.openOutputStream(uri)?.use { it.write(m3uText.toByteArray()) } ?: false
                         true
                     }
                 } else {
                     @Suppress("DEPRECATION")
                     val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                     if (!dir.exists()) dir.mkdirs()
-                    File(dir, filename).writeText(resp.text)
+                    File(dir, filename).writeText(m3uText)
                     true
                 }
                 if (written) {
-                    showOsd("导出", "已保存到 Downloads/$filename（${resp.count} 个频道）")
-                    Log.i(TAG, "Scan results exported to Downloads/$filename (${resp.count} channels)")
+                    showOsd("导出", "已保存到 Downloads/$filename（$channelCount 个频道）")
+                    Log.i(TAG, "Scan results exported to Downloads/$filename ($channelCount channels)")
                 } else {
                     showOsd("导出", "保存失败")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "exportScanResultsAsM3u failed", e)
                 showOsd("导出", "导出失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 将扫描结果中的有效频道直接导入到播放列表。
+     * 使用 import_channels 接口，构造 M3U 格式内容后导入。
+     */
+    fun importScanResultsToChannels() {
+        val validResults = _scanResults.value.filter { it.valid }
+        if (validResults.isEmpty()) {
+            showOsd("导入", "无有效频道可导入")
+            return
+        }
+
+        viewModelScope.launch {
+            _scanLoading.value = true
+            try {
+                // 构造 M3U 格式内容
+                val m3uContent = buildString {
+                    appendLine("#EXTM3U")
+                    for (result in validResults) {
+                        val name = result.name.ifBlank { result.url }
+                        val group = result.group.ifBlank { "扫描结果" }
+                        appendLine("#EXTINF:-1 tvg-name=\"$name\" group-title=\"$group\",$name")
+                        appendLine(result.url)
+                    }
+                }
+
+                val importResult = repository.importChannels(m3uContent, "扫描结果导入")
+                importResult.onSuccess { count ->
+                    // 刷新频道列表
+                    loadChannels()
+                    showOsd("导入", "已导入 $count 个频道到播放列表")
+                    Log.i(TAG, "importScanResultsToChannels: imported $count channels")
+                }.onFailure { e ->
+                    showOsd("导入", "导入失败: ${e.message}")
+                    Log.e(TAG, "importScanResultsToChannels failed", e)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "importScanResultsToChannels failed", e)
+                showOsd("导入", "导入失败: ${e.message}")
+            } finally {
+                _scanLoading.value = false
             }
         }
     }
@@ -5237,6 +5773,44 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
                 mpv.playFile(playPath)
                 showOsd("本地文件", currentPlaybackName)
                 closeAllPanels()
+                _showHome.value = false  // 切换到播放器界面
+
+                // 保存到历史记录和本地频道列表（source='' 标记为本地）
+                try {
+                    val fileName = currentPlaybackName.ifBlank { playPath.substringAfterLast('/') }
+                    val existingIdx = _channels.value.indexOfFirst { it.url == playPath }
+                    if (existingIdx < 0) {
+                        // 新文件：添加为本地频道（同步等待完成）
+                        val addResult = repository.addChannel(playPath, fileName, "本地视频")
+                        addResult.onSuccess { addedIdx ->
+                            // 直接在当前频道列表中追加，不依赖异步 loadChannels
+                            val newChannel = IptvChannel(
+                                name = fileName, url = playPath, group = "本地视频",
+                                source = ""
+                            )
+                            _channels.value = _channels.value + newChannel
+                            val newIdx = _channels.value.indexOfLast { it.url == playPath }
+                            if (newIdx >= 0) {
+                                _currentIdx.value = newIdx
+                                currentIsLocalFile = false
+                                userPrefs.addToHistory(newIdx)
+                                _history.value = userPrefs.getHistory()
+                                Log.i(TAG, "playLocalVideo: added local channel idx=$newIdx, name=$fileName")
+                            }
+                        }.onFailure { e ->
+                            Log.w(TAG, "playLocalVideo: addChannel failed: ${e.message}")
+                        }
+                    } else {
+                        // 已存在：添加到历史
+                        userPrefs.addToHistory(existingIdx)
+                        _history.value = userPrefs.getHistory()
+                        _currentIdx.value = existingIdx
+                        currentIsLocalFile = false
+                        Log.i(TAG, "playLocalVideo: existing channel idx=$existingIdx")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "playLocalVideo: failed to save history: ${e.message}")
+                }
             } catch (e: Throwable) {
                 Log.e(TAG, "playLocalVideo mpv.playFile failed", e)
                 showOsd("播放失败", e.message ?: "无法播放此文件")
@@ -5278,6 +5852,7 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
         mpv.playFile(url)
         showOsd("网络流", url)
         closeAllPanels()
+        _showHome.value = false  // 切换到播放器界面
     }
 
     /**
@@ -5483,6 +6058,102 @@ Log.i(TAG, "fetchEpgForCurrent: ${programs.size} programs for ${channel.name}")
 
     fun setSourceTab(tab: SourceTab) { _sourceTab.value = tab }
 
+/** 设置当前选中的订阅源（空=全部） */
+fun setSelectedSource(source: String) {
+    _selectedSource.value = source
+    _selectedGroup.value = ""  // 切换订阅源时重置分组
+}
+
+/** 加载频道缩略图路径 */
+fun loadThumbnailPaths() {
+    val urls = _channels.value.map { it.url }.filter { it.isNotEmpty() }
+    if (urls.isEmpty()) return
+    viewModelScope.launch {
+        try {
+            val result = repository.getThumbnailPaths(urls)
+            result.onSuccess { paths ->
+                _thumbnailPaths.value = paths
+                Log.i(TAG, "loadThumbnailPaths: loaded ${paths.size} thumbnails")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "loadThumbnailPaths failed: ${e.message}")
+        }
+    }
+}
+
+/** 播放时自动截取缩略图（延迟几秒让画面加载） */
+fun captureChannelThumbnail() {
+    val idx = _currentIdx.value
+    if (idx < 0) return
+    val channel = _channels.value.getOrNull(idx) ?: return
+    val url = channel.url
+    if (url.isEmpty()) return
+
+    viewModelScope.launch {
+        delay(3000)  // 等 3 秒让画面加载
+        if (!mpv.fileLoaded.value) return@launch
+        try {
+            val app = getApplication<Application>()
+            val cacheFile = File(app.cacheDir, "thumb_${System.currentTimeMillis()}.png")
+            mpv.screenshotToFile(cacheFile.absolutePath, "video")
+            // 等待截图写入
+            var retry = 0
+            while (!cacheFile.exists() && retry < 10) {
+                delay(200)
+                retry++
+            }
+            if (cacheFile.exists()) {
+                // 上传截图到服务器（服务器保存到 cache/thumbnails/ 目录）
+                repository.captureThumbnail(url, cacheFile.absolutePath)
+                cacheFile.delete()
+                // 上传后从服务器刷新路径（服务器会返回正确的缩略图路径）
+                val result = repository.getThumbnailPaths(listOf(url))
+                result.onSuccess { paths ->
+                    if (paths.isNotEmpty()) {
+                        _thumbnailPaths.value = _thumbnailPaths.value.toMutableMap().apply {
+                            putAll(paths)
+                        }
+                    }
+                }
+                Log.i(TAG, "captureChannelThumbnail: saved for $url")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "captureChannelThumbnail failed: ${e.message}")
+        }
+    }
+}
+
+/**
+ * 批量生成缺失的频道缩略图。
+ *
+ * 由于 Android 上 Python libmpv 不可靠，改为：
+ * 1. 先检查哪些频道缺缩略图
+ * 2. 如果当前正在播放的频道也缺缩略图，触发前台截图（captureChannelThumbnail）
+ * 3. 其他频道的缩略图会在用户播放时自动生成
+ */
+fun generateMissingThumbnails(channelsToGen: List<IptvChannel>) {
+    val existingPaths = _thumbnailPaths.value
+    val missing = channelsToGen.filter { ch ->
+        ch.url.isNotEmpty() && existingPaths[ch.url]?.let { !java.io.File(it).exists() } ?: true
+    }
+    if (missing.isEmpty()) {
+        Log.i(TAG, "generateMissingThumbnails: no missing thumbnails")
+        return
+    }
+
+    Log.i(TAG, "generateMissingThumbnails: ${missing.size} channels need thumbnails")
+
+    // 如果当前正在播放的频道也缺缩略图，触发截图
+    val currentChannel = _channels.value.getOrNull(_currentIdx.value)
+    if (currentChannel != null && missing.any { it.url == currentChannel.url }) {
+        Log.i(TAG, "generateMissingThumbnails: capturing current channel thumbnail")
+        captureChannelThumbnail()
+    }
+
+    // 提示用户：播放频道时会自动生成缩略图
+    showOsd("缩略图", "还有 ${missing.size} 个频道待生成，播放时自动截图")
+}
+
     // -----------------------------------------------------------------
     // 播放器设置（vo / hwdec）
     //
@@ -5626,6 +6297,26 @@ showOsd("播放器设置", "日志等级: $levelName")
             showOsd("播放器设置", if (enabled) "硬件解码" else "软件解码")
         } else {
             showOsd("播放器设置", "切换失败（当前 vo 不支持软解）")
+        }
+    }
+
+    /** 切换 VO（gpu/gpu-next/mediacodec_embed），切换后重新加载当前频道 */
+    fun applyVoChange(vo: String) {
+        val player = _player.value ?: return
+        if (player !is MpvController) return
+        try {
+            player.setVoAndHwdec(vo, userPrefs.getHwdec())
+            _currentVo.value = vo
+            userPrefs.setVo(vo)
+            // 重新加载当前频道
+            val url = currentPlaybackUrl
+            if (url.isNotEmpty()) {
+                player.playFile(url)
+            }
+            Log.i(TAG, "applyVoChange: vo=$vo, reloading $url")
+        } catch (e: Exception) {
+            Log.e(TAG, "applyVoChange failed", e)
+            showOsd("播放器设置", "切换失败: ${e.message}")
         }
     }
 
@@ -6226,6 +6917,9 @@ showOsd("播放器设置", "日志等级: $levelName")
                 if (closeAnyPanel()) return
                 if (playbackState.value.mode.isCatchupOrTimeshift) {
                     exitCatchup()
+                } else if (!_showHome.value) {
+                    // 竖屏播放器模式，返回首页（视频继续播放）
+                    showHomeScreen()
                 } else {
                     showExitConfirm()
                 }
@@ -6263,7 +6957,7 @@ showOsd("播放器设置", "日志等级: $levelName")
                     }
                 }
             }
-            // 音量绝对值设置（供 mobile WEB 页面音量滑块使用）
+            // 音量绝对值设置（供 Web 遥控器页面音量滑块使用）
             // 命令格式：set_volume:50
             else -> if (cmd.startsWith("set_volume:")) {
                 val vol = cmd.removePrefix("set_volume:").toIntOrNull()

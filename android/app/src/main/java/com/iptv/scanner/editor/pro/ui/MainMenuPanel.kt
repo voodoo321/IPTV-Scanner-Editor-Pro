@@ -74,7 +74,7 @@ import androidx.compose.ui.unit.sp
 import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 
 /**
- * 主菜单面板：与 PC 端 mobile/index.html 主菜单（panelMenu）对齐。
+ * 主菜单面板：与 PC 端主菜单（panelMenu）对齐。
  *
  * 3 个分组：
  * - 快捷（2 项）：频道列表 / 节目单 EPG
@@ -251,7 +251,7 @@ fun MainMenuPanel(viewModel: AppViewModel) {
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxSize()
     ) {
         Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
@@ -382,7 +382,7 @@ private fun MenuGridItem(
                 Icon(
                     imageVector = entry.icon,
                     contentDescription = null,
-                    tint = if (entry.highlight) MaterialTheme.colorScheme.primary else Color(0xFFCCCCCC),
+                    tint = if (entry.highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -390,7 +390,7 @@ private fun MenuGridItem(
             // 标题
             Text(
                 text = entry.title,
-                color = if (entry.highlight) Color(0xFF6A9EFF) else MaterialTheme.colorScheme.onSurface,
+                color = if (entry.highlight) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 11.sp,
                 fontWeight = if (entry.highlight) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -564,7 +564,7 @@ private fun MenuEntryItem(
             Icon(
                 imageVector = entry.icon,
                 contentDescription = null,
-                tint = if (entry.highlight) MaterialTheme.colorScheme.primary else Color(0xFFCCCCCC),
+                tint = if (entry.highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
         }

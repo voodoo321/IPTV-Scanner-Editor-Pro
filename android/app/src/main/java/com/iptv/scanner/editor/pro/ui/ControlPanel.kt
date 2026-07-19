@@ -54,7 +54,7 @@ import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 import kotlinx.coroutines.delay
 
 /**
- * 控制面板：3 行布局，对齐 PC 端 mobile/index.html panelControls。
+ * 控制面板：3 行布局，对齐 PC 端 panelControls。
  *
  * - 第 1 行：媒体信息徽章（视频/HDR/音频/网络/缓冲）
  * - 第 2 行：节目信息（频道名 + 节目名 + 时间徽章 + 回看指示器 + 状态徽章）
@@ -184,7 +184,7 @@ fun ControlPanel(viewModel: AppViewModel) {
 // -----------------------------------------------------------------
 
 /**
- * 媒体信息徽章行：与 PC 端 server/mobile/index.html updateMediaBadges() 完全对齐。
+ * 媒体信息徽章行：与 PC 端 updateMediaBadges() 逻辑对齐。
  *
  * 5 个徽章（颜色对齐 PC 端 ctrl-badge 样式）：
  * 1. 视频徽章：硬件解码 + 视频编解码器 + 分辨率 + 帧率 + 视频码率（灰色）

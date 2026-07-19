@@ -437,7 +437,22 @@ Log.i(TAG, "MpvController detached")
         // 如果核心已 shutdown 则自动重建后再执行 loadfile。
         mpvView?.playFile(url)
     }
-    override fun stop() = postOnUiThread { mpvView?.stop() }
+    override fun stop() = postOnUiThread {
+        mpvView?.stop()
+    }
+
+    override fun refreshSurface() {
+        // 重新 attach surface（解决从 Tab 覆盖层返回后画面黑屏）
+        postOnUiThread {
+            try {
+                val vo = try { MPVLib.getPropertyString("vo") ?: "gpu" } catch (_: Exception) { "gpu" }
+                mpvView?.reattachSurfaceWithVo(vo)
+                Log.i(TAG, "refreshSurface: reattached surface with vo=$vo")
+            } catch (e: Exception) {
+                Log.w(TAG, "refreshSurface failed: ${e.message}")
+            }
+        }
+    }
 
     /**
      * 强制重建 mpv 核心。
@@ -1216,8 +1231,40 @@ Log.i(TAG, "MpvController detached")
 
         Log.d(TAG, "blackScreenCheck: vo=$currentVo, videoWidth=$videoWidth, vfps=$estimatedVfps, attempt=${blackScreenRetryCount + 1}, fboDowngraded=$fboFormatDowngraded")
 
-        // 黑屏条件：仅 videoWidth==0（解码器没工作）
+        // 黑屏条件：
+        // 1. videoWidth==0（解码器没工作）
+        // 2. videoWidth>0 但 vfps==0（GPU vo 解码了但没有输出帧到 Surface）
+        //    → 立即 fallback 到 mediacodec_embed，并保存到 UserPrefs 避免下次再等
+        val gpuRenderFailed = videoWidth > 0 && estimatedVfps == 0.0
         val isBlackScreen = videoWidth == 0
+
+        if (gpuRenderFailed) {
+            if (voFallbackTriggered) {
+                // 已经 fallback 过了，不再重复触发
+                return@Runnable
+            }
+            Log.w(TAG, "GPU render failed (videoWidth=$videoWidth, vfps=0), falling back to gpu-next")
+            try {
+                UserPrefs.getInstance().setVo("gpu-next")
+                mpvView?.setVoInUse("gpu-next")
+            } catch (_: Exception) {}
+            // 切换到 gpu-next（SurfaceView 支持）
+            voFallbackTriggered = true
+            try {
+                mpvView?.reattachSurfaceWithVo("gpu-next")
+                onVoFallback?.invoke("gpu-next", UserPrefs.getInstance().getHwdec())
+                // 重新加载当前文件
+                val path = MPVLib.getPropertyString("path")
+                if (path != null && path.isNotEmpty()) {
+                    MPVLib.command(arrayOf("loadfile", path))
+                    MPVLib.setPropertyBoolean("pause", false)
+                }
+                Log.i(TAG, "Switched to vo=gpu-next (persisted)")
+            } catch (e: Throwable) {
+                Log.e(TAG, "Fallback to gpu-next failed", e)
+            }
+            return@Runnable
+        }
 
         if (isBlackScreen) {
             blackScreenRetryCount++

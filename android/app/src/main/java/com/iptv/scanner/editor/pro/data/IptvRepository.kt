@@ -138,8 +138,8 @@ class IptvRepository private constructor() {
     // -----------------------------------------------------------------
 
     /** 初始化 Python 环境 + ServerContext 单例。返回 'OK' 或 'FAILED: ...' */
-    suspend fun initContext(extFilesDir: String = "", filesDir: String = "", logLevel: String = "info"): Result<Unit> {
-        val raw = callPyRaw("init_context", extFilesDir, filesDir, logLevel)
+    suspend fun initContext(extFilesDir: String = "", filesDir: String = "", logLevel: String = "info", nativeLibDir: String = ""): Result<Unit> {
+        val raw = callPyRaw("init_context", extFilesDir, filesDir, logLevel, nativeLibDir)
         return if (raw.startsWith("OK")) {
             Result.success(Unit)
         } else {
@@ -147,7 +147,7 @@ class IptvRepository private constructor() {
         }
     }
 
-    /** 设置应用版本信息（供 mobile Web 界面动态注入） */
+    /** 设置应用版本信息（供 Web 界面使用） */
     suspend fun setAppInfo(version: String, buildDate: String): Result<Unit> {
         val raw = callPyRaw("set_app_info", version, buildDate)
         return if (raw.startsWith("OK")) {
@@ -333,10 +333,16 @@ class IptvRepository private constructor() {
 
     /**
      * 启动 URL 范围扫描（异步）。baseUrl 支持 [1-255] 范围表达式。
-     * 返回是否成功启动。
+     * @param engine 扫描引擎 ("requests" / "ffprobe" / "mpv")
+     * @param retry 是否启用智能重试
+     * @param append 是否追加模式
      */
-    suspend fun startScan(baseUrl: String, timeout: Int = 10, threads: Int = 4): Result<Boolean> =
-        callPyTyped<StartedResponse>("start_scan", baseUrl, timeout, threads).map { it.started }
+    suspend fun startScan(
+        baseUrl: String, timeout: Int = 10, threads: Int = 4,
+        engine: String = "requests", retry: Boolean = false, append: Boolean = false
+    ): Result<Boolean> =
+        callPyTyped<StartedResponse>("start_scan", baseUrl, timeout, threads, engine, retry, append)
+            .map { it.started }
 
     suspend fun stopScan(): Result<Unit> =
         callPyTyped<OkResponse>("stop_scan").map { Unit }
@@ -346,6 +352,14 @@ class IptvRepository private constructor() {
 
     suspend fun getScanResults(): Result<List<ScanResult>> =
         callPyTyped("get_scan_results_json")
+
+    /** 启动频道网络验证 */
+    suspend fun startValidate(timeout: Int = 10, threads: Int = 4): Result<Boolean> =
+        callPyTyped<StartedResponse>("start_validate", timeout, threads).map { it.started }
+
+    /** 批量编辑频道 */
+    suspend fun batchEditChannels(action: String, optionsJson: String = "{}"): Result<BatchEditResponse> =
+        callPyTyped("batch_edit_channels", action, optionsJson)
 
     // -----------------------------------------------------------------
     // 频道映射
@@ -404,6 +418,18 @@ class IptvRepository private constructor() {
     }
 
     // -----------------------------------------------------------------
+    // 每文件播放设置持久化（#24）
+    // -----------------------------------------------------------------
+
+    /** 读取指定 URL 的播放设置 */
+    suspend fun loadPlaybackSettings(url: String): Result<PlaybackSettingsResponse> =
+        callPyTyped("load_playback_settings", url)
+
+    /** 保存指定 URL 的播放设置 */
+    suspend fun savePlaybackSettings(url: String, settingsJson: String, name: String = ""): Result<Unit> =
+        callPyTyped<OkResponse>("save_playback_settings", url, settingsJson, name).map { Unit }
+
+    // -----------------------------------------------------------------
     // 字幕
     // -----------------------------------------------------------------
 
@@ -432,6 +458,20 @@ class IptvRepository private constructor() {
     /** 清空缓存。cacheType: "all"/"logo"/"epg"/"thumbnails"/"subtitle"。返回删除数量 */
     suspend fun clearCache(cacheType: String = "all"): Result<Int> =
         callPyTyped<ClearCacheResponse>("clear_cache", cacheType).map { it.deletedCount }
+
+    /** 批量获取频道缩略图文件路径。返回 url -> file_path 映射 */
+    suspend fun getThumbnailPaths(urls: List<String>): Result<Map<String, String>> {
+        val json = org.json.JSONArray(urls).toString()
+        return callPyTyped<ThumbnailPathsResponse>("get_thumbnail_paths", json).map { it.paths }
+    }
+
+    /** 保存截图文件作为频道缩略图 */
+    suspend fun captureThumbnail(url: String, filePath: String): Result<Unit> =
+        callPy("capture_thumbnail", url, filePath).map { }
+
+    /** 后台生成缩略图（Python 端用独立 libmpv handle 截帧，不影响前台播放器）。返回缩略图路径 */
+    suspend fun generateThumbnailBg(url: String): Result<GenerateThumbnailBgResponse> =
+        callPyTyped("generate_thumbnail_bg", url)
 
     // -----------------------------------------------------------------
     // 内部工具

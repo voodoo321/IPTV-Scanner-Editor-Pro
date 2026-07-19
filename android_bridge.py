@@ -42,25 +42,6 @@ def _setup_android_logging():
         logging.getLogger('android_bridge').warning(f'_setup_android_logging 失败: {e}')
 
 
-def _find_mobile_dir():
-    try:
-        import server
-        server_dir = os.path.dirname(os.path.abspath(server.__file__))
-        mobile_dir = os.path.join(server_dir, 'mobile')
-        if os.path.isdir(mobile_dir):
-            return mobile_dir
-    except Exception as e:
-        logging.getLogger('android_bridge').debug(f'_find_mobile_dir 通过 server 模块查找失败: {e}')
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    for candidate in [
-        os.path.join(this_dir, 'server', 'mobile'),
-        os.path.join(this_dir, 'mobile'),
-    ]:
-        if os.path.isdir(candidate):
-            return candidate
-    return None
-
-
 _server_started = False
 _server_loop = None
 _server_runner = None
@@ -94,12 +75,6 @@ def start_server(host='127.0.0.1', port=8080):
     ServerContext.get_instance(main_window=None)
 
     app = create_app()
-    mobile_dir = _find_mobile_dir()
-    if mobile_dir:
-        _register_mobile_routes(app, mobile_dir)
-        logger.info(f'Mobile UI served from: {mobile_dir}')
-    else:
-        logger.warning('Mobile UI directory not found, /mobile/ will not be available')
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -149,49 +124,3 @@ def stop_server():
                 asyncio.run_coroutine_threadsafe(_server_runner.cleanup(), loop)
     except Exception as e:
         logging.getLogger('android_bridge').warning(f'stop_server 失败: {e}')
-
-
-_MIME_TYPES = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon',
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-    '.ttf': 'font/ttf',
-    '.webmanifest': 'application/manifest+json',
-}
-
-
-def _register_mobile_routes(app, base_dir):
-    base_dir_real = os.path.realpath(base_dir)
-
-    async def _handle_mobile(request):
-        from aiohttp import web
-        rel_path = request.match_info.get('path', 'index.html')
-        if not rel_path or rel_path.endswith('/'):
-            rel_path += 'index.html'
-        # 安全：防止路径穿越（../../../etc/passwd 等）
-        file_path = os.path.realpath(os.path.join(base_dir, rel_path))
-        if not file_path.startswith(base_dir_real + os.sep):
-            return web.Response(text='403: Forbidden', status=403)
-        if not os.path.isfile(file_path):
-            return web.Response(text='404: Not Found', status=404)
-        ext = os.path.splitext(rel_path)[1].lower()
-        content_type = _MIME_TYPES.get(ext, 'application/octet-stream')
-        with open(file_path, 'rb') as f:
-            content = f.read()
-        return web.Response(
-            body=content, content_type=content_type,
-            headers={
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0',
-            })
-
-    app.router.add_get('/mobile/', _handle_mobile)
-    app.router.add_get('/mobile/{path:.*}', _handle_mobile)

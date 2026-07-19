@@ -9,8 +9,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Catchup URL 构建工具：与 PC 端 [controllers/catchup_controller.py] 和
- * mobile [server/mobile/index.html] 的 catchup 逻辑完全对齐。
+ * Catchup URL 构建工具：与 PC 端 [controllers/catchup_controller.py] 的 catchup 逻辑完全对齐。
  *
  * 支持的 catchup 类型（与 PC 端 CATCHUP_TYPES 一致）：
  * - default / '' / vod / timemachine：直接返回 catchup_source 或 live_url
@@ -57,6 +56,26 @@ object CatchupHelper {
         val catchupType = channel.catchup.trim().lowercase(Locale.US)
         val catchupSource = channel.catchupSource.trim()
 
+        // catchup_correction 时区修正（与 PC 端 catchup_controller.build_catchup_url 对齐）
+        // 将 startMs/endMs 从本地时区转换到 correction 指定的时区
+        val correction = channel.catchupCorrection.trim()
+        var correctedStartMs = startMs
+        var correctedEndMs = endMs
+        if (correction.isNotEmpty()) {
+            try {
+                val offsetHours = correction.toDouble()
+                val localOffsetMs = TimeZone.getDefault().getOffset(startMs).toLong()
+                val correctionOffsetMs = (offsetHours * 3600_000).toLong()
+                // 与 PC 端行为一致：replace(tzinfo=local).astimezone(target).replace(tzinfo=None)
+                // 等价于：adjusted = original - localOffset + correctionOffset
+                correctedStartMs = startMs - localOffsetMs + correctionOffsetMs
+                correctedEndMs = endMs - localOffsetMs + correctionOffsetMs
+                Log.d(TAG, "catchup_correction: offset=${offsetHours}h, localOffset=${localOffsetMs}ms, correction=${correctionOffsetMs}ms, adjusted start ${startMs}→$correctedStartMs")
+            } catch (e: NumberFormatException) {
+                Log.w(TAG, "Invalid catchup_correction: $correction")
+            }
+        }
+
         // Fallback：catchup 和 catchup_source 都为空时，尝试从 URL 检测 PLTV/SNM 模式
         val effectiveType: String
         val effectiveSource: String
@@ -74,15 +93,15 @@ object CatchupHelper {
         }
 
         return when (effectiveType) {
-            "append" -> buildAppendUrl(liveUrl, effectiveSource, startMs, endMs)
-            "flussonic", "fs" -> buildFlussonicUrl(liveUrl, effectiveSource, startMs, endMs)
-            "xc", "xtream" -> buildXcUrl(liveUrl, effectiveSource, startMs, endMs)
-            "shift" -> buildShiftUrl(liveUrl, effectiveSource, startMs, endMs)
-            "pltv" -> buildPltvUrl(liveUrl, effectiveSource, startMs, endMs)
+            "append" -> buildAppendUrl(liveUrl, effectiveSource, correctedStartMs, correctedEndMs)
+            "flussonic", "fs" -> buildFlussonicUrl(liveUrl, effectiveSource, correctedStartMs, correctedEndMs)
+            "xc", "xtream" -> buildXcUrl(liveUrl, effectiveSource, correctedStartMs, correctedEndMs)
+            "shift" -> buildShiftUrl(liveUrl, effectiveSource, correctedStartMs, correctedEndMs)
+            "pltv" -> buildPltvUrl(liveUrl, effectiveSource, correctedStartMs, correctedEndMs)
             "default", "vod", "timemachine", "" -> {
                 // 直接返回 catchup_source（已替换变量），或回退到 live_url
                 if (effectiveSource.isNotEmpty()) {
-                    replaceCatchupVariables(effectiveSource, startMs, endMs)
+                    replaceCatchupVariables(effectiveSource, correctedStartMs, correctedEndMs)
                 } else {
                     liveUrl
                 }
@@ -90,7 +109,7 @@ object CatchupHelper {
             else -> {
                 // 未知类型，尝试直接用 catchup_source
                 if (effectiveSource.isNotEmpty()) {
-                    replaceCatchupVariables(effectiveSource, startMs, endMs)
+                    replaceCatchupVariables(effectiveSource, correctedStartMs, correctedEndMs)
                 } else {
                     Log.w(TAG, "Unknown catchup type '$effectiveType' and no catchup_source")
                     null
@@ -364,7 +383,7 @@ object CatchupHelper {
         SimpleDateFormat(pattern, Locale.US).format(Date(tsMs))
 
     // -----------------------------------------------------------------
-    // EPG 节目时间戳提取（与 mobile index.html 对齐）
+    // EPG 节目时间戳提取（与 PC 端对齐）
     // -----------------------------------------------------------------
 
     /**

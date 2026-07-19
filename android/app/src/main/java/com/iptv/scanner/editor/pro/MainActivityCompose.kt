@@ -144,7 +144,7 @@ class MainActivityCompose : ComponentActivity() {
     /**
      * TV 模式 DPAD 按键处理。
      *
-     * 与 PC 端 mobile/index.html 键盘快捷键对齐：
+     * 与 PC 端键盘快捷键对齐：
      * - 方向键：DPAD_UP/DOWN 切换频道，DPAD_LEFT/RIGHT 切换面板
      * - 确认键：短按打开统一面板，长按显示控制层
      * - MENU 键：主菜单
@@ -186,7 +186,7 @@ class MainActivityCompose : ComponentActivity() {
             }
         }
 
-        // BACK 键：先关闭面板 → 再退出多画面 → 再退出回看/时移 → 最后显示退出确认对话框
+        // BACK 键：先关闭面板 → 再退出多画面 → 再退出回看/时移 → 播放器模式返回首页 → 最后显示退出确认对话框
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (viewModel.closeAnyPanel()) {
                 return true
@@ -201,7 +201,12 @@ class MainActivityCompose : ComponentActivity() {
                 viewModel.exitCatchup()
                 return true
             }
-            // 无面板打开时，显示退出确认对话框（立即退出 / 进入 PiP）
+            // 竖屏播放器模式（非首页），BACK 返回首页（视频继续播放）
+            if (!viewModel.showHome.value) {
+                viewModel.showHomeScreen()
+                return true
+            }
+            // 首页模式下，显示退出确认对话框（立即退出 / 进入 PiP）
             viewModel.showExitConfirm()
             return true
         }
@@ -232,7 +237,7 @@ class MainActivityCompose : ComponentActivity() {
         }
 
         // 媒体键处理（TV 和 PHONE 模式都工作，不受面板状态影响）
-        // 与 PC 端 mobile/index.html onRemoteKey 对齐
+        // 与 PC 端 onRemoteKey 对齐
         when (keyCode) {
             KeyEvent.KEYCODE_MEDIA_PLAY -> {
                 viewModel.mpv.setPause(false)
@@ -297,7 +302,7 @@ class MainActivityCompose : ComponentActivity() {
 
         // TV 模式 DPAD 处理
         // 面板打开时，方向键和确认键交给 Compose 焦点系统在面板内导航，
-        // 不再全局拦截为切频道/切面板（与 PC 端 mobile/index.html 面板内键盘导航一致）。
+        // 不再全局拦截为切频道/切面板（与 PC 端面板内键盘导航一致）。
         // 字母键（SPACE/M）和音量键仍由这里处理播放控制。
         val isDpadNavigation = keyCode == KeyEvent.KEYCODE_DPAD_UP ||
                 keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||

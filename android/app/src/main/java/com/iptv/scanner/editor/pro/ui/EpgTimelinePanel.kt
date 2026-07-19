@@ -323,25 +323,32 @@ private fun TimelineGrid(
     val gridWidthPx = hourWidthPx * 24
     val gridHeightPx = rowHeightPx * rows.size
 
+    // 主题颜色捕获（添加为 remember key，主题切换时重新创建 Paint）
+    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val outlineColor = MaterialTheme.colorScheme.outline
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val surfaceVariantArgb = MaterialTheme.colorScheme.surfaceVariant.toArgb()
+    val surfaceArgb = MaterialTheme.colorScheme.surface.toArgb()
+    val onSurfaceVariantArgb = onSurfaceVariantColor.toArgb()
+    val outlineArgb = outlineColor.toArgb()
+
     // 文本画笔（避免在 Canvas 内重复创建）
-    val timeTextPaint = remember(density) {
+    val timeTextPaint = remember(density, onSurfaceVariantArgb) {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#888888")
+            color = onSurfaceVariantArgb
             textSize = with(density) { 11.sp.toPx() }
             isAntiAlias = true
         }
     }
-    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-    val surfaceVariantArgb = MaterialTheme.colorScheme.surfaceVariant.toArgb()
-    val surfaceArgb = MaterialTheme.colorScheme.surface.toArgb()
-    val programTextPaint = remember(density) {
+    val programTextPaint = remember(density, onSurfaceColor) {
         android.graphics.Paint().apply {
             color = onSurfaceColor.toArgb()
             textSize = with(density) { 10.sp.toPx() }
             isAntiAlias = true
         }
     }
-    val programTextPaintCurrent = remember(density) {
+    val programTextPaintCurrent = remember(density, onSurfaceColor) {
         android.graphics.Paint().apply {
             color = onSurfaceColor.toArgb()
             textSize = with(density) { 10.sp.toPx() }
@@ -391,8 +398,8 @@ private fun TimelineGrid(
                             val x = h * hourWidthPx
                             // 刻度线
                             drawLine(
-                                color = Color(0xFF333333),
-                                start = Offset(x, size.height - 4),
+                            color = Color(outlineArgb),
+                            start = Offset(x, size.height - 4),
                                 end = Offset(x, size.height),
                                 strokeWidth = 1f
                             )
@@ -435,7 +442,7 @@ private fun TimelineGrid(
                         ) {
                             Text(
                                 text = row.channelName,
-                                color = if (isCurrent) MaterialTheme.colorScheme.primary else Color(0xFFCCCCCC),
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -568,7 +575,7 @@ private fun TimelineGrid(
                     // 垂直网格线（小时分隔，每 2 小时加粗）
                     for (h in 0..24) {
                         val x = h * hourWidthPx
-                        val color = if (h % 2 == 0) Color(0xFF333333) else Color(surfaceVariantArgb)
+                        val color = if (h % 2 == 0) Color(outlineArgb) else Color(surfaceVariantArgb)
                         drawLine(
                             color = color,
                             start = Offset(x, 0f),
@@ -597,10 +604,10 @@ private fun TimelineGrid(
 
                                 // 节目块背景
                                 val bgColor = when {
-                                    isSelected -> Color(0xFFFFC107)  // 选中：金色
-                                    isCurrent -> Color(0xFF4A9EFF)
-                                    isPast -> Color(0xFF2A2A2A)
-                                    else -> Color(0xFF2A4A8A)
+                                    isSelected -> Color(0xFFFFC107)  // 选中：金色（语义色）
+                                    isCurrent -> Color(0xFF4A9EFF)   // 当前：蓝色（语义色）
+                                    isPast -> Color(surfaceVariantArgb)  // 过去：随主题变
+                                    else -> secondaryColor.copy(alpha = 0.3f)  // 普通：浅蓝
                                 }
                                 drawRoundRect(
                                     color = bgColor,
@@ -609,10 +616,10 @@ private fun TimelineGrid(
                                     cornerRadius = CornerRadius(3f, 3f)
                                 )
 
-                                // 选中边框（白色 2dp）
+                                // 选中边框（随主题自适应）
                                 if (isSelected) {
                                     drawRoundRect(
-                                        color = Color.White,
+                                        color = onSurfaceColor,
                                         topLeft = Offset(x1 + 1f, y + 2f),
                                         size = Size(blockWidth - 2f, rowHeightPx - 4f),
                                         cornerRadius = CornerRadius(3f, 3f),

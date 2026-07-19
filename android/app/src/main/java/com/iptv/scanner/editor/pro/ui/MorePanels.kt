@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayCircle
@@ -63,6 +64,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
@@ -1245,7 +1248,7 @@ fun ScreenshotPanel(viewModel: AppViewModel) {
 
         // 单张截图按钮
         Surface(
-            color = Color(0xFF4A9AFF),
+            color = MaterialTheme.colorScheme.secondary,
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -1299,13 +1302,13 @@ fun ScreenshotPanel(viewModel: AppViewModel) {
             LinearProgressIndicator(
                 progress = { if (burstTotal > 0) burstCount.toFloat() / burstTotal else 0f },
                 modifier = Modifier.fillMaxWidth(),
-                color = Color(0xFF4A9AFF),
-                trackColor = Color(0xFF333333)
+                color = MaterialTheme.colorScheme.secondary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "进度：$burstCount / $burstTotal",
-                color = Color(0xFF4A9AFF),
+                color = MaterialTheme.colorScheme.secondary,
                 fontSize = 12.sp
             )
         }
@@ -1473,7 +1476,7 @@ fun AboutPanel(viewModel: AppViewModel) {
                     val info = updateState as AppViewModel.UpdateState.UpdateAvailable
                     Text(
                         "发现新版本 v${info.latestVersion}（当前 v$currentVersion）",
-                        color = Color(0xFFFF9800),
+                        color = MaterialTheme.colorScheme.tertiary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -1504,7 +1507,7 @@ fun AboutPanel(viewModel: AppViewModel) {
         features.forEach { feature ->
             Text(
                 text = "• $feature",
-                color = Color(0xFFCCCCCC),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(vertical = 2.dp, horizontal = 4.dp)
             )
@@ -1565,7 +1568,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
             Column {
                 Text(
                     "新版本 v${info.latestVersion} 已发布",
-                    color = Color(0xFFFF9800),
+                    color = MaterialTheme.colorScheme.tertiary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -1581,7 +1584,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
                     is AppViewModel.ApkDownloadState.Idle -> {
                         Text(
                             "点击「立即更新」开始下载并安装最新版 APK。",
-                            color = Color(0xFFCCCCCC),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp
                         )
                     }
@@ -1597,7 +1600,7 @@ fun UpdateDialog(viewModel: AppViewModel) {
                             progress = { s.progress / 100f },
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.primary,
-                            trackColor = Color(0xFF333333)
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -1719,7 +1722,7 @@ fun ExitConfirmDialog(viewModel: AppViewModel) {
         text = {
             Text(
                 "您正在退出应用，请选择退出方式：",
-                color = Color(0xFFCCCCCC),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp
             )
         },
@@ -1908,7 +1911,7 @@ private fun MappingEntryRow(
                     entry.tvgId?.takeIf { it.isNotBlank() }?.let { "tvg-id: $it" }
                 ).joinToString("  |  ")
                 if (extras.isNotEmpty()) {
-                    Text(text = extras, color = Color(0xFF666666), fontSize = 10.sp, maxLines = 1)
+                    Text(text = extras, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1)
                 }
             }
             IconButton(onClick = onDelete, modifier = Modifier.size(32.dp).tvFocusBorder()) {
@@ -2093,6 +2096,7 @@ private fun AvSyncWaveform(
     modifier: Modifier = Modifier
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
+    val outlineColor = MaterialTheme.colorScheme.outline
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(8.dp),
@@ -2104,7 +2108,7 @@ private fun AvSyncWaveform(
             val midY = h / 2f
             // 中线
             drawLine(
-                color = Color(0xFF444444),
+                color = outlineColor,
                 start = Offset(0f, midY),
                 end = Offset(w, midY),
                 strokeWidth = 1f
@@ -2231,6 +2235,20 @@ fun NetworkPanel(viewModel: AppViewModel) {
  */
 @Composable
 fun ToolsPanel(viewModel: AppViewModel) {
+    // SAF 文件选择器 —— 打开播放列表
+    val playlistLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.importPlaylist(uri)
+    }
+
+    // SAF 文件选择器 —— 打开本地视频/音频
+    val videoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.playLocalVideo(uri.toString())
+    }
+
     PanelScaffold(
         title = "工具",
         subtitle = "搜索 / EPG时间线 / 提醒 / 续播 / 书签 / 映射 / 扫描 / 流质量",
@@ -2238,6 +2256,28 @@ fun ToolsPanel(viewModel: AppViewModel) {
         scrollable = false
     ) {
         val tools = listOf(
+            // —— 文件快捷入口 ——
+            ToolEntry("打开播放列表", "选择设备上的 M3U/M3U8 文件", Icons.Default.FileOpen) {
+                viewModel.toggleToolsPanel()
+                if (!viewModel.isSafAvailable()) {
+                    viewModel.showFileBrowser()
+                } else {
+                    playlistLauncher.launch(arrayOf(
+                        "application/x-mpegurl", "application/vnd.apple.mpegurl",
+                        "audio/x-mpegurl", "video/x-mpegurl",
+                        "text/plain", "application/octet-stream"
+                    ))
+                }
+            },
+            ToolEntry("打开本地文件", "播放设备上的视频/音频文件", Icons.Default.Movie) {
+                viewModel.toggleToolsPanel()
+                if (!viewModel.isSafAvailable()) {
+                    viewModel.showMediaFileBrowser()
+                } else {
+                    videoLauncher.launch(arrayOf("video/*", "audio/*", "application/x-matroska", "application/octet-stream"))
+                }
+            },
+            // —— 原有工具 ——
             ToolEntry("搜索", "全局搜索频道和节目", Icons.Default.Search) {
                 viewModel.toggleToolsPanel()
                 viewModel.toggleSearchPanel()
@@ -2520,7 +2560,7 @@ private fun SubtitleResultRow(
                 onClick = { onOpenInBrowser(item.detailUrl.ifBlank { item.downloadLink }) },
                 modifier = Modifier.tvFocusBorder()
             ) {
-                Text("浏览器", color = Color(0xFFFF9800), fontSize = 12.sp)
+                Text("浏览器", color = MaterialTheme.colorScheme.tertiary, fontSize = 12.sp)
             }
         }
     }
@@ -2531,7 +2571,7 @@ private fun SourceBadge(source: String) {
     val color = when (source) {
         "OpenSubtitles" -> Color(0xFF4CAF50)
         "SubHD" -> MaterialTheme.colorScheme.surfaceVariant
-        "SubtitleCat" -> Color(0xFFFF9800)
+        "SubtitleCat" -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Surface(
@@ -2730,7 +2770,7 @@ fun ScanPanel(viewModel: AppViewModel) {
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 color = MaterialTheme.colorScheme.primary,
-                trackColor = Color(0xFF333333)
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
             if (status.message.isNotEmpty()) {
                 Text(status.message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -2772,13 +2812,26 @@ fun ScanPanel(viewModel: AppViewModel) {
                         selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
-                // 导出有效结果为 M3U
-                IconButton(
-                    onClick = { viewModel.exportScanResultsAsM3u() },
-                    modifier = Modifier.tvFocusBorder().size(32.dp)
+                // 导入到播放列表
+                OutlinedButton(
+                    onClick = { viewModel.importScanResultsToChannels() },
+                    enabled = !scanLoading,
+                    modifier = Modifier.tvFocusBorder().height(32.dp)
                 ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = "导出为 M3U",
-                        tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.PlaylistAdd, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("导入", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                }
+                // 导出为 M3U 文件
+                OutlinedButton(
+                    onClick = { viewModel.exportScanResultsAsM3u() },
+                    modifier = Modifier.tvFocusBorder().height(32.dp)
+                ) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null,
+                        tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("导出", color = Color(0xFF4CAF50), fontSize = 11.sp)
                 }
                 // 清空结果
                 IconButton(
@@ -2906,15 +2959,15 @@ fun ReminderPanel(viewModel: AppViewModel) {
                     Icon(
                         Icons.Default.Notifications,
                         contentDescription = null,
-                        tint = Color(0xFF555555),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("暂无节目提醒", color = Color(0xFF666666), fontSize = 13.sp)
+                    Text("暂无节目提醒", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "在节目单中点击当前或未来节目可设置提醒",
-                        color = Color(0xFF555555),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -3067,15 +3120,15 @@ fun ResumePanel(viewModel: AppViewModel) {
                     Icon(
                         Icons.Default.History,
                         contentDescription = null,
-                        tint = Color(0xFF555555),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("暂无续播记录", color = Color(0xFF666666), fontSize = 13.sp)
+                    Text("暂无续播记录", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "播放本地文件或点播流时自动保存断点",
-                        color = Color(0xFF555555),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -3309,19 +3362,19 @@ fun BookmarkPanel(viewModel: AppViewModel) {
                     Icon(
                         Icons.Default.Bookmark,
                         contentDescription = null,
-                        tint = Color(0xFF555555),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         if (showCurrent) "当前文件暂无书签" else "暂无任何书签",
-                        color = Color(0xFF666666),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "点击上方按钮在当前位置添加书签",
-                        color = Color(0xFF555555),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -3405,7 +3458,7 @@ private fun BookmarkRow(
             if (item.url.isNotEmpty()) {
                 Text(
                     text = item.url,
-                    color = Color(0xFF666666),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 10.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -3583,7 +3636,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             val durStr = formatTime(duration)
             Text(
                 text = "当前播放: $posStr / $durStr",
-                color = Color(0xFFCCCCCC),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
 
@@ -3669,11 +3722,11 @@ fun ClipExportPanel(viewModel: AppViewModel) {
                                 progress = { exportProgress / 100f },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = Color(0xFF4CAF50),
-                                trackColor = Color(0xFF333333)
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                             Text(
                                 text = "进度: $exportProgress%",
-                                color = Color(0xFFCCCCCC),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp
                             )
                         }
@@ -3693,7 +3746,7 @@ fun ClipExportPanel(viewModel: AppViewModel) {
             Text(
                 text = "说明：导出文件将保存到下载目录（Download/ISEP_*）。" +
                        "MP4 使用流拷贝（快速），GIF 限制 480px 宽 10fps，MP3 提取音轨。",
-                color = Color(0xFF666666),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 lineHeight = 16.sp
             )
@@ -3731,36 +3784,66 @@ fun AudioVisualizerPanel(viewModel: AppViewModel) {
                 return@PanelScaffold
             }
 
-            // 频谱画布
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(8.dp))
-            ) {
-                val barCount = spectrum.size
-                if (barCount == 0) return@Canvas
-                val barWidth = size.width / barCount
-                val gap = barWidth * 0.2f
-                val actualBarWidth = barWidth - gap
+        // 在 Canvas 外部提取颜色（Canvas 内部不能调用 @Composable）
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val outlineColor = MaterialTheme.colorScheme.outlineVariant
+
+        // 频谱画布（美化版：渐变色 + 圆角条 + 底部镜像反射 + 中线）
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(240.dp)
+                .background(
+                    MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clip(RoundedCornerShape(12.dp))
+        ) {
+            val barCount = spectrum.size
+            if (barCount == 0) return@Canvas
+            val barWidth = size.width / barCount
+            val gap = barWidth * 0.15f
+            val actualBarWidth = barWidth - gap
+            val centerY = size.height * 0.5f
+            val maxBarHeight = size.height * 0.42f
+
+            // 中线
+            drawLine(
+                color = outlineColor.copy(alpha = 0.2f),
+                    start = androidx.compose.ui.geometry.Offset(0f, centerY),
+                    end = androidx.compose.ui.geometry.Offset(size.width, centerY),
+                    strokeWidth = 1f
+                )
 
                 spectrum.forEachIndexed { i, amplitude ->
-                    val barHeight = (amplitude * size.height * 0.9f)
+                    val barHeight = (amplitude * maxBarHeight)
                     val x = i * barWidth + gap / 2
-                    val y = size.height - barHeight
 
-                    // 渐变色：低频绿 → 中频黄 → 高频红
+                    // 上方频谱条（从中心向上）
+                    val topY = centerY - barHeight
+                    // 下方镜像反射（从中心向下，透明度渐减）
+                    val bottomY = centerY + barHeight
+
+                    // 渐变色：低频蓝 → 中频青 → 高频橙
                     val color = when {
-                        amplitude < 0.33f -> Color(0xFF4CAF50)
-                        amplitude < 0.66f -> Color(0xFFFFC107)
-                        else -> Color(0xFFFF5722)
+                        amplitude < 0.33f -> primaryColor.copy(alpha = 0.7f + amplitude * 0.3f)
+                        amplitude < 0.66f -> Color(0xFF00BCD4).copy(alpha = 0.8f)
+                        else -> Color(0xFFFF9800).copy(alpha = 0.9f)
                     }
+                    val reflectionColor = color.copy(alpha = 0.25f)
 
                     drawRoundRect(
                         color = color,
-                        topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                        topLeft = androidx.compose.ui.geometry.Offset(x, topY),
                         size = androidx.compose.ui.geometry.Size(actualBarWidth, barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(actualBarWidth * 0.3f, actualBarWidth * 0.3f)
+                    )
+                    // 镜像反射
+                    drawRoundRect(
+                        color = reflectionColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(x, centerY),
+                        size = androidx.compose.ui.geometry.Size(actualBarWidth, barHeight),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(actualBarWidth * 0.3f, actualBarWidth * 0.3f)
                     )
                 }
             }
@@ -3771,7 +3854,7 @@ fun AudioVisualizerPanel(viewModel: AppViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 val volume = mpv.getPropertyDouble("volume") ?: 100.0
-                Text("音量: ${volume.toInt()}", color = Color(0xFFCCCCCC), fontSize = 12.sp)
+                Text("音量: ${volume.toInt()}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 Text("频段: ${spectrum.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
         }
@@ -3840,14 +3923,14 @@ fun LyricsPanel(viewModel: AppViewModel) {
                         Icon(
                             Icons.Default.MusicNote,
                             contentDescription = null,
-                            tint = Color(0xFF555555),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("点击「加载 LRC」导入歌词文件", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         if (fileLoaded) {
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("播放时将自动同步高亮", color = Color(0xFF666666), fontSize = 11.sp)
+                            Text("播放时将自动同步高亮", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                         }
                     }
                 }
@@ -3876,7 +3959,7 @@ fun LyricsPanel(viewModel: AppViewModel) {
                         val sec = (line.time % 60000) / 1000
                         Text(
                             text = String.format("%02d:%05.2f", min, sec),
-                            color = Color(0xFF444444),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp,
                             modifier = Modifier.width(56.dp)
                         )
@@ -3884,8 +3967,8 @@ fun LyricsPanel(viewModel: AppViewModel) {
                             text = line.text,
                             color = when {
                                 isCurrent -> Color(0xFF4CAF50)
-                                isPast -> Color(0xFF555555)
-                                else -> Color(0xFFCCCCCC)
+                                isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
                             fontSize = if (isCurrent) 16.sp else 14.sp,
                             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,

@@ -56,7 +56,7 @@ import com.iptv.scanner.editor.pro.ui.theme.tvTextField
 /**
  * 频道列表面板：4 个 tab + 搜索 + 分组过滤 + LazyColumn。
  *
- * 与 PC 端 mobile/index.html panelChannels 对齐：
+ * 与 PC 端 panelChannels 对齐：
  * - 4 个 tab：订阅/本地/收藏/历史
  * - 搜索框：输入即过滤（name/group 包含关键字）
  * - 分组过滤器（仅 SUB/LOCAL tab 显示）
@@ -119,7 +119,7 @@ fun ChannelsPanel(viewModel: AppViewModel, inline: Boolean = false, compact: Boo
     }
 
     Surface(
-        color = Color(0xF0161616),
+        color = MaterialTheme.colorScheme.surface,
         modifier = surfaceModifier
     ) {
         Column(modifier = Modifier.fillMaxSize().then(if (inline || compact) Modifier else Modifier.systemBarsPadding())) {
@@ -309,7 +309,7 @@ private fun GroupListColumn(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = label,
-                        color = if (isSelected) Color(0xFF6A9EFF) else Color(0xFFCCCCCC),
+                        color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
                         maxLines = 1,
@@ -411,7 +411,7 @@ fun ChannelTabsRow(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onSurface,
                         containerColor = Color.Transparent,
-                        labelColor = Color(0xFFCCCCCC)
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 )
             }
@@ -443,7 +443,7 @@ private fun ChannelListItem(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (isPlaying) MaterialTheme.colorScheme.primary else Color(0xFF444444))
+                .background(if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
         )
 
         Spacer(modifier = Modifier.width(10.dp))
@@ -452,7 +452,7 @@ private fun ChannelListItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = channel.name,
-                color = if (isPlaying) Color(0xFF6A9EFF) else MaterialTheme.colorScheme.onSurface,
+                color = if (isPlaying) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = if (isPlaying) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,

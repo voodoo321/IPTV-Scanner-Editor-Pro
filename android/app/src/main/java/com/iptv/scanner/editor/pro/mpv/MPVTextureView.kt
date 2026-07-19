@@ -92,9 +92,8 @@ class MPVTextureView @JvmOverloads constructor(
                 val s = Surface(st)
                 surface = s
                 try {
-                    MPVLib.attachSurface(s)
+                    reattachSurfaceWithVo(voInUse)
                     MPVLib.setPropertyString("force-window", "yes")
-                    MPVLib.setPropertyString("vo", voInUse)
                     Log.i(TAG, "initialize: manual attachSurface OK (TextureView), vo=$voInUse")
                 } catch (e: Throwable) {
                     Log.e(TAG, "initialize: manual attachSurface FAILED", e)
@@ -328,9 +327,10 @@ class MPVTextureView @JvmOverloads constructor(
         try {
             val s = Surface(surfaceTexture)
             surface = s
-            MPVLib.attachSurface(s)
+            // 使用 reattachSurfaceWithVo 而非 attachSurface：它会先 vo=null 再 vo=voInUse，
+            // 强制 GPU vo 模块释放并重新绑定到新 Surface，解决首次渲染黑屏问题。
+            reattachSurfaceWithVo(voInUse)
             MPVLib.setPropertyString("force-window", "yes")
-            MPVLib.setPropertyString("vo", voInUse)
             Log.i(TAG, "attachSurface OK (TextureView), vo=$voInUse")
         } catch (e: Throwable) {
             Log.e(TAG, "attachSurface FAILED", e)

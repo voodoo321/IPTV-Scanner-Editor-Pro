@@ -740,7 +740,7 @@ fun PlayerSettingsPanel(viewModel: AppViewModel) {
                             )
                             Text(
                                 text = "该设备曾触发过黑屏检测，下次启动直接用 mediacodec_embed",
-                                color = Color(0xFFA5D6A7),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp
                             )
                         }
