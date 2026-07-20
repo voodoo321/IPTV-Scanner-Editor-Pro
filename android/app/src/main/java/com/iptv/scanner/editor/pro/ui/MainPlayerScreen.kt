@@ -221,11 +221,13 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
     val fileLoaded by player.fileLoaded.collectAsState()
     val showHome by viewModel.showHome.collectAsState()
     val portraitTab by viewModel.portraitTab.collectAsState()
+    val landscapeSidebarVisible by viewModel.landscapeSidebarVisible.collectAsState()
 
     // 系统返回键处理：播放页面→返回首页；首页→退出确认
     BackHandler(enabled = true) {
         when {
             channelsPanelOpen || epgPanelOpen || menuPanelOpen || tvUnifiedPanelOpen ||
+            landscapeSidebarVisible ||
             fileBrowserOpen || sourceManagerOpen || playerSettingsOpen || videoSettingsOpen ||
             audioSettingsOpen || subtitleSettingsOpen || subtitleSearchOpen || playbackPanelOpen ||
             screenshotPanelOpen || viewSettingsOpen || aboutPanelOpen || mappingPanelOpen ||
@@ -307,7 +309,7 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
     val anyPanelOpen by remember {
         derivedStateOf {
             channelsPanelOpen || epgPanelOpen || menuPanelOpen ||
-                    tvUnifiedPanelOpen ||
+                    tvUnifiedPanelOpen || landscapeSidebarVisible ||
                     sourceManagerOpen || playerSettingsOpen ||
                     videoSettingsOpen || audioSettingsOpen || subtitleSettingsOpen || subtitleSearchOpen ||
                     playbackPanelOpen || screenshotPanelOpen || viewSettingsOpen || aboutPanelOpen ||
@@ -561,154 +563,34 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                         videoAspectRatio = aspectRatio
                     )
                 } else if (multiViewState.active) {
-                    // ---- TV / 多画面模式 ----
-                    MultiViewOverlay(
-                        state = multiViewState,
-                        primaryContent = { primaryPlayer() },
-                        getSubPlayer = { idx -> viewModel.getSubPlayer(idx) },
-                        onViewportClick = { idx ->
-                            viewModel.setFocusedViewport(idx)
-                            val viewport = multiViewState.viewports.getOrNull(idx)
-                            if (viewport != null && viewport.isEmpty) {
-                                viewModel.showChannelsPanel()
-                            }
+                    // ---- TV 多画面模式：沉浸式侧边栏 + 底栏 ----
+                    TvPlayerLayout(
+                        viewModel = viewModel,
+                        primaryPlayer = {
+                            MultiViewOverlay(
+                                state = multiViewState,
+                                primaryContent = { primaryPlayer() },
+                                getSubPlayer = { idx -> viewModel.getSubPlayer(idx) },
+                                onViewportClick = { idx ->
+                                    viewModel.setFocusedViewport(idx)
+                                    val viewport = multiViewState.viewports.getOrNull(idx)
+                                    if (viewport != null && viewport.isEmpty) {
+                                        viewModel.setLandscapeSidebarVisible(true)
+                                    }
+                                },
+                                onViewportClose = { idx -> viewModel.removeFromMultiView(idx) },
+                                onToggleMute = { idx -> viewModel.toggleMultiViewMute(idx) }
+                            )
                         },
-                        onViewportClose = { idx -> viewModel.removeFromMultiView(idx) },
-                        onToggleMute = { idx -> viewModel.toggleMultiViewMute(idx) }
+                        videoAspectRatio = aspectRatio
                     )
-
-                    if (!anyPanelOpen) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { viewModel.toggleControls() }
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = showControls,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(oc.scrim)
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().systemBarsPadding(),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                TopBar(
-                                    channelName = currentChannel?.name ?: "未选择频道",
-                                    mode = if (uiMode.isTV) "TV" else "PHONE",
-                                    paused = paused,
-                                    isTV = uiMode.isTV,
-                                    onChannelsClick = { viewModel.showChannelsPanel() },
-                                    onEpgClick = { viewModel.showEpgPanel() },
-                                    onMenuClick = { viewModel.showMenuPanel() }
-                                )
-                                ControlPanel(viewModel = viewModel)
-                            }
-                        }
-                    }
-
-                    if (channelsPanelOpen) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .background(Color(0x88000000))
-                                    .clickable { viewModel.toggleChannelsPanel() }
-                            )
-                            ChannelsPanel(viewModel = viewModel, compact = false)
-                        }
-                    }
-
-                    if (epgPanelOpen) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            EpgPanel(viewModel = viewModel, compact = false)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .background(Color(0x88000000))
-                                    .clickable { viewModel.toggleEpgPanel() }
-                            )
-                        }
-                    }
                 } else {
-                    // ---- TV 单画面模式 ----
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .aspectRatio(aspectRatio)
-                    ) {
-                        primaryPlayer()
-                    }
-
-                    if (!anyPanelOpen) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { viewModel.toggleControls() }
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = showControls,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(oc.scrim)
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().systemBarsPadding(),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                TopBar(
-                                    channelName = currentChannel?.name ?: "未选择频道",
-                                    mode = if (uiMode.isTV) "TV" else "PHONE",
-                                    paused = paused,
-                                    isTV = uiMode.isTV,
-                                    onChannelsClick = { viewModel.showChannelsPanel() },
-                                    onEpgClick = { viewModel.showEpgPanel() },
-                                    onMenuClick = { viewModel.showMenuPanel() }
-                                )
-                                ControlPanel(viewModel = viewModel)
-                            }
-                        }
-                    }
-
-                    if (channelsPanelOpen) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .background(Color(0x88000000))
-                                    .clickable { viewModel.toggleChannelsPanel() }
-                            )
-                            ChannelsPanel(viewModel = viewModel, compact = false)
-                        }
-                    }
-
-                    if (epgPanelOpen) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            EpgPanel(viewModel = viewModel, compact = false)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .background(Color(0x88000000))
-                                    .clickable { viewModel.toggleEpgPanel() }
-                            )
-                        }
-                    }
+                    // ---- TV 单画面模式：沉浸式侧边栏 + 底栏 ----
+                    TvPlayerLayout(
+                        viewModel = viewModel,
+                        primaryPlayer = { primaryPlayer() },
+                        videoAspectRatio = aspectRatio
+                    )
                 }
             }
 
