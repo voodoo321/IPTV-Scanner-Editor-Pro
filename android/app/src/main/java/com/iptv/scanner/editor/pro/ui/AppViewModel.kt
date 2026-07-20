@@ -681,8 +681,9 @@ Log.i(TAG, "onVoFallback: UI updated vo=$vo, hwdec=$hwdec (session only)")
 // 注册文件加载错误回调：当 mpv 报告文件加载失败时换源，
 // 添加短暂延迟避免坏流导致 mpv 核心状态未清理就加载下一个流。
 mpvSingleton.onFileError = {
-// 回看/时移模式下不自动换源，避免 catchup URL 失败后跳到下一个频道
-if (_playbackState.value.mode.isCatchup || _playbackState.value.mode.isTimeshift) {
+if (mpv.fileLoaded.value) {
+    Log.i(TAG, "onFileError: skipped, file already loaded (stale callback)")
+} else if (_playbackState.value.mode.isCatchup || _playbackState.value.mode.isTimeshift) {
 Log.w(TAG, "onFileError: in catchup/timeshift mode, skipping auto-switch")
 showOsd("回看失败", "该节目可能无法回看或已过期")
 // 回到直播模式
@@ -1509,9 +1510,13 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
             showOsd(channel.name, channel.group)
         }
 
-        // 关闭面板
+        // 关闭面板（横屏沉浸侧边栏模式下保持侧边栏打开，方便连续切台）
         if (!silent) {
+            val wasLandscapeSidebar = _landscapeSidebarVisible.value
             closeAllPanels()
+            if (wasLandscapeSidebar) {
+                _landscapeSidebarVisible.value = true
+            }
         }
 
         // 切换到播放器界面（竖屏模式下从首页切换到播放器）

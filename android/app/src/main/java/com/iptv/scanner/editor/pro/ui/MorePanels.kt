@@ -157,20 +157,12 @@ val oc = rememberPlayerOverlayColors()
     LaunchedEffect(Unit) {
         runCatching { closeFocusRequester.requestFocus() }
     }
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Surface(
         color = Color.Transparent,
         modifier = Modifier.fillMaxSize()
     ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val contentMod = if (isLandscape) {
-                Modifier.fillMaxHeight().fillMaxWidth(0.65f)
-            } else {
-                Modifier.fillMaxSize()
-            }
             Column(
-                modifier = contentMod
+                modifier = Modifier.fillMaxSize()
                     .focusGroup()
                     .systemBarsPadding()
                     .padding(16.dp)
@@ -216,7 +208,7 @@ val oc = rememberPlayerOverlayColors()
             ) {
                 content()
             }
-            }
+
         }
     }
 }

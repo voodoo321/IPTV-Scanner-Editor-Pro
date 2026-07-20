@@ -433,9 +433,14 @@ class MPVView @JvmOverloads constructor(
             MPVLib.setPropertyBoolean("pause", false)
             filePath = null
         } else {
-            // 正常播放中 Surface 重建：不主动 reload，让外部 playFile/restorePlaybackState 驱动
-            // （复用实例时 destroy 已 playlist-clear，mpv 内部无 path 残留）
-            Log.i(TAG, "surfaceCreated: no pending filePath, waiting for external playFile")
+            val currentPath = try { MPVLib.getPropertyString("path") } catch (_: Exception) { "" }
+            if (!currentPath.isNullOrEmpty()) {
+                Log.i(TAG, "surfaceCreated: re-loading current path=$currentPath")
+                MPVLib.command(arrayOf("loadfile", currentPath))
+                MPVLib.setPropertyBoolean("pause", false)
+            } else {
+                Log.i(TAG, "surfaceCreated: no pending filePath, waiting for external playFile")
+            }
         }
     }
 

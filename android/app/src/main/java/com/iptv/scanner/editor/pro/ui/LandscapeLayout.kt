@@ -1,55 +1,58 @@
 package com.iptv.scanner.editor.pro.ui
 
+import android.app.Activity
+import android.content.Context
+import android.media.AudioManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -59,41 +62,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.iptv.scanner.editor.pro.data.IptvChannel
 import com.iptv.scanner.editor.pro.data.IptvEpgProgram
 import com.iptv.scanner.editor.pro.player.PlayMode
 import com.iptv.scanner.editor.pro.player.ProgressHelper
-import com.iptv.scanner.editor.pro.ui.AppViewModel.ChannelTab
-import com.iptv.scanner.editor.pro.ui.theme.PlayerOverlayColors
 import com.iptv.scanner.editor.pro.ui.theme.rememberPlayerOverlayColors
 import com.iptv.scanner.editor.pro.ui.theme.tvFocusBorder
 import kotlinx.coroutines.delay
 
-/**
- * 横屏沉浸式布局：左侧半透明侧边栏 + 右侧全屏视频 + 底部悬浮控制栏
- *
- * 设计理念：
- * - 视频始终全屏，不被压缩或裁剪
- * - 左侧侧边栏可收起/展开，毛玻璃背景，频道/EPG 双 Tab 切换
- * - 底部悬浮控制栏：进度条 + 播放控制按钮，半透明背景
- * - 顶部悬浮信息栏：频道名 + 媒体信息，极简设计
- * - 点击视频区域切换侧边栏/控制栏可见性
- *
- * 类似 YouTube/Plex 的沉浸式体验，但保留 IPTV 专业的频道/EPG 功能
- */
-
-private val SIDEBAR_WIDTH = 280.dp
-private val CONTROL_BAR_HEIGHT = 52.dp
-private val INFO_BAR_HEIGHT = 40.dp
-
-enum class LandscapeSideTab { CHANNELS, EPG }
+private val SIDEBAR_WIDTH_EPG = 420.dp
+private val SIDEBAR_WIDTH_NO_EPG = 240.dp
+private val BOTTOM_BAR_HEIGHT = 72.dp
+private val ICON_SIZE = 22.dp
+private val ICON_BTN = 36.dp
+private val GESTURE_THRESHOLD = 30f
 
 @Composable
 fun LandscapePlayerLayout(
@@ -106,39 +100,52 @@ fun LandscapePlayerLayout(
     val controlsVisible by viewModel.controlsVisible.collectAsState()
     val currentChannel by viewModel.currentChannel.collectAsState()
     val paused by viewModel.mpv.paused.collectAsState()
-    val muted by viewModel.mpv.muted.collectAsState()
-    val volume by viewModel.mpv.volume.collectAsState()
     val fileLoaded by viewModel.mpv.fileLoaded.collectAsState()
     val videoWidth by viewModel.mpv.videoWidth.collectAsState()
     val videoHeight by viewModel.mpv.videoHeight.collectAsState()
-    val currentIdx by viewModel.currentIdx.collectAsState()
     val showExitCatchup by viewModel.showExitCatchup.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+    val currentEpg by viewModel.currentEpg.collectAsState()
+    val currentIdx by viewModel.currentIdx.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
 
-    var sideTab by remember { mutableStateOf(LandscapeSideTab.CHANNELS) }
+    val currentProgram = remember(currentEpg) {
+        ProgressHelper.findCurrentProgram(currentEpg, System.currentTimeMillis())
+    }
+
+    val hasEpg = currentEpg.isNotEmpty()
+    val sidebarWidth = if (hasEpg) SIDEBAR_WIDTH_EPG else SIDEBAR_WIDTH_NO_EPG
+
+    val context = LocalContext.current
+    DisposableEffect(Unit) {
+        val activity = context as? Activity
+        val window = activity?.window
+        val controller = window?.let {
+            androidx.core.view.WindowCompat.getInsetsController(it, it.decorView)
+        }
+        controller?.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        onDispose {
+            controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.setLandscapeSidebarVisible(true)
     }
 
-    val anyOverlayOpen by derivedStateOf {
-        sidebarVisible || controlsVisible
-    }
+    val showOverlays by derivedStateOf { sidebarVisible || controlsVisible }
+    val isIdle = playbackState.mode == PlayMode.IDLE
+    val showBottomBar = showOverlays && !isIdle
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            primaryPlayer()
-        }
+        primaryPlayer()
 
-        if (!anyOverlayOpen) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { viewModel.setLandscapeSidebarVisible(true) }
-            )
-        }
+        LandscapeGestureOverlay(
+            viewModel = viewModel,
+            modifier = Modifier.fillMaxSize()
+        )
 
         AnimatedVisibility(
             visible = sidebarVisible,
@@ -146,610 +153,342 @@ fun LandscapePlayerLayout(
             exit = slideOutHorizontally(targetOffsetX = { -it }),
             modifier = Modifier.align(Alignment.CenterStart)
         ) {
-            LandscapeSideBar(viewModel = viewModel, sideTab = sideTab, onTabChange = { sideTab = it })
+            LandscapeSideBar(viewModel = viewModel, hasEpg = hasEpg, sidebarWidth = sidebarWidth)
         }
 
         if (sidebarVisible) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = SIDEBAR_WIDTH)
+                    .padding(start = sidebarWidth, bottom = if (showBottomBar) BOTTOM_BAR_HEIGHT else 0.dp)
                     .clickable { viewModel.setLandscapeSidebarVisible(false) }
             )
         }
 
-        AnimatedVisibility(
-            visible = controlsVisible || sidebarVisible,
-            enter = androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.fadeOut(),
-            modifier = Modifier.align(Alignment.TopStart)
-        ) {
-            LandscapeTopBar(
-                viewModel = viewModel,
-                channelName = currentChannel?.name ?: "未选择频道",
-                paused = paused,
-                sidebarVisible = sidebarVisible,
-                onShowEpg = {
-                    sideTab = LandscapeSideTab.EPG
-                    viewModel.setLandscapeSidebarVisible(true)
-                }
-            )
-        }
-
-        AnimatedVisibility(
-            visible = controlsVisible || sidebarVisible,
-            enter = androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.fadeOut(),
-            modifier = Modifier.align(Alignment.BottomStart)
-        ) {
-            LandscapeBottomBar(
-                viewModel = viewModel,
-                paused = paused,
-                muted = muted,
-                volume = volume,
-                fileLoaded = fileLoaded,
-                videoWidth = videoWidth,
-                videoHeight = videoHeight,
-                showExitCatchup = showExitCatchup,
-                playbackMode = playbackState.mode
-            )
+        Box(modifier = Modifier.align(Alignment.BottomStart)) {
+            AnimatedVisibility(
+                visible = showBottomBar,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                LandscapeBottomBar(
+                    viewModel = viewModel,
+                    channel = currentChannel,
+                    paused = paused,
+                    fileLoaded = fileLoaded,
+                    videoWidth = videoWidth,
+                    videoHeight = videoHeight,
+                    showExitCatchup = showExitCatchup,
+                    playbackMode = playbackState.mode,
+                    currentProgram = currentProgram,
+                    isFav = currentIdx in favorites
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun LandscapeSideBar(
+private fun LandscapeGestureOverlay(
     viewModel: AppViewModel,
-    sideTab: LandscapeSideTab,
-    onTabChange: (LandscapeSideTab) -> Unit
+    modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val am = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
+
+    Box(modifier = modifier.pointerInput(Unit) {
+        val w = size.width
+        val third = w / 3f
+        detectVerticalDragGestures(
+            onDragEnd = {},
+            onDragCancel = {}
+        ) { change, dragAmount ->
+            val x = change.position.x
+            when {
+                x < third -> {
+                    if (activity != null) {
+                        val lp = activity.window.attributes
+                        val cur = if (lp.screenBrightness in 0f..1f) lp.screenBrightness else 0.5f
+                        val delta = -dragAmount / size.height * 2f
+                        lp.screenBrightness = (cur + delta).coerceIn(0.05f, 1f)
+                        activity.window.attributes = lp
+                    }
+                }
+                x < third * 2 -> {
+                    if (dragAmount > GESTURE_THRESHOLD) {
+                        viewModel.prevChannel()
+                    } else if (dragAmount < -GESTURE_THRESHOLD) {
+                        viewModel.nextChannel()
+                    }
+                }
+                else -> {
+                    if (am != null) {
+                        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        val step = maxOf(1, maxVol / 15)
+                        val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        if (dragAmount < -GESTURE_THRESHOLD / 2) {
+                            am.setStreamVolume(AudioManager.STREAM_MUSIC, (cur + step).coerceAtMost(maxVol), 0)
+                        } else if (dragAmount > GESTURE_THRESHOLD / 2) {
+                            am.setStreamVolume(AudioManager.STREAM_MUSIC, (cur - step).coerceAtLeast(0), 0)
+                        }
+                    }
+                }
+            }
+        }
+    }.pointerInput(Unit) {
+        detectTapGestures {
+            val controlsVisible = viewModel.controlsVisible.value
+            if (controlsVisible) {
+                viewModel.hideControls()
+            } else {
+                viewModel.showControlsAutoHide()
+            }
+        }
+    })
+}
+
+@Composable
+private fun LandscapeSideBar(viewModel: AppViewModel, hasEpg: Boolean, sidebarWidth: androidx.compose.ui.unit.Dp) {
     val oc = rememberPlayerOverlayColors()
 
     Surface(
-        color = oc.topBarBg.copy(alpha = 0.92f),
+        color = Color(0xDD1A1A2E),
         modifier = Modifier
             .fillMaxHeight()
-            .width(SIDEBAR_WIDTH)
-            .statusBarsPadding()
+            .width(sidebarWidth)
+            .padding(bottom = BOTTOM_BAR_HEIGHT)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilterChip(
-                    selected = sideTab == LandscapeSideTab.CHANNELS,
-                    onClick = { onTabChange(LandscapeSideTab.CHANNELS) },
-                    label = { Text("频道", fontSize = 12.sp) },
-                    modifier = Modifier.tvFocusBorder()
-                )
-                FilterChip(
-                    selected = sideTab == LandscapeSideTab.EPG,
-                    onClick = { onTabChange(LandscapeSideTab.EPG) },
-                    label = { Text("节目单", fontSize = 12.sp) },
-                    modifier = Modifier.tvFocusBorder()
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = { viewModel.setLandscapeSidebarVisible(false) },
-                    modifier = Modifier.size(32.dp).tvFocusBorder()
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "关闭侧边栏",
-                        tint = oc.iconTint,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+        if (hasEpg) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                LandscapeChannelColumn(viewModel = viewModel, modifier = Modifier.weight(1f))
+                Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(oc.iconTint.copy(alpha = 0.15f)))
+                LandscapeEpgColumn(viewModel = viewModel, modifier = Modifier.weight(1f))
             }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(oc.divider)
-            )
-
-            when (sideTab) {
-                LandscapeSideTab.CHANNELS -> LandscapeChannelList(viewModel = viewModel)
-                LandscapeSideTab.EPG -> LandscapeEpgList(viewModel = viewModel)
-            }
+        } else {
+            LandscapeChannelColumn(viewModel = viewModel, modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
-private fun LandscapeChannelList(viewModel: AppViewModel) {
+private fun LandscapeChannelColumn(viewModel: AppViewModel, modifier: Modifier = Modifier) {
     val oc = rememberPlayerOverlayColors()
+    val channelTab by viewModel.channelsTab.collectAsState()
     val channels by viewModel.channels.collectAsState()
-    val currentIdx by viewModel.currentIdx.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
     val history by viewModel.history.collectAsState()
-    val tab by viewModel.channelsTab.collectAsState()
-    val selectedGroup by viewModel.selectedGroup.collectAsState()
-    val allGroups by viewModel.groups.collectAsState()
+    val currentIdx by viewModel.currentIdx.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    var showSearch by remember { mutableStateOf(false) }
 
-    val groups = remember(allGroups, channels, tab) {
-        if (tab == ChannelTab.LOCAL) {
-            channels
-                .filter { it.source.isEmpty() || ProgressHelper.isLocalFile(it.url) }
-                .map { it.group }
-                .filter { it.isNotEmpty() }
-                .distinct()
-        } else {
-            allGroups
-        }
+    val filteredChannels = remember(channelTab, channels, favorites, history) {
+        viewModel.getFilteredChannels()
     }
 
-    val filteredChannels = remember(tab, searchQuery, selectedGroup, channels, favorites, history) {
-        viewModel.getFilteredChannels().let { list ->
-            if (searchQuery.isEmpty()) list else list.filter { (ch, _) ->
-                ch.name.contains(searchQuery, ignoreCase = true) ||
-                    ch.group.contains(searchQuery, ignoreCase = true)
+    val listState = rememberLazyListState()
+    val displayed: List<Pair<IptvChannel, Int>> = if (searchQuery.isBlank()) filteredChannels else filteredChannels.filter { (ch, _) -> ch.name.contains(searchQuery, true) }
+
+    LaunchedEffect(currentIdx, displayed) {
+        if (searchQuery.isBlank() && currentIdx >= 0) {
+            val targetIndex = displayed.indexOfFirst { (_, idx) -> idx == currentIdx }
+            if (targetIndex >= 0) {
+                listState.animateScrollToItem(targetIndex, scrollOffset = -listState.layoutInfo.viewportSize.height / 3)
             }
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxHeight()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            ChannelTab.values().take(4).forEach { t ->
-                val label = when (t) {
-                    ChannelTab.SUB -> "订阅"
-                    ChannelTab.LOCAL -> "本地"
-                    ChannelTab.FAV -> "收藏"
-                    ChannelTab.HIST -> "历史"
-                }
-                val count = when (t) {
-                    ChannelTab.SUB -> channels.size
-                    ChannelTab.LOCAL -> channels.count { it.source.isEmpty() || ProgressHelper.isLocalFile(it.url) }
-                    ChannelTab.FAV -> favorites.size
-                    ChannelTab.HIST -> history.size
-                }
+            AppViewModel.ChannelTab.values().forEach { tab ->
                 FilterChip(
-                    selected = tab == t,
-                    onClick = { viewModel.setChannelsTab(t) },
-                    label = { Text("$label $count", fontSize = 10.sp, maxLines = 1) },
-                    modifier = Modifier.tvFocusBorder()
-                )
-            }
-        }
-
-        Surface(
-            color = oc.infoBarBg,
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Search,
-                    contentDescription = null,
-                    tint = oc.iconTint.copy(alpha = 0.5f),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                androidx.compose.foundation.text.BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = oc.textPrimary,
-                        fontSize = 12.sp
-                    ),
-                    modifier = Modifier.weight(1f),
-                    decorationBox = { innerTextField ->
-                        if (searchQuery.isEmpty()) {
-                            Text("搜索频道", color = oc.textSecondary, fontSize = 12.sp)
-                        }
-                        innerTextField()
-                    }
-                )
-            }
-        }
-
-        if ((tab == ChannelTab.SUB || tab == ChannelTab.LOCAL) && groups.isNotEmpty()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(60.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                item {
-                    Surface(
-                        color = if (selectedGroup.isEmpty()) oc.accent.copy(alpha = 0.2f) else oc.infoBarBg,
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.clickable { viewModel.setSelectedGroup("") }
-                    ) {
+                    selected = channelTab == tab,
+                    onClick = { viewModel.setChannelsTab(tab) },
+                    label = {
                         Text(
-                            "全部",
-                            color = if (selectedGroup.isEmpty()) oc.accent else oc.textSecondary,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            when (tab) {
+                                AppViewModel.ChannelTab.SUB -> "订阅"
+                                AppViewModel.ChannelTab.LOCAL -> "本地"
+                                AppViewModel.ChannelTab.FAV -> "收藏"
+                                AppViewModel.ChannelTab.HIST -> "历史"
+                            },
+                            fontSize = 10.sp
                         )
-                    }
-                }
-                items(groups.take(20)) { group ->
-                    Surface(
-                        color = if (selectedGroup == group) oc.accent.copy(alpha = 0.2f) else oc.infoBarBg,
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.clickable { viewModel.setSelectedGroup(group) }
-                    ) {
-                        Text(
-                            group,
-                            color = if (selectedGroup == group) oc.accent else oc.textSecondary,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+                    },
+                    modifier = Modifier.tvFocusBorder().height(28.dp)
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = { showSearch = !showSearch; if (!showSearch) searchQuery = "" },
+                modifier = Modifier.size(28.dp).tvFocusBorder()
+            ) {
+                Icon(Icons.Default.Search, contentDescription = "搜索", tint = if (showSearch) oc.accent else oc.iconTint, modifier = Modifier.size(16.dp))
+            }
+            IconButton(
+                onClick = { viewModel.setLandscapeSidebarVisible(false) },
+                modifier = Modifier.size(28.dp).tvFocusBorder()
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "关闭", tint = oc.iconTint, modifier = Modifier.size(16.dp))
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
-        ) {
-            items(filteredChannels) { (channel, idx) ->
+        if (showSearch) {
+            TextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("搜索频道", fontSize = 11.sp, color = oc.textSecondary) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 1.dp),
+                colors = TextFieldDefaults.colors(focusedContainerColor = Color(0x22FFFFFF), unfocusedContainerColor = Color(0x22FFFFFF), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = oc.textPrimary),
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = oc.iconTint, modifier = Modifier.size(14.dp)) }
+            )
+        }
+
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
+            itemsIndexed(displayed, key = { _, pair -> pair.second }) { _, (ch, idx) ->
                 val isCurrent = idx == currentIdx
                 val isFav = idx in favorites
-                LandscapeChannelItem(
-                    channel = channel,
-                    isCurrent = isCurrent,
-                    isFavorite = isFav,
-                    oc = oc,
-                    onClick = {
-                        viewModel.playChannel(idx)
-                        viewModel.setLandscapeSidebarVisible(false)
+                val canCatchup = ch.catchup.isNotEmpty() && ch.catchup != "none"
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+                        .then(if (isCurrent) Modifier.background(oc.accent.copy(alpha = 0.2f)) else Modifier)
+                        .clickable { viewModel.playChannel(idx) }
+                        .padding(horizontal = 6.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (ch.logo.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(3.dp)).background(Color(0x22FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(model = ch.logo, contentDescription = ch.name, modifier = Modifier.fillMaxSize().padding(1.dp), contentScale = ContentScale.Fit)
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    } else {
+                        Box(
+                            modifier = Modifier.size(28.dp).clip(CircleShape).background(oc.accent.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = oc.accent, modifier = Modifier.size(14.dp))
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
                     }
-                )
+                    Text(text = ch.name, color = if (isCurrent) oc.accent else oc.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    if (canCatchup) {
+                        Icon(Icons.Default.History, contentDescription = "可回看", tint = oc.iconTintActive, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                    }
+                    if (isFav) {
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = oc.accent, modifier = Modifier.size(12.dp))
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun LandscapeChannelItem(
-    channel: IptvChannel,
-    isCurrent: Boolean,
-    isFavorite: Boolean,
-    oc: PlayerOverlayColors,
-    onClick: () -> Unit
-) {
-    val bg = if (isCurrent) oc.accent.copy(alpha = 0.18f) else Color.Transparent
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(bg, RoundedCornerShape(4.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(if (isCurrent) oc.accent else oc.iconTint.copy(alpha = 0.3f))
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = channel.name,
-                color = if (isCurrent) oc.textPrimary else oc.textSecondary,
-                fontSize = 12.sp,
-                fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (channel.group.isNotEmpty()) {
-                Text(
-                    text = channel.group,
-                    color = oc.textSecondary.copy(alpha = 0.6f),
-                    fontSize = 9.sp,
-                    maxLines = 1
-                )
-            }
-        }
-        if (isFavorite) {
-            Icon(
-                Icons.Default.Favorite,
-                contentDescription = null,
-                tint = oc.accent,
-                modifier = Modifier.size(12.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun LandscapeEpgList(viewModel: AppViewModel) {
+private fun LandscapeEpgColumn(viewModel: AppViewModel, modifier: Modifier = Modifier) {
     val oc = rememberPlayerOverlayColors()
-    val epg by viewModel.currentEpg.collectAsState()
-    val loading by viewModel.epgLoading.collectAsState()
     val currentChannel by viewModel.currentChannel.collectAsState()
-    val currentIdx by viewModel.currentIdx.collectAsState()
+    val epgPrograms by viewModel.currentEpg.collectAsState()
+    var dayOffset by remember { mutableStateOf(0) }
 
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1000L)
+    val filteredPrograms = remember(epgPrograms, dayOffset) {
+        if (dayOffset == 0) epgPrograms
+        else {
+            val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_MONTH, dayOffset) }
+            val targetDay = cal.get(java.util.Calendar.YEAR) * 10000 +
+                    (cal.get(java.util.Calendar.MONTH) + 1) * 100 +
+                    cal.get(java.util.Calendar.DAY_OF_MONTH)
+            epgPrograms.filter { prog ->
+                val startMs = parseEpgTimeMs(prog.start, prog.startTs)
+                if (startMs <= 0) return@filter false
+                val startCal = java.util.Calendar.getInstance().apply { timeInMillis = startMs }
+                val startDay = startCal.get(java.util.Calendar.YEAR) * 10000 +
+                        (startCal.get(java.util.Calendar.MONTH) + 1) * 100 +
+                        startCal.get(java.util.Calendar.DAY_OF_MONTH)
+                startDay == targetDay
+            }
         }
     }
 
-    var epgDateOffset by remember { mutableStateOf(0) }
+    val epgListState = rememberLazyListState()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = { if (epgDateOffset > -7) epgDateOffset-- },
-                modifier = Modifier.size(28.dp).tvFocusBorder()
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "前一天",
-                    tint = if (epgDateOffset > -7) oc.iconTint else oc.iconTint.copy(alpha = 0.3f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Text(
-                text = formatEpgDateLabel(epgDateOffset),
-                color = if (epgDateOffset == 0) oc.accent else oc.textPrimary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-            )
-            IconButton(
-                onClick = { if (epgDateOffset < 7) epgDateOffset++ },
-                modifier = Modifier.size(28.dp).tvFocusBorder()
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "后一天",
-                    tint = if (epgDateOffset < 7) oc.iconTint else oc.iconTint.copy(alpha = 0.3f),
-                    modifier = Modifier.size(18.dp)
-                )
+    LaunchedEffect(filteredPrograms) {
+        if (dayOffset == 0 && filteredPrograms.isNotEmpty()) {
+            val nowMs = System.currentTimeMillis()
+            val currentIdx = filteredPrograms.indexOfFirst { isEpgCurrent(it, nowMs) }
+            if (currentIdx >= 0) {
+                epgListState.animateScrollToItem(currentIdx, scrollOffset = -epgListState.layoutInfo.viewportSize.height / 3)
             }
         }
+    }
 
-        when {
-            currentIdx < 0 -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("请先选择频道", color = oc.textSecondary, fontSize = 12.sp)
-                }
-            }
-            loading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("加载节目单...", color = oc.textSecondary, fontSize = 12.sp)
-                }
-            }
-            epg.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("暂无节目数据", color = oc.textSecondary, fontSize = 12.sp)
-                }
-            }
-            else -> {
-                val cal = java.util.Calendar.getInstance().apply {
-                    add(java.util.Calendar.DAY_OF_MONTH, epgDateOffset)
-                    set(java.util.Calendar.HOUR_OF_DAY, 0)
-                    set(java.util.Calendar.MINUTE, 0)
-                    set(java.util.Calendar.SECOND, 0)
-                    set(java.util.Calendar.MILLISECOND, 0)
-                }
-                val dayStartMs = cal.timeInMillis
-                cal.add(java.util.Calendar.DAY_OF_MONTH, 1)
-                val dayEndMs = cal.timeInMillis
-
-                val dateFiltered = epg.filter { p ->
-                    val startMs = parseEpgTimeMs(p.start, p.startTs)
-                    val endMs = parseEpgTimeMs(p.end.ifEmpty { p.stop }, p.stopTs)
-                    startMs > 0 && endMs > startMs && startMs < dayEndMs && endMs > dayStartMs
-                }
-
-                if (dateFiltered.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("该日期无节目数据", color = oc.textSecondary, fontSize = 12.sp)
+    Column(modifier = modifier.fillMaxHeight()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconButton(onClick = { dayOffset-- }, modifier = Modifier.size(28.dp).tvFocusBorder()) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = oc.iconTint, modifier = Modifier.size(16.dp)) }
+            Text(text = formatEpgDateLabel(dayOffset), color = oc.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+            IconButton(onClick = { dayOffset++ }, modifier = Modifier.size(28.dp).tvFocusBorder()) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = oc.iconTint, modifier = Modifier.size(16.dp)) }
+        }
+        if (currentChannel == null) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("请先选择频道", color = oc.textSecondary, fontSize = 12.sp) } }
+        else if (filteredPrograms.isEmpty()) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(if (dayOffset == 0) "暂无节目单数据" else "该日无节目数据", color = oc.textSecondary, fontSize = 12.sp) } }
+        else {
+            val nowMs = System.currentTimeMillis()
+            LazyColumn(state = epgListState, modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
+                items(items = filteredPrograms, key = { prog -> prog.start + prog.title }) { prog ->
+                    val isCurrent = isEpgCurrent(prog, nowMs)
+                    val isPast = isEpgPast(prog, nowMs)
+                    val canCatchup = isPast && currentChannel?.let { ch -> ch.catchup.isNotEmpty() && ch.catchup != "none" } == true
+                    val rowBg = when {
+                        isCurrent -> oc.accent.copy(alpha = 0.3f)
+                        isPast -> Color(0x18FFFFFF)
+                        else -> Color.Transparent
                     }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(dateFiltered) { program ->
-                            val isCurrent = isEpgCurrent(program, now)
-                            val isPast = isEpgPast(program, now)
-                            LandscapeEpgItem(
-                                program = program,
-                                isCurrent = isCurrent,
-                                isPast = isPast,
-                                oc = oc,
-                                onClick = {
-                                    if (isPast && !isCurrent) {
-                                        viewModel.startCatchup(program)
-                                    } else {
-                                        viewModel.toggleReminder(program, currentChannel)
-                                    }
-                                }
-                            )
+                    val timeColor = when {
+                        isCurrent -> oc.accent
+                        isPast -> oc.textSecondary.copy(alpha = 0.4f)
+                        else -> oc.textPrimary
+                    }
+                    val titleColor = when {
+                        isCurrent -> oc.accent
+                        isPast -> oc.textSecondary.copy(alpha = 0.4f)
+                        else -> oc.textPrimary
+                    }
+                    val titleStyle = when {
+                        isCurrent -> androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, textDecoration = TextDecoration.None)
+                        isPast -> androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, textDecoration = TextDecoration.LineThrough)
+                        else -> androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, textDecoration = TextDecoration.None)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+                            .background(rowBg)
+                            .then(if (canCatchup) Modifier.clickable { viewModel.startCatchup(prog) } else Modifier)
+                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isCurrent) {
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(oc.accent))
+                            Spacer(modifier = Modifier.width(4.dp))
+                        } else if (isPast) {
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(oc.textSecondary.copy(alpha = 0.3f)))
+                            Spacer(modifier = Modifier.width(4.dp))
+                        } else {
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
+                        Text(text = formatEpgTime(prog.start), color = timeColor, fontSize = 11.sp, modifier = Modifier.width(40.dp))
+                        Text(text = prog.title, color = titleColor, style = titleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (canCatchup) {
+                            Icon(Icons.Default.History, contentDescription = "回看", tint = oc.accent, modifier = Modifier.size(12.dp))
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LandscapeEpgItem(
-    program: IptvEpgProgram,
-    isCurrent: Boolean,
-    isPast: Boolean,
-    oc: PlayerOverlayColors,
-    onClick: () -> Unit
-) {
-    val bg = if (isCurrent) oc.accent.copy(alpha = 0.15f) else Color.Transparent
-    val alpha = if (isPast && !isCurrent) 0.5f else 1f
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(alpha)
-            .background(bg, RoundedCornerShape(4.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp)
-    ) {
-        val timeText = buildString {
-            append(formatEpgTime(program.start))
-            if (program.stop.isNotEmpty() || program.end.isNotEmpty()) {
-                append("-")
-                append(formatEpgTime(program.stop.ifEmpty { program.end }))
-            }
-        }
-        Text(
-            text = timeText,
-            color = if (isCurrent) oc.accent else oc.textSecondary,
-            fontSize = 10.sp,
-            modifier = Modifier.width(72.dp)
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = program.title,
-                color = if (isCurrent) oc.textPrimary else oc.textSecondary,
-                fontSize = 11.sp,
-                fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 14.sp
-            )
-            if (isCurrent) {
-                Surface(
-                    color = oc.accent.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(3.dp),
-                    modifier = Modifier.padding(top = 1.dp)
-                ) {
-                    Text(
-                        text = "正在播出",
-                        color = oc.accent,
-                        fontSize = 8.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LandscapeTopBar(
-    viewModel: AppViewModel,
-    channelName: String,
-    paused: Boolean,
-    sidebarVisible: Boolean,
-    onShowEpg: () -> Unit
-) {
-    val oc = rememberPlayerOverlayColors()
-    val currentChannel by viewModel.currentChannel.collectAsState()
-    val favorites by viewModel.favorites.collectAsState()
-    val currentIdx by viewModel.currentIdx.collectAsState()
-    val isFav = currentIdx in favorites
-
-    Surface(
-        color = oc.topBarBg.copy(alpha = 0.85f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(INFO_BAR_HEIGHT)
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (!sidebarVisible) {
-                IconButton(
-                    onClick = { viewModel.setLandscapeSidebarVisible(true) },
-                    modifier = Modifier.size(36.dp).tvFocusBorder()
-                ) {
-                    Icon(
-                        Icons.Default.VideoLibrary,
-                        contentDescription = "频道",
-                        tint = oc.iconTint,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Text(
-                text = channelName,
-                color = oc.textPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-
-            if (paused) {
-                Text(
-                    text = "已暂停",
-                    color = oc.iconTintActive,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-            }
-
-            if (currentChannel != null) {
-                IconButton(
-                    onClick = { viewModel.toggleFavorite() },
-                    modifier = Modifier.size(32.dp).tvFocusBorder()
-                ) {
-                    Icon(
-                        if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "收藏",
-                        tint = if (isFav) oc.accent else oc.iconTint,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            IconButton(
-                onClick = onShowEpg,
-                modifier = Modifier.size(32.dp).tvFocusBorder()
-            ) {
-                Icon(
-                    Icons.Default.CalendarMonth,
-                    contentDescription = "节目单",
-                    tint = oc.iconTint,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            IconButton(
-                onClick = { viewModel.showMenuPanel() },
-                modifier = Modifier.size(32.dp).tvFocusBorder()
-            ) {
-                Icon(
-                    Icons.Default.Menu,
-                    contentDescription = "菜单",
-                    tint = oc.iconTint,
-                    modifier = Modifier.size(18.dp)
-                )
             }
         }
     }
@@ -758,147 +497,154 @@ private fun LandscapeTopBar(
 @Composable
 private fun LandscapeBottomBar(
     viewModel: AppViewModel,
+    channel: IptvChannel?,
     paused: Boolean,
-    muted: Boolean,
-    volume: Int,
     fileLoaded: Boolean,
     videoWidth: Int,
     videoHeight: Int,
     showExitCatchup: Boolean,
-    playbackMode: PlayMode
+    playbackMode: PlayMode,
+    currentProgram: IptvEpgProgram?,
+    isFav: Boolean
 ) {
     val oc = rememberPlayerOverlayColors()
 
     var tick by remember { mutableStateOf(0L) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            tick = System.currentTimeMillis()
-            delay(1000L)
-        }
-    }
+    LaunchedEffect(Unit) { while (true) { tick = System.currentTimeMillis(); delay(1000L) } }
     val progressInfo = remember(tick) { viewModel.computeProgress() }
 
+    val mediaInfoBadges = if (fileLoaded) remember(tick, videoWidth, videoHeight) {
+        buildMediaBadges(viewModel.mpv, videoWidth, videoHeight)
+    } else emptyList()
+
     Surface(
-        color = oc.topBarBg.copy(alpha = 0.85f),
+        color = Color(0xDD1A1A2E),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)).background(Color(0x22FFFFFF)),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = progressInfo.startLabel,
-                    color = oc.textSecondary,
-                    fontSize = 10.sp,
-                    modifier = Modifier.width(40.dp)
-                )
-                Slider(
-                    value = progressInfo.percent / 100f,
-                    onValueChange = { viewModel.seekProgress(it * 100f) },
-                    modifier = Modifier.weight(1f).height(20.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = oc.accent,
-                        activeTrackColor = oc.accent,
-                        inactiveTrackColor = oc.trackInactive
-                    )
-                )
-                Text(
-                    text = progressInfo.endLabel,
-                    color = oc.textSecondary,
-                    fontSize = 10.sp,
-                    modifier = Modifier.width(40.dp)
-                )
+                if (channel != null && channel.logo.isNotEmpty()) {
+                    AsyncImage(model = channel.logo, contentDescription = channel.name, modifier = Modifier.fillMaxSize().padding(2.dp), contentScale = ContentScale.Fit)
+                } else {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = oc.accent, modifier = Modifier.size(20.dp))
+                }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.prevChannel() }, modifier = Modifier.size(32.dp).tvFocusBorder()) {
-                        Icon(Icons.Default.SkipPrevious, null, tint = oc.iconTint, modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = { viewModel.mpv.togglePause() }, modifier = Modifier.size(32.dp).tvFocusBorder()) {
-                        Icon(
-                            if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                            null, tint = oc.iconTint, modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    IconButton(onClick = { viewModel.stopPlay() }, modifier = Modifier.size(32.dp).tvFocusBorder()) {
-                        Icon(Icons.Default.Stop, null, tint = oc.iconTint, modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = { viewModel.nextChannel() }, modifier = Modifier.size(32.dp).tvFocusBorder()) {
-                        Icon(Icons.Default.SkipNext, null, tint = oc.iconTint, modifier = Modifier.size(18.dp))
-                    }
-                }
+            Spacer(modifier = Modifier.width(10.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (fileLoaded && videoWidth > 0) {
-                        val resLabel = when {
-                            videoWidth >= 3800 -> "4K"
-                            videoWidth >= 1900 -> "1080P"
-                            videoWidth >= 1200 -> "720P"
-                            else -> "${videoWidth}x${videoHeight}"
-                        }
-                        Surface(
-                            color = oc.badgeBg,
-                            shape = RoundedCornerShape(3.dp)
-                        ) {
-                            Text(
-                                text = resLabel,
-                                color = oc.badgeText,
-                                fontSize = 9.sp,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        }
+            Column(modifier = Modifier.weight(1f)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = channel?.name?.ifEmpty { null } ?: "未选择频道",
+                        color = if (channel != null) oc.textPrimary else oc.textSecondary,
+                        fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    if (currentProgram != null && currentProgram.desc.isNotEmpty()) {
                         Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = currentProgram.desc,
+                            color = oc.textSecondary.copy(alpha = 0.7f),
+                            fontSize = 10.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
-
                     if (showExitCatchup) {
-                        androidx.compose.material3.TextButton(
-                            onClick = { viewModel.exitCatchup() },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text("退出回看", color = oc.accent, fontSize = 10.sp)
+                        Surface(color = oc.accent.copy(alpha = 0.2f), shape = RoundedCornerShape(3.dp)) {
+                            Text(text = if (playbackMode == PlayMode.TIMESHIFT) "时移" else "回看", color = oc.accent, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), maxLines = 1)
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-
-                    IconButton(onClick = { viewModel.mpv.toggleMute() }, modifier = Modifier.size(32.dp).tvFocusBorder()) {
-                        Icon(
-                            if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                            null,
-                            tint = if (muted) oc.iconTintActive else oc.iconTint,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    if (paused && fileLoaded) {
+                        Surface(color = oc.badgeBg, shape = RoundedCornerShape(3.dp)) {
+                            Text("已暂停", color = oc.badgeText, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), maxLines = 1)
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
-                    Slider(
-                        value = volume.toFloat(),
-                        onValueChange = { viewModel.mpv.setVolume(it.toInt()) },
-                        modifier = Modifier.width(80.dp).height(20.dp),
-                        colors = SliderDefaults.colors(
-                            thumbColor = oc.accent,
-                            activeTrackColor = oc.accent,
-                            inactiveTrackColor = oc.trackInactive
-                        )
-                    )
+                    mediaInfoBadges.forEach { info ->
+                        Surface(color = oc.badgeBg, shape = RoundedCornerShape(3.dp)) {
+                            Text(text = info, color = oc.badgeText, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), maxLines = 1)
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                }
 
-                    IconButton(
-                        onClick = { viewModel.togglePlayerSettings() },
-                        modifier = Modifier.size(32.dp).tvFocusBorder()
-                    ) {
-                        Icon(Icons.Default.Settings, null, tint = oc.iconTint, modifier = Modifier.size(18.dp))
+                if (currentProgram != null && currentProgram.title.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Text(text = currentProgram.title, color = oc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+
+                if (fileLoaded) {
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = progressInfo.startLabel, color = oc.textSecondary, fontSize = 10.sp, modifier = Modifier.width(36.dp))
+                        Slider(
+                            value = progressInfo.percent / 100f,
+                            onValueChange = { viewModel.seekProgress(it * 100f) },
+                            modifier = Modifier.weight(1f).height(18.dp),
+                            colors = SliderDefaults.colors(thumbColor = oc.accent, activeTrackColor = oc.accent, inactiveTrackColor = oc.trackInactive)
+                        )
+                        Text(text = progressInfo.endLabel, color = oc.textSecondary, fontSize = 10.sp, modifier = Modifier.width(36.dp))
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(onClick = { viewModel.stopPlay() }, modifier = Modifier.size(ICON_BTN).tvFocusBorder()) {
+                            Icon(Icons.Default.Stop, "停止", tint = oc.iconTint, modifier = Modifier.size(ICON_SIZE))
+                        }
+                        IconButton(onClick = { viewModel.setLandscapeSidebarVisible(true) }, modifier = Modifier.size(ICON_BTN).tvFocusBorder()) {
+                            Icon(Icons.Default.VideoLibrary, "频道列表", tint = oc.iconTint, modifier = Modifier.size(ICON_SIZE))
+                        }
+                        IconButton(onClick = { viewModel.showMenuPanel() }, modifier = Modifier.size(ICON_BTN).tvFocusBorder()) {
+                            Icon(Icons.Default.Menu, "菜单", tint = oc.iconTint, modifier = Modifier.size(ICON_SIZE))
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun buildMediaBadges(mpv: com.iptv.scanner.editor.pro.player.Player, videoWidth: Int, videoHeight: Int): List<String> {
+    val result = mutableListOf<String>()
+    val mediaInfo = try { mpv.getMediaInfo() } catch (_: Exception) { emptyMap() }
+    mediaInfo["videoCodec"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { codec ->
+        result.add(codec.removePrefix("video/").removePrefix("audio/").uppercase())
+    }
+    if (videoWidth > 0 && videoHeight > 0) {
+        result.add(when { videoWidth >= 3800 -> "4K"; videoWidth >= 1900 -> "1080P"; videoWidth >= 1200 -> "720P"; else -> "${videoHeight}P" })
+        result.add("${videoWidth}x${videoHeight}")
+    }
+    mediaInfo["audioCodec"]?.takeIf { it.isNotEmpty() && it != "null" }?.let { codec ->
+        result.add(codec.removePrefix("audio/").uppercase())
+    }
+    mediaInfo["containerFormat"]?.takeIf { it.isNotEmpty() && it != "null" }?.let {
+        result.add(it.take(10))
+    }
+    mediaInfo["fps"]?.takeIf { it.isNotEmpty() && it != "null" && it != "0" && it != "0.000" }?.let { fps ->
+        val fpsVal = fps.toFloatOrNull()
+        result.add(if (fpsVal != null) "${fpsVal.toInt()}fps" else "${fps}fps")
+    }
+    mediaInfo["bitrate"]?.takeIf { it.isNotEmpty() && it != "null" && it != "0" }?.let { br ->
+        val bps = br.toLongOrNull() ?: 0L
+        if (bps > 0) result.add(if (bps > 1_000_000) "${bps / 1_000_000}Mbps" else "${bps / 1_000}Kbps")
+    }
+    mediaInfo["audioBitrate"]?.takeIf { it.isNotEmpty() && it != "null" && it != "0" }?.let { br ->
+        val bps = br.toLongOrNull() ?: 0L
+        if (bps > 0) result.add(if (bps > 1_000_000) "${bps / 1_000_000}Mbps" else "${bps / 1_000}Kbps")
+    }
+    return result.take(8)
 }
 
 private fun formatEpgDateLabel(offset: Int): String {
@@ -914,18 +660,8 @@ private fun formatEpgDateLabel(offset: Int): String {
 private fun parseEpgTimeMs(iso: String, ts: Long): Long {
     if (ts > 0) return ts * 1000L
     if (iso.isEmpty()) return 0
-    val patterns = listOf(
-        "yyyy-MM-dd'T'HH:mm:ssXXX",
-        "yyyy-MM-dd'T'HH:mm:ss'Z'",
-        "yyyy-MM-dd'T'HH:mm:ss",
-        "yyyy-MM-dd HH:mm:ss",
-        "yyyy-MM-dd HH:mm"
-    )
-    for (pattern in patterns) {
-        try {
-            return java.text.SimpleDateFormat(pattern, java.util.Locale.US).parse(iso)?.time ?: continue
-        } catch (_: Exception) {}
-    }
+    val patterns = listOf("yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm")
+    for (pattern in patterns) { try { return java.text.SimpleDateFormat(pattern, java.util.Locale.US).parse(iso)?.time ?: continue } catch (_: Exception) {} }
     return 0
 }
 

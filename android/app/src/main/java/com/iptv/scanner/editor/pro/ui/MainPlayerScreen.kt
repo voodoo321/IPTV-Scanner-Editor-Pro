@@ -477,6 +477,7 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
             // TV 全屏：视频居中 + 统一面板（DPAD 导航）
             // -----------------------------------------------------------------
             if (portraitSplit) {
+
                 // ---- 竖屏布局 ----
                 // Tab 模式：不渲染播放器（省电，且避免 Surface 重建黑屏）
                 // 播放器模式：渲染播放器在视频区域
@@ -550,8 +551,10 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                     }
                 }
             } else {
-                // ---- 横屏 PHONE 模式：沉浸式侧边栏布局 ----
-                if (uiMode.isPhone && !isPortrait) {
+                // ---- 非竖屏模式 ----
+
+                if (landscapeCompact) {
+                    // ---- PHONE 横屏：沉浸式侧边栏布局 ----
                     LandscapePlayerLayout(
                         viewModel = viewModel,
                         primaryPlayer = { primaryPlayer() },
@@ -4982,6 +4985,8 @@ fun PortraitPanelDialog(
     val oc = rememberPlayerOverlayColors()
     val isAndroid12Plus = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     val dialogShape = RoundedCornerShape(20.dp)
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -4992,8 +4997,7 @@ fun PortraitPanelDialog(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.85f)
+                .then(if (isLandscape) Modifier.fillMaxWidth(0.75f).fillMaxHeight(0.82f) else Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.85f))
         ) {
             // 底层：模糊背景层（只模糊背景，不影响内容）
             if (isAndroid12Plus) {

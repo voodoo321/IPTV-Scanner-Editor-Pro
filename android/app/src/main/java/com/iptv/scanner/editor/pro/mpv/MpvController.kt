@@ -1161,12 +1161,13 @@ class MpvController : MPVLib.EventObserver, Player {
                 _eofReached.value = false
             }
             MPVLib.MpvEvent.MPV_EVENT_END_FILE -> {
-                // 文件结束：可能是正常 eof、切换频道、或加载出错。
-                // 如果文件从未成功加载（_fileLoaded=false），说明加载失败，
-                // 立即通知 AppViewModel 换源，防止坏流消耗内存导致 OOM 崩溃。
-                if (!_fileLoaded.value) {
+                val wasLoaded = _fileLoaded.value
+                _fileLoaded.value = false
+                _videoWidth.value = 0
+                _videoHeight.value = 0
+                if (!wasLoaded) {
                     Log.w(TAG, "MPV_EVENT_END_FILE: file failed to load (never got FILE_LOADED), notifying error")
-                    onFileError?.invoke()
+                    postOnUiThread { onFileError?.invoke() }
                 }
             }
             MPVLib.MpvEvent.MPV_EVENT_SHUTDOWN -> {

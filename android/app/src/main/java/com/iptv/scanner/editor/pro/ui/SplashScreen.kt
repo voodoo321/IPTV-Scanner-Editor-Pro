@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.iptv.scanner.editor.pro.ui.theme.IptvTheme
 
 /**
@@ -53,11 +54,13 @@ fun SplashScreen(viewModel: AppViewModel) {
             ) {
                 // 加载指示器（失败时不显示）
                 if (initState !is AppViewModel.InitState.Failed) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.width(56.dp).height(56.dp)
-                    )
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.width(56.dp).height(56.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("v49.2-DEV", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 

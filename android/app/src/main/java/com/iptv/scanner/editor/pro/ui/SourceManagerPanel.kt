@@ -103,20 +103,12 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
         runCatching { closeFocusRequester.requestFocus() }
     }
 
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     Surface(
         color = Color.Transparent,
         modifier = Modifier.fillMaxSize()
     ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val contentMod = if (isLandscape) {
-                Modifier.fillMaxHeight().fillMaxWidth(0.65f)
-            } else {
-                Modifier.fillMaxSize()
-            }
         Column(
-            modifier = contentMod.focusGroup().verticalScroll(rememberScrollState()).systemBarsPadding().imePadding().padding(16.dp)
+            modifier = Modifier.fillMaxSize().focusGroup().verticalScroll(rememberScrollState()).systemBarsPadding().imePadding().padding(16.dp)
         ) {
             // 标题栏
             Row(
@@ -318,7 +310,7 @@ fun SourceManagerPanel(viewModel: AppViewModel) {
                     }
                 }
             }
-            }
+
         }
     }
 }

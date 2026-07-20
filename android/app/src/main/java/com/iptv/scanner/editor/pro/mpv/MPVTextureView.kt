@@ -344,7 +344,14 @@ class MPVTextureView @JvmOverloads constructor(
             MPVLib.setPropertyBoolean("pause", false)
             filePath = null
         } else {
-            Log.i(TAG, "onSurfaceTextureAvailable: no pending filePath, waiting for external playFile")
+            val currentPath = try { MPVLib.getPropertyString("path") } catch (_: Exception) { "" }
+            if (!currentPath.isNullOrEmpty()) {
+                Log.i(TAG, "onSurfaceTextureAvailable: re-loading current path=$currentPath")
+                MPVLib.command(arrayOf("loadfile", currentPath))
+                MPVLib.setPropertyBoolean("pause", false)
+            } else {
+                Log.i(TAG, "onSurfaceTextureAvailable: no pending filePath, waiting for external playFile")
+            }
         }
     }
 

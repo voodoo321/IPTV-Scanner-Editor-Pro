@@ -33,7 +33,7 @@ if (versionParts.length >= 2) {
     if (versionParts.length >= 3) {
         versionCodeVal += versionParts[2].toInteger()
     }
-    // 溢出保护：Google Play 最大 versionCode 为 2100000000
+    versionCodeVal += 100  // dev offset to ensure upgrade
     versionCodeVal = Math.min(versionCodeVal, 2100000000)
 }
 
