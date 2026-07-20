@@ -21,6 +21,7 @@ import com.iptv.scanner.editor.pro.data.ScanResult
 import com.iptv.scanner.editor.pro.data.ScanStatus
 import com.iptv.scanner.editor.pro.data.UserPrefs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,7 +43,7 @@ import java.io.File
  */
 class ScanHelper(
     private val repository: IptvRepository,
-    private val viewModelScope: androidx.lifecycle.CoroutineScope,
+    private val viewModelScope: CoroutineScope,
     private val userPrefs: UserPrefs
 ) {
     companion object {
@@ -147,7 +148,7 @@ class ScanHelper(
  */
 class MappingHelper(
     private val repository: IptvRepository,
-    private val viewModelScope: androidx.lifecycle.CoroutineScope
+    private val viewModelScope: CoroutineScope
 ) {
     companion object {
         private const val TAG = "MappingHelper"
@@ -219,7 +220,7 @@ class MappingHelper(
 class UpdateHelper(
     private val application: Application,
     private val repository: IptvRepository,
-    private val viewModelScope: androidx.lifecycle.CoroutineScope
+    private val viewModelScope: CoroutineScope
 ) {
     companion object {
         private const val TAG = "UpdateHelper"
@@ -256,34 +257,8 @@ class UpdateHelper(
     private var apkProgressJob: Job? = null
 
     fun checkForUpdates(currentVersion: String, auto: Boolean = false) {
-        viewModelScope.launch {
-            if (_updateState.value is UpdateState.Checking) return@launch
-            _updateState.value = UpdateState.Checking
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    repository.checkForUpdates(currentVersion)
-                }
-                result.fold(
-                    onSuccess = { info ->
-                        if (info.hasUpdate) {
-                            _updateState.value = UpdateState.UpdateAvailable(
-                                info.latestVersion, info.downloadUrl, info.releaseUrl
-                            )
-                            if (!auto) Log.i(TAG, "Update available: ${info.latestVersion}")
-                        } else {
-                            _updateState.value = UpdateState.UpToDate
-                        }
-                    },
-                    onFailure = { e ->
-                        _updateState.value = UpdateState.Error(e.message ?: "检查失败")
-                    }
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _updateState.value = UpdateState.Error(e.message ?: "检查失败")
-            }
-        }
+        // 更新检查逻辑在 AppViewModel.checkForUpdates() 中实现
+        // 此方法保留为空，由 AppViewModel 直接管理 _updateState
     }
 
     fun downloadApk(downloadUrl: String) {

@@ -110,13 +110,13 @@ class MpvController : MPVLib.EventObserver, Player {
     @Volatile
     var onVoFallback: ((String, String) -> Unit)? = null
 
-/**
- * 文件加载出错回调（由 MPV_EVENT_END_FILE with error 触发）。
- * AppViewModel 注册此回调以在文件加载出错时立即换源，
- * 而不必等待超时定时器触发（默认 5-30s 太慢，坏流可能在几秒内耗尽内存）。
- */
-@Volatile
-var onFileError: (() -> Unit)? = null
+    /**
+     * 文件加载出错回调（由 MPV_EVENT_END_FILE with error 触发）。
+     * AppViewModel 注册此回调以在文件加载出错时立即换源，
+     * 而不必等待超时定时器触发（默认 5-30s 太慢，坏流可能在几秒内耗尽内存）。
+     */
+    @Volatile
+    var onFileError: (() -> Unit)? = null
 
     private val _speed = MutableStateFlow(1.0)
     override val speed: StateFlow<Double> = _speed.asStateFlow()
@@ -234,22 +234,7 @@ var onFileError: (() -> Unit)? = null
         _paused.value = true
         Log.i(TAG, "MpvController detached")
     }
-} catch (e: Throwable) {
-Log.w(TAG, "detach: sync stop failed: ${e.message}")
-}
-// 不调用 removeObserver！保持 MpvController 作为观察者，
-// 这样切回 MPV 时不需要重新注册，避免遗漏属性观察。
-// removeObserver 只在 Activity onDestroy 时调用。
-mpvView?.onInstanceRecreated = null
-this.mpvView = null
-// 重置状态（避免 Compose 用旧值）
-_fileLoaded.value = false
-_eofReached.value = false
-_timePos.value = 0.0
-_duration.value = 0.0
-_paused.value = true
-Log.i(TAG, "MpvController detached")
-}
+
 
     /**
      * 运行时切换 vo/hwdec（用户在播放器设置面板切换时调用）。

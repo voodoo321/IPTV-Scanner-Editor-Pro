@@ -550,8 +550,15 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                     }
                 }
             } else {
-                // ---- 全屏模式（横屏 PHONE / TV / 多画面）----
-                if (multiViewState.active) {
+                // ---- 横屏 PHONE 模式：沉浸式侧边栏布局 ----
+                if (uiMode.isPhone && !isPortrait) {
+                    LandscapePlayerLayout(
+                        viewModel = viewModel,
+                        primaryPlayer = { primaryPlayer() },
+                        videoAspectRatio = aspectRatio
+                    )
+                } else if (multiViewState.active) {
+                    // ---- TV / 多画面模式 ----
                     MultiViewOverlay(
                         state = multiViewState,
                         primaryContent = { primaryPlayer() },
@@ -566,7 +573,70 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                         onViewportClose = { idx -> viewModel.removeFromMultiView(idx) },
                         onToggleMute = { idx -> viewModel.toggleMultiViewMute(idx) }
                     )
+
+                    if (!anyPanelOpen) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { viewModel.toggleControls() }
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = showControls,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(oc.scrim)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize().systemBarsPadding(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                TopBar(
+                                    channelName = currentChannel?.name ?: "未选择频道",
+                                    mode = if (uiMode.isTV) "TV" else "PHONE",
+                                    paused = paused,
+                                    isTV = uiMode.isTV,
+                                    onChannelsClick = { viewModel.showChannelsPanel() },
+                                    onEpgClick = { viewModel.showEpgPanel() },
+                                    onMenuClick = { viewModel.showMenuPanel() }
+                                )
+                                ControlPanel(viewModel = viewModel)
+                            }
+                        }
+                    }
+
+                    if (channelsPanelOpen) {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .background(Color(0x88000000))
+                                    .clickable { viewModel.toggleChannelsPanel() }
+                            )
+                            ChannelsPanel(viewModel = viewModel, compact = false)
+                        }
+                    }
+
+                    if (epgPanelOpen) {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            EpgPanel(viewModel = viewModel, compact = false)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .background(Color(0x88000000))
+                                    .clickable { viewModel.toggleEpgPanel() }
+                            )
+                        }
+                    }
                 } else {
+                    // ---- TV 单画面模式 ----
                     Box(
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -574,78 +644,67 @@ fun MainPlayerScreen(viewModel: AppViewModel) {
                     ) {
                         primaryPlayer()
                     }
-                }
 
-                // 透明点击层
-                if (!anyPanelOpen) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable { viewModel.toggleControls() }
-                    )
-                }
+                    if (!anyPanelOpen) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { viewModel.toggleControls() }
+                        )
+                    }
 
-                // 控制层
-                AnimatedVisibility(
-                    visible = showControls,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(oc.scrim)
+                    AnimatedVisibility(
+                        visible = showControls,
+                        enter = fadeIn(),
+                        exit = fadeOut()
                     ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().systemBarsPadding(),
-                            verticalArrangement = Arrangement.SpaceBetween
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(oc.scrim)
                         ) {
-                            TopBar(
-                                channelName = currentChannel?.name ?: "未选择频道",
-                                mode = if (uiMode.isTV) "TV" else "PHONE",
-                                paused = paused,
-                                isTV = uiMode.isTV,
-                                onChannelsClick = { viewModel.showChannelsPanel() },
-                                onEpgClick = { viewModel.showEpgPanel() },
-                                onMenuClick = { viewModel.showMenuPanel() }
-                            )
-                            // 快捷工具栏（横屏模式）
-                            if (!uiMode.isTV) {
-                                QuickActionBar(
-                                    viewModel = viewModel,
-                                    orientation = QuickActionBarOrientation.Landscape
+                            Column(
+                                modifier = Modifier.fillMaxSize().systemBarsPadding(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                TopBar(
+                                    channelName = currentChannel?.name ?: "未选择频道",
+                                    mode = if (uiMode.isTV) "TV" else "PHONE",
+                                    paused = paused,
+                                    isTV = uiMode.isTV,
+                                    onChannelsClick = { viewModel.showChannelsPanel() },
+                                    onEpgClick = { viewModel.showEpgPanel() },
+                                    onMenuClick = { viewModel.showMenuPanel() }
                                 )
+                                ControlPanel(viewModel = viewModel)
                             }
-                            ControlPanel(viewModel = viewModel)
                         }
                     }
-                }
 
-                // 频道列表（右侧抽屉）— 横屏 PHONE 用 compact 模式
-                if (channelsPanelOpen) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .background(Color(0x88000000))
-                                .clickable { viewModel.toggleChannelsPanel() }
-                        )
-                        ChannelsPanel(viewModel = viewModel, compact = landscapeCompact)
+                    if (channelsPanelOpen) {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .background(Color(0x88000000))
+                                    .clickable { viewModel.toggleChannelsPanel() }
+                            )
+                            ChannelsPanel(viewModel = viewModel, compact = false)
+                        }
                     }
-                }
 
-                // EPG 节目单（左侧抽屉）— 横屏 PHONE 用 compact 模式
-                if (epgPanelOpen) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        EpgPanel(viewModel = viewModel, compact = landscapeCompact)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .background(Color(0x88000000))
-                                .clickable { viewModel.toggleEpgPanel() }
-                        )
+                    if (epgPanelOpen) {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            EpgPanel(viewModel = viewModel, compact = false)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .background(Color(0x88000000))
+                                    .clickable { viewModel.toggleEpgPanel() }
+                            )
+                        }
                     }
                 }
             }

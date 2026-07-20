@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -104,9 +105,6 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
     val horizontalScroll = rememberScrollState()
     val verticalScroll = rememberScrollState()
 
-    // 自动滚动到当前时间（首次加载或日期变化时，仅今天滚动）
-    LaunchedEffect(rows, dateOffset) {
-        if (rows.isNotEmpty() && dateOffset == 0) {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -114,6 +112,10 @@ fun EpgTimelinePanel(viewModel: AppViewModel) {
             now = System.currentTimeMillis()
         }
     }
+
+    // 自动滚动到当前时间（首次加载或日期变化时，仅今天滚动）
+    LaunchedEffect(rows, dateOffset) {
+        if (rows.isNotEmpty() && dateOffset == 0) {
             val cal = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, 0)
                 set(Calendar.MINUTE, 0)

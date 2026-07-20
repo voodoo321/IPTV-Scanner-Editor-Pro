@@ -89,7 +89,8 @@ fun EpgPanel(viewModel: AppViewModel, compact: Boolean = false) {
     val currentIdx by viewModel.currentIdx.collectAsState()
 
 
-    // EPG 日期切换（±7 天，0=今天）    var epgDateOffset by remember { mutableStateOf(0) }
+    // EPG 日期切换（±7 天，0=今天）
+    var epgDateOffset by remember { mutableStateOf(0) }
 
     // TV 焦点管理：面板打开时请求焦点到关闭按钮，确保 DPAD 可操作。
     val closeFocusRequester = remember { FocusRequester() }

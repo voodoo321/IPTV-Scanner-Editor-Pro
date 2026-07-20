@@ -586,6 +586,17 @@ data class LyricsLine(val time: Long, val text: String)
     private val _controlsVisible = MutableStateFlow(true)
     val controlsVisible: StateFlow<Boolean> = _controlsVisible.asStateFlow()
 
+    /** 横屏沉浸侧边栏可见性 */
+    private val _landscapeSidebarVisible = MutableStateFlow(false)
+    val landscapeSidebarVisible: StateFlow<Boolean> = _landscapeSidebarVisible.asStateFlow()
+
+    fun setLandscapeSidebarVisible(visible: Boolean) {
+        _landscapeSidebarVisible.value = visible
+        if (visible) {
+            _controlsVisible.value = true
+        }
+    }
+
     /** 控制层持久模式（菜单 OSD 按钮触发，不自动隐藏，再次选中关闭） */
     private val _controlsPinned = MutableStateFlow(false)
     val controlsPinned: StateFlow<Boolean> = _controlsPinned.asStateFlow()
@@ -3136,6 +3147,7 @@ private var _channelInputJob: kotlinx.coroutines.Job? = null
         _videoSettingsOpen.value = false
         _audioSettingsOpen.value = false
         _subtitleSettingsOpen.value = false
+        _landscapeSidebarVisible.value = false
         _subtitleSearchOpen.value = false
         _playbackPanelOpen.value = false
         _screenshotPanelOpen.value = false
